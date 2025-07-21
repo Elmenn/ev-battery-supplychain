@@ -1,0 +1,38 @@
+.sidebar {
+  width: 200px;
+  background-color: #f1f1f1;
+  border-right: 1px solid #ddd;
+  padding: 16px;
+  box-shadow: 2px 0 5px rgba(0, 0, 0, 0.05);
+}
+
+.sidebar h2 {
+  margin-top: 0;
+  font-size: 18px;
+  color: #333;
+  margin-bottom: 1em;
+}
+
+.sidebar button {
+  display: block;
+  width: 100%;
+  background: none;
+  border: none;
+  padding: 10px 12px;
+  margin-bottom: 8px;
+  text-align: left;
+  font-size: 14px;
+  cursor: pointer;
+  border-radius: 4px;
+  color: #333;
+  transition: background 0.2s ease;
+}
+
+.sidebar button:hover {
+  background-color: #e9e9e9;
+}
+
+.sidebar button.active {
+  background-color: #007bff;
+  color: white;
+}
