@@ -11,9 +11,9 @@ contract ProductFactory {
 
     /// @notice Deploys a new ProductEscrow and emits ProductCreated
     /// @param _name  The name of the product
-    /// @param _price The price (in wei) of the product
-    function createProduct(string memory _name, uint _price) public {
-        ProductEscrow newProduct = new ProductEscrow(_name, _price, msg.sender);
+    /// @param _priceCommitment The price commitment (hash) of the product
+    function createProduct(string memory _name, bytes32 _priceCommitment) public {
+        ProductEscrow newProduct = new ProductEscrow(_name, _priceCommitment, msg.sender);
         address escrowAddr = address(newProduct);
 
         products.push(escrowAddr);
