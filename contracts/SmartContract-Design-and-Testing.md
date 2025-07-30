@@ -26,9 +26,98 @@
 
 ---
 
-## Overview
+# Legacy System Overview
 
-This project implements a robust, modular, and secure set of smart contracts for supply chain scenarios, specifically tailored for the electric vehicle (EV) battery trade. The system manages confidential buyer deposits, seller and transporter roles, delivery verification, cancellation, refund, timeout logic, and scalable product creation. All contracts are thoroughly tested for edge cases, race conditions, and security vulnerabilities.
+This section summarizes the original design of the EV Battery Supplychain Escrow Smart Contract System, as described in `SC_System.txt`. It is preserved here for historical context and comparison with the current, more advanced system.
+
+---
+
+**Overview**
+This project implements a robust, modular, and secure set of smart contracts for supply chain scenarios (e.g., EV battery trade). The system manages confidential buyer deposits, seller and transporter roles, delivery verification, cancellation, refund, timeout logic, and scalable product creation. All contracts are thoroughly tested for edge cases and race conditions.
+
+**Key Features**
+1. **Phased Escrow State Machine**
+   - Phases: Listed → Funded → Bid → Bound → Delivery → Delivered → Cancelled → Expired
+   - Transitions are strictly enforced, ensuring only valid actions at each stage.
+
+2. **Confidential Commitments**
+   - Buyer and product prices are handled as confidential commitments (hashes), supporting privacy and future ZKP integration.
+
+3. **Buyer Deposit & Refunds**
+   - Buyer deposits Ether into escrow after contract creation.
+   - Deposit is tracked and can be refunded or withdrawn based on contract outcome.
+   - Buyer can cancel and get a refund if the deal is not completed and the deadline has passed.
+   - Refunds are handled securely, with events emitted for transparency.
+
+4. **Transporter Bidding & Security**
+   - Transporters can register and set a delivery fee.
+   - Seller selects a transporter and pays the delivery fee.
+   - Transporter security deposit logic is included for future extensibility.
+
+5. **Delivery Verification**
+   - Seller sets a verification code.
+   - Buyer confirms delivery by providing the correct code.
+   - On successful delivery, seller can withdraw the buyer’s deposit.
+
+6. **Timeout Automation**
+   - `checkTimeouts()` function can be called by anyone (or Chainlink Automation).
+   - If the deadline passes in Funded or Bid phase, the buyer is automatically refunded and the phase is set to Expired.
+
+7. **Factory Pattern for Products**
+   - `ProductFactory` contract allows scalable, atomic creation of new `ProductEscrow` contracts for each product.
+   - Each product is isolated in its own escrow contract, preventing cross-product state issues.
+
+8. **Double-Purchase & Self-Purchase Prevention**
+   - Only the first buyer can purchase a product; all subsequent attempts are rejected.
+   - Seller cannot buy their own product.
+   - All purchase logic is protected by OpenZeppelin's `ReentrancyGuard` to prevent reentrancy attacks and race conditions.
+
+9. **Event-Driven Design**
+   - Events for deposit, withdrawal, phase changes, cancellations, product creation, and delivery are emitted for off-chain tracking and auditability.
+
+10. **Security and Best Practices**
+    - Uses OpenZeppelin's `ReentrancyGuard` for reentrancy-safe refund and withdrawal logic.
+    - Strict phase checks for all state-changing functions.
+    - No direct Ether acceptance outside of explicit payable functions.
+    - All major actions are event-driven for transparency.
+
+**Testing**
+- Comprehensive test suite using Truffle and truffle-assertions.
+- Tests cover:
+  - Full happy-path (deposit, bid, delivery, withdrawal)
+  - Reverts for invalid actions/phases
+  - Refunds on cancel and timeout
+  - Delivery verification (including wrong code)
+  - Contract balance checks after refunds/withdrawals
+  - Timeout automation via `checkTimeouts()`
+  - Double-purchase and self-purchase prevention
+  - Race conditions and edge cases
+
+**How to Use**
+1. Deploy the factory and/or escrow contracts with seller, agent, expiry, and amount/price commitment.
+2. Buyer deposits Ether via `deposit()` or `depositPurchase()`.
+3. Seller confirms and selects transporter.
+4. Transporter is set and delivery fee is paid.
+5. Seller sets verification code.
+6. Buyer confirms delivery with code.
+7. Seller withdraws deposit after delivery.
+8. If expired, anyone can call `checkTimeouts()` to refund buyer and expire the contract.
+9. Buyer can cancel after expiry if not delivered.
+
+**Dependencies**
+- Requires OpenZeppelin Contracts (install with `npm install @openzeppelin/contracts`).
+
+---
+
+**Comparison Note:**
+The rest of this document describes the current, evolved system. The new design builds on this legacy by adding:
+- **Zero-Knowledge Proofs (ZKP) and Pedersen commitments** for true price privacy.
+- **Explicit state machine and phase events** for robust process control and auditability.
+- **Advanced security features** (custom errors, reentrancy guards, ETH conservation invariants).
+- **Improved delivery verification** (ZKP-based, not just code-based).
+- **More comprehensive and adversarial test coverage.**
+
+This historical section is preserved for context and to show the evolution of the system.
 
 ---
 

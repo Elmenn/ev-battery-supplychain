@@ -16,6 +16,10 @@ error Refund();
 error Penalty();
 error Transfer();
 error VC();
+error AlreadyPaid();
+error ZeroMemoHash();
+error ZeroTxRef();
+error NotParticipant();
 
 import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 
@@ -39,6 +43,11 @@ contract ProductEscrow is ReentrancyGuard {
     function maxBids() internal view virtual returns (uint8) {
         return 20;
     }
+    
+    // Canonical commitment computation helper (pure function for tests and UI)
+    function computeCommitment(uint256 value, bytes32 salt) public pure returns (bytes32) {
+        return keccak256(abi.encodePacked(value, salt));
+    }
     uint32 public constant SELLER_WINDOW = 2 days; // Seller must confirm within 48h
     uint32 public constant BID_WINDOW = 2 days;    // Bidding window after seller confirmation
     uint32 public constant DELIVERY_WINDOW = 2 days; // Delivery window after transporter is set
@@ -52,6 +61,19 @@ contract ProductEscrow is ReentrancyGuard {
 
     mapping(address => TransporterFees) public transporters;
     mapping(address => bool) public isTransporter; // Membership mapping for transporters
+    address[] public transporterAddresses; // Store all transporter addresses
+    
+    // Railgun Integration State
+    mapping(bytes32 => bool) public privatePayments; // Track recorded private payments by memoHash
+    mapping(uint256 => bytes32) public productMemoHashes; // Link productId to memoHash
+    mapping(uint256 => bytes32) public productRailgunTxRefs; // Link productId to Railgun tx reference
+    mapping(bytes32 => bool) public usedMemoHash; // Global reuse guard for memos
+    mapping(uint256 => address) public productPaidBy; // Track who recorded the payment (for audit)
+
+    // Confidential value commitment and proof (Pedersen + Bulletproofs)
+    bytes32 public valueCommitment;
+    bytes public valueRangeProof;
+    event ValueCommitted(bytes32 commitment, bytes proof);
 
     modifier onlyBuyer() {
         if (msg.sender != buyer) revert NotTransporter();
@@ -87,8 +109,16 @@ contract ProductEscrow is ReentrancyGuard {
     event SellerTimeout(address indexed caller, uint time);
     event PhaseChanged(Phase from, Phase to, uint256 time); // Emitted on every phase transition
     event BidWithdrawn(address indexed transporter, uint amount);
+    event Debug(string message);
+    event DebugUint(string message, uint value);
+    event DebugBool(string message, bool value);
+    
+    // Railgun Integration Events
+    event PaidPrivately(uint256 indexed productId, bytes32 memoHash, bytes32 railgunTxRef);
+    event PrivatePaymentRecorded(uint256 indexed productId, bytes32 memoHash, bytes32 railgunTxRef, address indexed recorder);
 
-    constructor(string memory _name, bytes32 _priceCommitment, address _owner) {
+    constructor(uint256 _id, string memory _name, bytes32 _priceCommitment, address _owner) {
+        id = _id;
         name = _name;
         priceCommitment = _priceCommitment; // Storing commitment
         owner = payable(_owner);
@@ -115,7 +145,7 @@ contract ProductEscrow is ReentrancyGuard {
     }
 
 
-    function depositPurchase(bytes32 _commitment) public payable nonReentrant {
+    function depositPurchase(bytes32 _commitment, bytes32 _valueCommitment, bytes calldata _valueRangeProof) public payable nonReentrant {
         if (purchased) revert Deposit();
         if (msg.sender == owner) revert Deposit();
         purchased    = true;
@@ -125,7 +155,10 @@ contract ProductEscrow is ReentrancyGuard {
         Phase oldPhase = phase;
         phase        = Phase.Purchased;   // Set phase to Purchased after successful purchase
         emit PhaseChanged(oldPhase, phase, block.timestamp); // Emit on phase change
-        priceCommitment = _commitment; // Store the commitment
+        priceCommitment = _commitment; // Store the original commitment
+        valueCommitment = _valueCommitment; // Store the Pedersen commitment
+        valueRangeProof = _valueRangeProof; // Store the Bulletproofs proof
+        emit ValueCommitted(_valueCommitment, _valueRangeProof);
         emit OrderConfirmed(buyer, priceCommitment, ""); // Optionally emit event
     }
 
@@ -167,6 +200,7 @@ contract ProductEscrow is ReentrancyGuard {
         // Store fee in wei for precision
         transporters[msg.sender] = TransporterFees({ fee: _feeInWei });
         isTransporter[msg.sender] = true;
+        transporterAddresses.push(msg.sender); // Add to array
         transporterCount++;
         emit TransporterCreated(msg.sender, _feeInWei);
     }
@@ -178,7 +212,17 @@ contract ProductEscrow is ReentrancyGuard {
         emit TransporterSecurityDeposit(msg.sender, msg.value);
     }
 
-    // Remove getAllTransporters() as on-chain iteration is no longer supported
+    // View function to return all transporter addresses and their fees
+    function getAllTransporters() public view returns (address[] memory, uint[] memory) {
+        uint len = transporterAddresses.length;
+        address[] memory addresses = new address[](len);
+        uint[] memory fees = new uint[](len);
+        for (uint i = 0; i < len; i++) {
+            addresses[i] = transporterAddresses[i];
+            fees[i] = transporters[transporterAddresses[i]].fee;
+        }
+        return (addresses, fees);
+    }
 
     function checkAndDeleteProduct() public {
         if (!purchased) revert Deposit();
@@ -213,7 +257,7 @@ contract ProductEscrow is ReentrancyGuard {
 
     // New: Enforce reveal in payment path
     function revealAndConfirmDelivery(uint revealedValue, bytes32 blinding, string memory vcCID) public nonReentrant onlyBuyer transporterSet {
-        bytes32 computed = keccak256(abi.encodePacked(revealedValue, blinding));
+        bytes32 computed = computeCommitment(revealedValue, blinding);
         bool valid = (computed == priceCommitment);
         require(valid, "Reveal invalid");
         _confirmDelivery(vcCID);
@@ -221,21 +265,27 @@ contract ProductEscrow is ReentrancyGuard {
 
     // Internal delivery logic, only callable after valid reveal
     function _confirmDelivery(string memory vcCID) internal {
-        if (delivered) revert Delivered();
-        if (block.timestamp > orderConfirmedTimestamp + DELIVERY_WINDOW) revert Timeout();
+        if (delivered) revert("delivered");
+        if (block.timestamp > orderConfirmedTimestamp + DELIVERY_WINDOW) revert("timeout");
         delivered = true;
         Phase oldPhase = phase;
         phase = Phase.Delivered;
-        emit PhaseChanged(oldPhase, phase, block.timestamp); // Emit on phase change
-        // Transfer funds
-        uint price = productPrice; // Use explicitly tracked product price
-        if (price == 0) revert Deposit();
-        (bool sentSeller, ) = owner.call{value: price}("");
-        if (!sentSeller) revert Transfer();
-        emit FundsTransferred(owner, price);
-        (bool sentTransporter, ) = transporter.call{value: deliveryFee + securityDeposits[transporter]}("");
-        if (!sentTransporter) revert Transfer();
-        emit FundsTransferred(transporter, deliveryFee + securityDeposits[transporter]);
+        
+        // Check if private payment was recorded
+        bytes32 memoHash = productMemoHashes[id];
+        if (memoHash != bytes32(0)) {
+            // Private payment was made - no on-chain transfers needed
+            emit PaidPrivately(id, memoHash, productRailgunTxRefs[id]);
+        } else {
+            // Fallback to on-chain payment (for backward compatibility)
+            uint price = productPrice;
+            if (price == 0) revert("price zero");
+            (bool sentSeller, ) = owner.call{value: price}("");
+            if (!sentSeller) revert("seller transfer fail");
+            (bool sentTransporter, ) = transporter.call{value: deliveryFee + securityDeposits[transporter]}("");
+            if (!sentTransporter) revert("transporter transfer fail");
+        }
+        
         owner = buyer;
         vcCid = vcCID;
         emit VcUpdated(vcCID);
@@ -316,5 +366,71 @@ contract ProductEscrow is ReentrancyGuard {
             emit FundsTransferred(msg.sender, refundAmount);
         }
         emit BidWithdrawn(msg.sender, refundAmount);
+    }
+    
+    // Railgun Integration Functions
+    
+    /**
+     * @dev Record a private payment made via Railgun
+     * @param _productId The product ID for this escrow instance
+     * @param _memoHash Hash of the memo used in the private transfer
+     * @param _railgunTxRef Reference to the Railgun transaction
+     * 
+     * This function can be called by:
+     * - Buyer (after making private payment)
+     * - Seller (after receiving private payment)
+     * - Auditor/Indexer (with proper authorization)
+     */
+    function recordPrivatePayment(uint256 _productId, bytes32 _memoHash, bytes32 _railgunTxRef) external {
+        // Input validation
+        if (_productId != id) revert NotRegistered(); // Ensure correct product
+        if (_memoHash == bytes32(0)) revert ZeroMemoHash();
+        if (_railgunTxRef == bytes32(0)) revert ZeroTxRef();
+        
+        // Phase and state validation
+        if (phase != Phase.Bound) revert WrongPhase(Phase.Bound, phase);
+        if (delivered) revert Delivered();
+        if (transporter == address(0)) revert NotTransporter();
+        
+        // Prevent multiple payments for the same product
+        if (productMemoHashes[id] != bytes32(0)) revert AlreadyPaid();
+        
+        // Prevent global memo reuse first (cross-product protection)
+        if (usedMemoHash[_memoHash]) revert Exists();
+        
+        // Prevent duplicate recordings for this specific memo
+        if (privatePayments[_memoHash]) revert Exists();
+        
+        // Only allow buyer, seller, or transporter to record
+        if (msg.sender != buyer && msg.sender != owner && msg.sender != transporter) revert NotParticipant();
+        
+        // Record the private payment
+        privatePayments[_memoHash] = true;
+        usedMemoHash[_memoHash] = true;
+        productMemoHashes[id] = _memoHash;
+        productRailgunTxRefs[id] = _railgunTxRef;
+        productPaidBy[id] = msg.sender; // Track who recorded for audit
+        
+        emit PrivatePaymentRecorded(id, _memoHash, _railgunTxRef, msg.sender);
+    }
+    
+    /**
+     * @dev Check if a private payment was recorded for this product
+     * @return bool True if private payment was recorded
+     */
+    function hasPrivatePayment() external view returns (bool) {
+        return productMemoHashes[id] != bytes32(0);
+    }
+    
+    /**
+     * @dev Get private payment details for this product
+     * @return memoHash The memo hash used in the private transfer
+     * @return railgunTxRef The Railgun transaction reference
+     * @return recorder The address that recorded the payment
+     */
+    function getPrivatePaymentDetails() external view returns (bytes32 memoHash, bytes32 railgunTxRef, address recorder) {
+        memoHash = productMemoHashes[id];
+        railgunTxRef = productRailgunTxRefs[id];
+        recorder = productPaidBy[id];
     }
 }
