@@ -1,0 +1,19 @@
+{
+  "name": "EV Battery Marketplace Auditor (DEVELOPMENT PLACEHOLDER)",
+  "version": "1.0",
+  "generatedAt": "2025-07-30T02:12:48.832Z",
+  "railgunAddress": "0zk42959d068cAe00bBd7DE076f5eda0A444bF4F6f0",
+  "viewKey": "PLACEHOLDER_VIEW_KEY_DO_NOT_USE_IN_PRODUCTION",
+  "notes": [
+    "⚠️  DEVELOPMENT PLACEHOLDER - NOT FOR PRODUCTION",
+    "This is a fake 0zk address for development only",
+    "Replace with real Railgun SDK integration before production",
+    "View key is actually the private key (UNSAFE)",
+    "Generate real Railgun wallet before deployment"
+  ],
+  "security": {
+    "status": "development_placeholder",
+    "production_ready": false,
+    "requires_real_railgun_sdk": true
+  }
+}

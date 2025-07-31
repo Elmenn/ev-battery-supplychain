@@ -1,6 +1,5 @@
 import { TypedDataEncoder } from "ethers";
 
-
 /**
  * Prepares a VC payload for signing by:
  * - Deep cloning
@@ -21,6 +20,11 @@ function preparePayloadForSigning(vc) {
     delete clone.credentialSubject.transactionId;
   }
 
+  // Serialize price as string for EIP-712
+  if (clone.credentialSubject?.price && typeof clone.credentialSubject.price !== "string") {
+    clone.credentialSubject.price = JSON.stringify(clone.credentialSubject.price);
+  }
+
   // Normalize DIDs to lowercase
   if (clone.issuer?.id) {
     clone.issuer.id = clone.issuer.id.toLowerCase();
@@ -34,7 +38,6 @@ function preparePayloadForSigning(vc) {
 
   return clone;
 }
-
 
 /**
  * Internal function to sign a clean VC payload and return the proof.
@@ -68,6 +71,7 @@ async function signPayload(vc, signer, role = "holder") {
       { name: "previousCredential", type: "string" },
       { name: "componentCredentials", type: "string[]" },
       { name: "certificateCredential", type: "Certificate" },
+      { name: "price", type: "string" },
     ],
     Certificate: [
       { name: "name", type: "string" },
@@ -80,13 +84,6 @@ async function signPayload(vc, signer, role = "holder") {
   const signerAddress = await signer.getAddress();
   const signature = await signer.signTypedData(domain, types, payload);
   const payloadHash = TypedDataEncoder.hash(domain, types, payload);
-
-
-
-  console.log("🔏 Signing VC as", role);
-  console.log("🧾 Payload:", payload);
-  console.log("📦 Signature:", signature);
-  console.log("🔑 Hash:", payloadHash);
 
   return {
     type: "EcdsaSecp256k1Signature2019",

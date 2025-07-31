@@ -17,9 +17,19 @@ router.post("/create-product", async (req, res) => {
 
     console.log("📦 Request to create product:", productName);
 
-    // 1. Deploy ProductEscrow via factory
+    // 1. Generate price commitment (bytes32)
+    const priceWei = ethers.parseEther(price.toString());
+    const blinding = ethers.hexlify(ethers.randomBytes(32)); // random blinding factor
+    const priceCommitment = ethers.keccak256(
+      ethers.solidityPacked(["uint256", "bytes32"], [priceWei, blinding])
+    );
+    console.log("🔒 Price commitment:", priceCommitment);
+    console.log("Price (wei):", priceWei.toString());
+    console.log("Blinding (hex):", blinding);
+
+    // 2. Deploy ProductEscrow via factory with commitment
     const factory = new ethers.Contract(factoryAddress, ProductFactoryABI.abi, wallet);
-    const tx = await factory.createProduct(productName, ethers.parseEther(price.toString()));
+    const tx = await factory.createProduct(productName, priceCommitment);
     const receipt = await tx.wait();
 
     const event = receipt.logs.map(log => {
@@ -34,6 +44,11 @@ router.post("/create-product", async (req, res) => {
     if (!productAddress) throw new Error("Missing product address from event");
 
     console.log("✅ Deployed ProductEscrow:", productAddress);
+
+    // Optionally: store blinding and price for debug/delivery
+    // e.g., in a database, file, or log
+    // For now, just log:
+    console.log("[DEBUG] Store for delivery:", { productAddress, priceWei: priceWei.toString(), blinding });
 
     // 2. Inject contract address into VC
     const finalVC = {

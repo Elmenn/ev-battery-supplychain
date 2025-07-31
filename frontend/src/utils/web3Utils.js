@@ -10,7 +10,7 @@ export const ethersProvider = new JsonRpcProvider(
 );
 
 // 2) Confirm order on-chain
-export async function confirmOrder(escrowAddress, newCid) {
+export async function confirmOrder(escrowAddress, newCid, vcHash) {
   let signer;
   if (window.ethereum) {
     await window.ethereum.request({ method: "eth_requestAccounts" });
@@ -28,8 +28,30 @@ export async function confirmOrder(escrowAddress, newCid) {
     ProductEscrowArtifact.abi,
     signer
   );
-  const tx = await escrow.confirmOrder(newCid);
-  return tx.wait();
+  // Debug: log contract state before call
+  try {
+    const phase = await escrow.phase();
+    const owner = await escrow.owner();
+    console.log("[confirmOrder] Current phase:", phase.toString());
+    console.log("[confirmOrder] Contract owner:", owner);
+    console.log("[confirmOrder] Current user:", await signer.getAddress());
+    console.log("[confirmOrder] Arguments:", newCid, vcHash);
+  } catch (err) {
+    console.warn("[confirmOrder] Could not fetch contract state:", err);
+  }
+  // Try calling with or without vcHash depending on contract signature
+  try {
+    let tx;
+    if (typeof vcHash !== 'undefined') {
+      tx = await escrow.confirmOrder(newCid, vcHash);
+    } else {
+      tx = await escrow.confirmOrder(newCid);
+    }
+    return tx.wait();
+  } catch (err) {
+    console.error("[confirmOrder] Error calling confirmOrder:", err);
+    throw err;
+  }
 }
 
 // 3) Read current VC CID

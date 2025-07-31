@@ -38,10 +38,13 @@ const ProductFormStep1 = ({ onNext }) => {
       />
       <input
         type="number"
-        placeholder="Price (ETH)"
+        placeholder="Price (ETH, will be hidden on-chain)"
         value={price}
         onChange={(e) => setPrice(e.target.value)}
       />
+      <div className="text-xs text-gray-500 mb-2">
+        The price you enter will <b>not</b> be stored on-chain in plaintext. It will be hidden using a cryptographic commitment. Only you and the buyer will know the actual value.
+      </div>
       <button onClick={handleNext} disabled={!productName || !price}>
         Next
       </button>

@@ -5,6 +5,9 @@ const BN = web3.utils.BN;
 const MaliciousReentrant = artifacts.require("./helpers/MaliciousReentrant.sol");
 const ProductEscrow_Test = artifacts.require("ProductEscrow_Test");
 
+const dummyValueCommitment = web3.utils.randomHex(32);
+const dummyProof = '0x00';
+
 contract("ProductEscrow (Confidential)", accounts => {
   const [owner, buyer] = accounts;
 
@@ -29,7 +32,7 @@ contract("ProductEscrow (Confidential)", accounts => {
     const commitment = makeCommitment(value, blinding);
 
     const instance = await ProductEscrow.new("TestProduct", commitment, owner);
-    await instance.depositPurchase(commitment, {from: buyer});
+    await instance.depositPurchase(commitment, dummyValueCommitment, dummyProof, {from: buyer, value: toWei("1", "ether")});
     const storedCommitment = await instance.priceCommitment();
     assert.equal(storedCommitment, commitment, "Commitment not updated correctly");
   });
@@ -40,7 +43,7 @@ contract("ProductEscrow (Confidential)", accounts => {
     const commitment = makeCommitment(value, blinding);
 
     const instance = await ProductEscrow.new("TestProduct", commitment, owner);
-    await instance.depositPurchase(commitment, {from: buyer});
+    await instance.depositPurchase(commitment, dummyValueCommitment, dummyProof, {from: buyer, value: toWei("1", "ether")});
     const result = await instance.verifyRevealedValue.call(value, blinding, { from: buyer });
     assert.equal(result, true, "Revealed value should match commitment");
   });
@@ -58,17 +61,17 @@ describe("ProductEscrow Purchase Logic", () => {
   it("prevents double purchase (race condition)", async () => {
     const esc = await ProductEscrow.new("TestProduct", commitment, seller, { from: seller });
     // First purchase
-    await esc.depositPurchase(commitment, { from: buyer1, value: toWei("1", "ether") });
+    await esc.depositPurchase(commitment, dummyValueCommitment, dummyProof, { from: buyer1, value: toWei("1", "ether") });
     // Second purchase attempt by another user
     await truffleAssert.reverts(
-      esc.depositPurchase(commitment, { from: buyer2, value: toWei("1", "ether") })
+      esc.depositPurchase(commitment, dummyValueCommitment, dummyProof, { from: buyer2, value: toWei("1", "ether") })
     );
   });
 
   it("prevents seller from buying own product", async () => {
     const esc = await ProductEscrow.new("TestProduct", commitment, seller, { from: seller });
     await truffleAssert.reverts(
-      esc.depositPurchase(commitment, { from: seller, value: toWei("1", "ether") })
+      esc.depositPurchase(commitment, dummyValueCommitment, dummyProof, { from: seller, value: toWei("1", "ether") })
     );
   });
 
@@ -91,7 +94,7 @@ contract("ProductEscrow Delivery Logic", (accounts) => {
   it("should handle successful delivery and fund distribution", async () => {
     const esc = await ProductEscrow.new("TestProduct", commitment, seller, { from: seller });
     // Buyer purchases
-    let tx = await esc.depositPurchase(commitment, { from: buyer, value: price });
+    let tx = await esc.depositPurchase(commitment, dummyValueCommitment, dummyProof, { from: buyer, value: price });
     truffleAssert.eventEmitted(tx, "PhaseChanged", ev => ev.from.toString() === "0" && ev.to.toString() === "1");
     // Seller confirms order (new phase logic)
     tx = await esc.confirmOrder("cid", { from: seller });
@@ -124,7 +127,7 @@ contract("ProductEscrow Delivery Logic", (accounts) => {
 
   it("should revert if revealAndConfirmDelivery is called with invalid value or blinding", async () => {
     const esc = await ProductEscrow.new("TestProduct", commitment, seller, { from: seller });
-    await esc.depositPurchase(commitment, { from: buyer, value: price });
+    await esc.depositPurchase(commitment, dummyValueCommitment, dummyProof, { from: buyer, value: price });
     await esc.confirmOrder("cid", { from: seller });
     await esc.createTransporter(deliveryFee, { from: transporter });
     await esc.setTransporter(transporter, { from: seller, value: deliveryFee });
@@ -142,7 +145,7 @@ contract("ProductEscrow Delivery Logic", (accounts) => {
 
   it("should handle delivery timeout and penalize transporter", async () => {
     const esc = await ProductEscrow.new("TestProduct", commitment, seller, { from: seller });
-    await esc.depositPurchase(commitment, { from: buyer, value: price });
+    await esc.depositPurchase(commitment, dummyValueCommitment, dummyProof, { from: buyer, value: price });
     await esc.confirmOrder("cid", { from: seller });
     await esc.createTransporter(deliveryFee, { from: transporter });
     await esc.setTransporter(transporter, { from: seller, value: deliveryFee });
@@ -162,7 +165,7 @@ contract("ProductEscrow Delivery Logic", (accounts) => {
 
   it("should handle seller timeout and refund buyer", async () => {
     const esc = await ProductEscrow.new("TestProduct", commitment, seller, { from: seller });
-    await esc.depositPurchase(commitment, { from: buyer, value: price });
+    await esc.depositPurchase(commitment, dummyValueCommitment, dummyProof, { from: buyer, value: price });
     // Do NOT call confirmOrder here
     // Fast-forward past seller confirmation window (3 days)
     await skip(60 * 60 * 24 * 3);
@@ -193,7 +196,7 @@ contract("ProductEscrow Delivery Logic", (accounts) => {
     const transporterBefore = new BN(await web3.eth.getBalance(transporter));
     // Deploy contract and run happy path
     const esc = await ProductEscrow.new("TestProduct", commitment, seller, { from: seller });
-    await esc.depositPurchase(commitment, { from: buyer, value: price });
+    await esc.depositPurchase(commitment, dummyValueCommitment, dummyProof, { from: buyer, value: price });
     await esc.confirmOrder("cid", { from: seller });
     await esc.createTransporter(deliveryFee, { from: transporter });
     await esc.setTransporter(transporter, { from: seller, value: deliveryFee });
@@ -219,7 +222,7 @@ contract("ProductEscrow Delivery Logic", (accounts) => {
     const transporterBefore2 = new BN(await web3.eth.getBalance(transporter));
     // Deploy new contract and run timeout
     const esc2 = await ProductEscrow.new("TestProduct", commitment, seller, { from: seller });
-    await esc2.depositPurchase(commitment, { from: buyer, value: price });
+    await esc2.depositPurchase(commitment, dummyValueCommitment, dummyProof, { from: buyer, value: price });
     await esc2.confirmOrder("cid", { from: seller });
     await esc2.createTransporter(deliveryFee, { from: transporter });
     await esc2.setTransporter(transporter, { from: seller, value: deliveryFee });
@@ -251,7 +254,7 @@ contract("ProductEscrow Refund Non-Selected Transporter", accounts => {
 
   it("should refund non-selected transporter security deposit when seller picks transporter", async () => {
     const esc = await ProductEscrow.new("TestProduct", commitment, seller, { from: seller });
-    let tx = await esc.depositPurchase(commitment, { from: buyer, value: price });
+    let tx = await esc.depositPurchase(commitment, dummyValueCommitment, dummyProof, { from: buyer, value: price });
     truffleAssert.eventEmitted(tx, "PhaseChanged", ev => ev.from.toString() === "0" && ev.to.toString() === "1");
     // Seller confirms order (new phase logic)
     tx = await esc.confirmOrder("cid", { from: seller });
@@ -325,7 +328,7 @@ contract("ProductEscrow MAX_BIDS Slot Reuse", (accounts) => {
 
   it("should allow slot reuse after withdrawBid when MAX_BIDS is reached", async () => {
     const esc = await ProductEscrow_Test.new("TestProduct", commitment, seller, { from: seller });
-    await esc.depositPurchase(commitment, { from: buyer, value: price });
+    await esc.depositPurchase(commitment, dummyValueCommitment, dummyProof, { from: buyer, value: price });
     await esc.confirmOrder("cid", { from: seller });
     // Register MAX_BIDS transporters
     for (let i = 0; i < 5; i++) {
@@ -359,7 +362,7 @@ contract("ProductEscrow Tightened SellerTimeout/ConfirmOrder/BidTimeout Logic", 
 
   it("sellerTimeout only works after 48h and only in Purchased phase; after sellerTimeout, confirmOrder reverts", async () => {
     const esc = await ProductEscrow.new("TestProduct", commitment, seller, { from: seller });
-    await esc.depositPurchase(commitment, { from: buyer, value: price });
+    await esc.depositPurchase(commitment, dummyValueCommitment, dummyProof, { from: buyer, value: price });
     // Try sellerTimeout before 48h (should revert)
     await truffleAssert.reverts(
       esc.sellerTimeout({ from: transporter })
@@ -378,7 +381,7 @@ contract("ProductEscrow Tightened SellerTimeout/ConfirmOrder/BidTimeout Logic", 
 
   it("confirmOrder only works within 48h of purchase and only in Purchased phase; after confirmOrder, sellerTimeout reverts", async () => {
     const esc = await ProductEscrow.new("TestProduct", commitment, seller, { from: seller });
-    await esc.depositPurchase(commitment, { from: buyer, value: price });
+    await esc.depositPurchase(commitment, dummyValueCommitment, dummyProof, { from: buyer, value: price });
     // confirmOrder before 48h should succeed
     let tx = await esc.confirmOrder("cid", { from: seller });
     truffleAssert.eventEmitted(tx, "PhaseChanged", ev => ev.from.toString() === "1" && ev.to.toString() === "2");
@@ -389,7 +392,7 @@ contract("ProductEscrow Tightened SellerTimeout/ConfirmOrder/BidTimeout Logic", 
     );
     // confirmOrder after 48h should revert (window expired)
     const esc2 = await ProductEscrow.new("TestProduct", commitment, seller, { from: seller });
-    await esc2.depositPurchase(commitment, { from: buyer, value: price });
+    await esc2.depositPurchase(commitment, dummyValueCommitment, dummyProof, { from: buyer, value: price });
     await skip(60 * 60 * 49);
     await truffleAssert.reverts(
       esc2.confirmOrder("cid", { from: seller })
@@ -398,7 +401,7 @@ contract("ProductEscrow Tightened SellerTimeout/ConfirmOrder/BidTimeout Logic", 
 
   it("setTransporter only works in OrderConfirmed phase and within 48h of orderConfirmedTimestamp", async () => {
     const esc = await ProductEscrow.new("TestProduct", commitment, seller, { from: seller });
-    await esc.depositPurchase(commitment, { from: buyer, value: price });
+    await esc.depositPurchase(commitment, dummyValueCommitment, dummyProof, { from: buyer, value: price });
     await esc.confirmOrder("cid", { from: seller });
     // setTransporter before 48h should succeed
     await esc.createTransporter(deliveryFee, { from: transporter });
@@ -407,7 +410,7 @@ contract("ProductEscrow Tightened SellerTimeout/ConfirmOrder/BidTimeout Logic", 
     assert.equal((await esc.phase()).toString(), "3", "phase should be Bound");
     // setTransporter after 48h should revert (bidding window expired)
     const esc2 = await ProductEscrow.new("TestProduct", commitment, seller, { from: seller });
-    await esc2.depositPurchase(commitment, { from: buyer, value: price });
+    await esc2.depositPurchase(commitment, dummyValueCommitment, dummyProof, { from: buyer, value: price });
     await esc2.confirmOrder("cid", { from: seller });
     await esc2.createTransporter(deliveryFee, { from: transporter });
     await skip(60 * 60 * 49);
@@ -418,7 +421,7 @@ contract("ProductEscrow Tightened SellerTimeout/ConfirmOrder/BidTimeout Logic", 
 
   it("bidTimeout only works after 48h from orderConfirmedTimestamp and only in OrderConfirmed phase; after bidTimeout, setTransporter reverts", async () => {
     const esc = await ProductEscrow.new("TestProduct", commitment, seller, { from: seller });
-    await esc.depositPurchase(commitment, { from: buyer, value: price });
+    await esc.depositPurchase(commitment, dummyValueCommitment, dummyProof, { from: buyer, value: price });
     await esc.confirmOrder("cid", { from: seller });
     await esc.createTransporter(deliveryFee, { from: transporter });
     // Try bidTimeout before 48h (should revert)
@@ -439,7 +442,7 @@ contract("ProductEscrow Tightened SellerTimeout/ConfirmOrder/BidTimeout Logic", 
 
   it("sellerTimeout and bidTimeout: edge-time precision (48h - 1s fails, 48h succeeds)", async () => {
     const esc = await ProductEscrow.new("TestProduct", commitment, seller, { from: seller });
-    await esc.depositPurchase(commitment, { from: buyer, value: price });
+    await esc.depositPurchase(commitment, dummyValueCommitment, dummyProof, { from: buyer, value: price });
     // sellerTimeout: skip 48h - 1s, should revert
     await skip(60 * 60 * 24 * 2 - 1); // 48h - 1s
     await truffleAssert.reverts(
@@ -453,7 +456,7 @@ contract("ProductEscrow Tightened SellerTimeout/ConfirmOrder/BidTimeout Logic", 
 
     // Repeat for bidTimeout: need to get to OrderConfirmed phase
     const esc2 = await ProductEscrow.new("TestProduct", commitment, seller, { from: seller });
-    await esc2.depositPurchase(commitment, { from: buyer, value: price });
+    await esc2.depositPurchase(commitment, dummyValueCommitment, dummyProof, { from: buyer, value: price });
     await esc2.confirmOrder("cid", { from: seller });
     // bidTimeout: skip 48h - 1s, should revert
     await skip(60 * 60 * 24 * 2 - 1); // 48h - 1s
@@ -481,7 +484,7 @@ contract("ProductEscrow Withdraw Bid", (accounts) => {
 
   it("should allow transporter to withdraw bid and refund deposit before selection", async () => {
     const esc = await ProductEscrow.new("TestProduct", commitment, seller, { from: seller });
-    await esc.depositPurchase(commitment, { from: buyer, value: price });
+    await esc.depositPurchase(commitment, dummyValueCommitment, dummyProof, { from: buyer, value: price });
     await esc.confirmOrder("cid", { from: seller });
     await esc.createTransporter(deliveryFee, { from: transporter1 });
     await esc.createTransporter(deliveryFee, { from: transporter2 });
@@ -510,7 +513,7 @@ contract("ProductEscrow Withdraw Bid", (accounts) => {
 
   it("should not allow withdrawBid after transporter is picked", async () => {
     const esc = await ProductEscrow.new("TestProduct", commitment, seller, { from: seller });
-    await esc.depositPurchase(commitment, { from: buyer, value: price });
+    await esc.depositPurchase(commitment, dummyValueCommitment, dummyProof, { from: buyer, value: price });
     await esc.confirmOrder("cid", { from: seller });
     await esc.createTransporter(deliveryFee, { from: transporter1 });
     await esc.securityDeposit({ from: transporter1, value: securityDeposit });
@@ -537,7 +540,7 @@ contract("ProductEscrow Reentrancy Attack", (accounts) => {
   it("should prevent reentrancy in revealAndConfirmDelivery", async () => {
     const esc = await ProductEscrow.new("TestProduct", commitment, seller, { from: seller });
     const mal = await MaliciousReentrant.new(esc.address, { from: attacker });
-    await esc.depositPurchase(commitment, { from: buyer, value: price });
+    await esc.depositPurchase(commitment, dummyValueCommitment, dummyProof, { from: buyer, value: price });
     await esc.confirmOrder("cid", { from: seller });
     await esc.createTransporter(deliveryFee, { from: attacker });
     await esc.securityDeposit({ from: attacker, value: securityDeposit });
@@ -552,7 +555,7 @@ contract("ProductEscrow Reentrancy Attack", (accounts) => {
   it("should prevent reentrancy in withdrawBid", async () => {
     const esc = await ProductEscrow.new("TestProduct", commitment, seller, { from: seller });
     const mal = await MaliciousReentrant.new(esc.address, { from: attacker });
-    await esc.depositPurchase(commitment, { from: buyer, value: price });
+    await esc.depositPurchase(commitment, dummyValueCommitment, dummyProof, { from: buyer, value: price });
     await esc.confirmOrder("cid", { from: seller });
     await esc.createTransporter(deliveryFee, { from: attacker });
     await esc.securityDeposit({ from: attacker, value: securityDeposit });

@@ -1,7 +1,7 @@
 // utils/vcBuilder.js
-const { v4: uuid } = require("uuid");
-const { keccak256 } = require("ethers");
-const { canonicalize } = require("json-canonicalize");
+import { v4 as uuid } from "uuid";
+import { keccak256 } from "ethers";
+import { canonicalize } from "json-canonicalize";
 
 const CHAIN = process.env.REACT_APP_CHAIN_ID || "1337";
 const ZERO_DID = `did:ethr:${CHAIN}:0x${"0".repeat(40)}`;
@@ -104,10 +104,4 @@ export function buildStage3VC({ stage2, buyerProof, txHash, zkpProof, price, pro
 
   return vc;
 }
-
-module.exports = {
-  buildStage3VC,
-  freezeVcJson,
-  // ... any other exports ...
-};
 
