@@ -1,14 +1,16 @@
 import React, { useEffect, useState } from "react";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { ethers } from "ethers";
+
 import "./App.css";
 import MarketplaceView from "./views/MarketplaceView";
 import ProductDetail from "./components/marketplace/ProductDetail";
 import { getCurrentCid } from "./utils/web3Utils";
 import { uploadJson } from "./utils/ipfs";
 import { signVcWithMetamask } from "./utils/signVcWithMetamask";
-import { buildStage3VC } from "./utils/vcBuilder";
+import { buildStage3VC } from "./utils/vcBuilder.mjs";
 import ProductEscrowABI from "./abis/ProductEscrow.json";
+import { RailgunIntegration } from "./components/railgun";
 
 function App() {
   const [provider, setProvider] = useState(null);
@@ -141,6 +143,14 @@ function App() {
                 provider={provider}
                 currentUser={myAddress}
                 onConfirmDelivery={handleDelivery}
+              />
+            }
+          />
+          <Route
+            path="/railgun"
+            element={
+              <RailgunIntegration
+                escrowContract={null} // Will be passed when needed
               />
             }
           />

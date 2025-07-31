@@ -66,6 +66,158 @@ const verifyBlindMemo = (productId, vcHash, nonce, memoHash) => {
 
 ---
 
+## 18.1.5 How Railgun Uses Zero-Knowledge Proofs (ZKPs)
+
+### Core Concept: UTXO-Based Privacy Pool
+
+Railgun creates a **shared shielded pool** on Ethereum L1 where users can perform confidential transactions. Think of it as a **private vault** where:
+
+- **Deposits (Shields)**: Public → Private (visible on L1)
+- **Private Transfers**: Hidden inside the pool (invisible on L1)  
+- **Withdrawals (Unshields)**: Private → Public (visible on L1)
+
+### ZKP Components in Railgun
+
+#### **A. Note Structure (Private UTXOs)**
+Each private note contains:
+```javascript
+Note = {
+    amount: encrypted_value,        // Hidden amount
+    tokenAddress: public_token,     // Visible token type
+    owner: encrypted_address,       // Hidden owner
+    nullifier: commitment_hash,     // For spending
+    memo: optional_encrypted_data   // Hidden memo
+}
+```
+
+#### **B. ZK-SNARK Proof Generation**
+When you make a private transfer, Railgun generates a ZK-SNARK that proves:
+
+```javascript
+// What the ZKP proves (without revealing the actual values):
+prove {
+    // 1. Input validation
+    forall input_note in inputs:
+        - note exists in Merkle tree (membership proof)
+        - you own the note (ownership proof)
+        - note hasn't been spent (nullifier check)
+    
+    // 2. Value conservation
+    sum(input_amounts) == sum(output_amounts)
+    
+    // 3. Token consistency
+    all_notes_same_token_type
+    
+    // 4. Optional: Memo binding
+    memo_hash == expected_hash
+}
+```
+
+### Step-by-Step ZKP Process
+
+#### **Step 1: Shield (Public → Private)**
+```javascript
+// When you deposit funds
+1. Create private note with encrypted amount
+2. Generate Merkle tree inclusion proof
+3. Submit to Railgun pool with ZK proof
+4. Pool verifies proof and adds note to tree
+```
+
+#### **Step 2: Private Transfer (Hidden)**
+```javascript
+// When you make a private payment
+1. Select input notes (your private funds)
+2. Create output notes (recipients + change)
+3. Generate ZK-SNARK proving:
+   - You own the inputs
+   - Values balance (sum_in = sum_out)
+   - Token types match
+   - Memo is correct
+4. Submit proof to pool
+5. Pool verifies and updates Merkle tree
+```
+
+#### **Step 3: Unshield (Private → Public)**
+```javascript
+// When you withdraw funds
+1. Select private notes to spend
+2. Generate ZK proof of ownership
+3. Submit proof with withdrawal request
+4. Pool verifies and releases funds
+```
+
+### ZKP Security Properties
+
+#### **What the ZKP Hides:**
+- ✅ **Amounts**: Transaction values are encrypted
+- ✅ **Recipients**: Who receives the funds (except for unshields)
+- ✅ **Transaction Graph**: Relationships between transactions
+- ✅ **Memo Contents**: Optional encrypted data
+
+#### **What the ZKP Reveals:**
+- 🔍 **Token Type**: USDC, ETH, etc. (public)
+- 🔍 **Shield/Unshield Events**: Entry/exit points (public)
+- 🔍 **Merkle Tree Updates**: Pool state changes (public)
+- 🔍 **Memo Hash**: If used for audit binding (public)
+
+### EV Battery Use Case: Private Payment Flow
+
+#### **Private Payment Example:**
+```javascript
+// 1. Buyer shields funds (visible on L1)
+shield(1000 USDC) → Private Note A
+
+// 2. Private transfer (hidden in pool)
+private_transfer({
+    inputs: [Note A],
+    outputs: [
+        { recipient: seller, amount: 800 USDC },
+        { recipient: transporter, amount: 150 USDC },
+        { recipient: buyer, amount: 50 USDC }  // change
+    ],
+    memo: keccak(productId || vcHash || nonce)
+})
+
+// 3. ZKP proves:
+// - Buyer owns Note A
+// - 1000 = 800 + 150 + 50 (value conservation)
+// - All notes are USDC
+// - Memo hash matches expected value
+```
+
+### Audit Trail with ZKPs
+
+#### **Memo-Based Verification:**
+```javascript
+// During audit, you can prove payment without revealing amounts:
+audit_verification({
+    productId: "12345",
+    vcHash: "0xabc...",
+    nonce: "timestamp",
+    memoHash: "0xdef..."  // from Railgun transaction
+})
+
+// Verify: keccak(productId || vcHash || nonce) == memoHash
+// This proves the payment was made without revealing the amount!
+```
+
+### Technical Implementation Details
+
+#### **Performance Characteristics:**
+- **Proof Generation**: ~1-3 seconds (client-side)
+- **Proof Verification**: ~100-500ms (on-chain)
+- **Gas Cost**: ~200k-500k gas per verification
+- **Privacy Set**: Shared across all Railgun users
+
+#### **Why This Works for EV Battery Marketplace:**
+1. **Minimal Changes**: Your existing contracts work with small additions
+2. **Audit Compliance**: Memo system provides regulatory traceability
+3. **Production Ready**: Deployed on Ethereum L1
+4. **Familiar Pattern**: Similar to your existing commitment/reveal system
+
+---
+
 ## 18.2 Wallet Model & User Flow
 
 ### Wallet Architecture

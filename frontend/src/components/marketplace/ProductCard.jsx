@@ -37,6 +37,10 @@ const ProductCard = ({ product, myAddress, provider, onPurchased }) => {
     if (!provider) return navigate(`/product/${product.address}`);
 
     try {
+      if (!product.priceWei) {
+        alert("No price available for purchase. Please contact the seller.");
+        return;
+      }
       const signer = await provider.getSigner();
       const escrow = new ethers.Contract(
         product.address,
@@ -44,7 +48,7 @@ const ProductCard = ({ product, myAddress, provider, onPurchased }) => {
         signer
       );
 
-      const tx = await escrow.depositPurchase({ value: product.price });
+      const tx = await escrow.depositPurchase({ value: product.priceWei });
       await tx.wait();
 
       if (onPurchased) onPurchased(); // optional refresh callback
@@ -71,7 +75,11 @@ const ProductCard = ({ product, myAddress, provider, onPurchased }) => {
       <div className="space-y-1 text-sm">
         <div>
           <span className="font-medium">Price:</span>{" "}
-          {product.price?.toString() || "0"} ETH
+          {product.price === "Price hidden 🔒" ? (
+            <span>{product.price}</span>
+          ) : (
+            <span>{product.price?.toString() || "0"} ETH</span>
+          )}
         </div>
         <div>
           <span className="font-medium">Owner:</span> {truncate(product.owner)}
@@ -93,7 +101,7 @@ const ProductCard = ({ product, myAddress, provider, onPurchased }) => {
         </Button>
 
         {!hasBuyer && !isMine && (
-          <Button onClick={handleBuy}>Buy Now</Button>
+          <Button onClick={() => navigate(`/product/${product.address}`)}>Buy Now</Button>
         )}
       </div>
     </div>

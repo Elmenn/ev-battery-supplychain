@@ -3,6 +3,7 @@ import { ethers } from "ethers";
 import ProductCard from "../components/marketplace/ProductCard";
 import ProductFormWizard from "../components/marketplace/ProductFormWizard";
 import { Button } from "../../src/components/ui/button";
+import RailgunNavButton from "../components/ui/RailgunNavButton";
 
 import ProductFactoryABI from "../abis/ProductFactory.json";
 import ProductEscrowABI from "../abis/ProductEscrow.json";
@@ -31,34 +32,43 @@ const MarketplaceView = ({ myAddress, provider, backendUrl }) => {
         const addresses = await factory.getProducts();
         const items = await Promise.all(
           addresses.map(async (addr) => {
-            const pc = new ethers.Contract(
-              addr,
-              ProductEscrowABI.abi,
-              provider
-            );
-            const [name, price, owner, purchased, buyer, vcCid, transporter] =
-              await Promise.all([
-                pc.name(),
-                pc.price(),
-                pc.owner(),
-                pc.purchased(),
-                pc.buyer(),
-                pc.vcCid(),
-                pc.transporter(),
-              ]);
-            return {
-              name,
-              price,
-              owner: owner.toLowerCase(),
-              buyer: buyer.toLowerCase(),
-              purchased,
-              transporter,
-              vcCid,
-              address: addr,
-            };
+            try {
+              const pc = new ethers.Contract(addr, ProductEscrowABI.abi, provider);
+              let price;
+              try {
+                price = await pc.price();
+              } catch (err) {
+                price = "Price hidden 🔒";
+              }
+              const [name, owner, purchased, buyer, vcCid, transporter] =
+                await Promise.all([
+                  pc.name(),
+                  pc.owner(),
+                  pc.purchased(),
+                  pc.buyer(),
+                  pc.vcCid(),
+                  pc.transporter(),
+                ]);
+              const priceWei = localStorage.getItem(`priceWei_${addr}`);
+              const product = {
+                name,
+                price,
+                priceWei, // <-- add this
+                owner: owner.toLowerCase(),
+                buyer: buyer.toLowerCase(),
+                purchased,
+                transporter,
+                vcCid,
+                address: addr,
+              };
+              return product;
+            } catch (err) {
+              console.error("Skipping invalid contract at", addr, err);
+              return null;
+            }
           })
         );
-        setProducts(items);
+        setProducts(items.filter(Boolean));
       } catch (err) {
         console.error("load products error", err);
       } finally {
@@ -84,9 +94,12 @@ const MarketplaceView = ({ myAddress, provider, backendUrl }) => {
           🔍 EV Battery Marketplace
         </h2>
 
-        <Button onClick={() => setShowForm((s) => !s)}>
-          {showForm ? "Close Form" : "➕ Add Product"}
-        </Button>
+        <div className="flex items-center gap-3">
+          <RailgunNavButton variant="outlined" size="small" />
+          <Button onClick={() => setShowForm((s) => !s)}>
+            {showForm ? "Close Form" : "➕ Add Product"}
+          </Button>
+        </div>
       </div>
 
       {/* new-product wizard */}

@@ -1,4 +1,4 @@
-import { verifyTypedData, TypedDataEncoder } from "ethers";
+const { verifyTypedData, TypedDataEncoder } = require("ethers");
 
 // Matching EIP-712 domain and types
 const domain = {
@@ -29,6 +29,7 @@ const types = {
     { name: "previousCredential", type: "string" },
     { name: "componentCredentials", type: "string[]" },
     { name: "certificateCredential", type: "Certificate" },
+    { name: "price", type: "string" }, // 
   ],
   Certificate: [
     { name: "name", type: "string" },
@@ -37,7 +38,15 @@ const types = {
 };
 
 function prepareForVerification(vc) {
-  const { proofs, ...rest } = vc;
+  // Support both object and array proof formats
+  let proofArr = [];
+  if (Array.isArray(vc.proof)) {
+    proofArr = vc.proof;
+  } else if (vc.proofs) {
+    // legacy object format
+    proofArr = Object.values(vc.proofs);
+  }
+  const { proof, proofs, ...rest } = vc;
   const clone = JSON.parse(JSON.stringify(rest));
 
   if (clone.credentialSubject?.vcHash) {
@@ -47,11 +56,17 @@ function prepareForVerification(vc) {
     delete clone.credentialSubject.transactionId;
   }
 
+  // Serialize price as string for EIP-712
+  if (clone.credentialSubject?.price && typeof clone.credentialSubject.price !== "string") {
+    clone.credentialSubject.price = JSON.stringify(clone.credentialSubject.price);
+  }
+
   if (clone.issuer?.id) clone.issuer.id = clone.issuer.id.toLowerCase();
   if (clone.holder?.id) clone.holder.id = clone.holder.id.toLowerCase();
   if (clone.credentialSubject?.id) clone.credentialSubject.id = clone.credentialSubject.id.toLowerCase();
 
-  return { proofs, dataToVerify: clone };
+  console.log("[verifyVC.js] Payload to verify (with price as string):", clone);
+  return { proofArr, dataToVerify: clone };
 }
 
 async function verifyProof(proof, dataToVerify, role) {
@@ -72,12 +87,12 @@ async function verifyProof(proof, dataToVerify, role) {
 
   try {
     const payloadHash = TypedDataEncoder.hash(domain, types, dataToVerify);
-    console.log(`\n🧪 [${role.toUpperCase()}] Verifying EIP-712 structured payload:`);
-    console.log("→ Hash in Proof (payloadHash):", proof.payloadHash);
-    console.log("→ Hash recomputed (EIP-712):", payloadHash);
+    console.log(`[verifyVC.js] [${role.toUpperCase()}] EIP-712 types:`, types);
+    console.log(`[verifyVC.js] [${role.toUpperCase()}] Hash in Proof (payloadHash):`, proof.payloadHash);
+    console.log(`[verifyVC.js] [${role.toUpperCase()}] Hash recomputed (EIP-712):`, payloadHash);
 
     if (proof.payloadHash && payloadHash !== proof.payloadHash) {
-      console.warn(`⚠️ [${role}] Payload hash mismatch!\n  ↪ expected: ${proof.payloadHash}\n  ↪ actual:   ${payloadHash}`);
+      console.warn(`[verifyVC.js] [${role}] Payload hash mismatch!\n  ↪ expected: ${proof.payloadHash}\n  ↪ actual:   ${payloadHash}`);
     }
 
     const recovered = verifyTypedData(domain, types, dataToVerify, proof.jws);
@@ -107,7 +122,7 @@ async function verifyProof(proof, dataToVerify, role) {
     result.signature_verified = result.matching_signer;
 
     if (result.signature_verified) {
-      console.log(`✅ [${role}] Signature matches expected address.`);
+      console.log(`[verifyVC.js] [${role}] Signature matches expected address.`);
     } else {
       result.error = `❌ Signature does not match expected address for ${role}`;
       console.warn(result.error);
@@ -120,21 +135,31 @@ async function verifyProof(proof, dataToVerify, role) {
   return result;
 }
 
-export async function verifyVC(vcjsonData, isCertificate) {
+async function verifyVC(vcjsonData, isCertificate) {
   console.log("\n===============================");
   console.log("🔍 Starting Verifiable Credential verification");
 
-  const { proofs, dataToVerify } = prepareForVerification(vcjsonData);
-  if (!proofs) throw new Error("❌ No proofs section found in VC");
+  const { proofArr, dataToVerify } = prepareForVerification(vcjsonData);
+  if (!proofArr || proofArr.length === 0) throw new Error("❌ No proofs found in VC");
 
-  const issuerResult = await verifyProof(proofs.issuerProof, dataToVerify, "issuer");
+  // Find issuer and holder proofs by matching verificationMethod
+  const issuerDid = dataToVerify.issuer?.id?.toLowerCase();
+  const holderDid = dataToVerify.holder?.id?.toLowerCase();
+  const issuerProof = proofArr.find(p => p.verificationMethod?.toLowerCase().includes(issuerDid));
+  const holderProof = proofArr.find(p => p.verificationMethod?.toLowerCase().includes(holderDid));
+  console.log("[verifyVC.js] Selected issuerProof:", issuerProof);
+  console.log("[verifyVC.js] Selected holderProof:", holderProof);
+
+  const issuerResult = await verifyProof(issuerProof, dataToVerify, "issuer");
   const holderResult = isCertificate
     ? null
-    : await verifyProof(proofs.holderProof, dataToVerify, "holder");
+    : await verifyProof(holderProof, dataToVerify, "holder");
 
   console.log("🔚 VC Verification Results:", { issuer: issuerResult, holder: holderResult });
   console.log("===============================\n");
 
   return { issuer: issuerResult, holder: holderResult };
 }
+
+module.exports = { verifyVC };
 
