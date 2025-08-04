@@ -11,6 +11,9 @@ import { signVcWithMetamask } from "./utils/signVcWithMetamask";
 import { buildStage3VC } from "./utils/vcBuilder.mjs";
 import ProductEscrowABI from "./abis/ProductEscrow.json";
 import { RailgunIntegration } from "./components/railgun";
+import RailgunPaymentFlow from "./components/railgun/RailgunPaymentFlow";
+import RailgunWalletTest from "./components/railgun/RailgunWalletTest";
+import RailgunSDKTest from "./components/railgun/RailgunSDKTest";
 
 function App() {
   const [provider, setProvider] = useState(null);
@@ -151,6 +154,17 @@ function App() {
             element={
               <RailgunIntegration
                 escrowContract={null} // Will be passed when needed
+              />
+            }
+          />
+          <Route path="/railgun-test" element={<RailgunWalletTest />} />
+          <Route path="/railgun-sdk-test" element={<RailgunSDKTest />} />
+          <Route
+            path="/railgun-payment/:productAddress"
+            element={
+              <RailgunPaymentFlow
+                provider={provider}
+                myAddress={myAddress}
               />
             }
           />
