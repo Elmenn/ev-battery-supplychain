@@ -25,5 +25,6 @@ export function extractZKPProof(vc) {
     encoding: zkp.encoding,
     verified: zkp.verified,
     description: zkp.description,
+    proofType: zkp.proofType,
   };
 }

@@ -1,18 +1,17 @@
-import { TypedDataEncoder } from "ethers";
+import { TypedDataEncoder, BrowserProvider } from "ethers";
 
 /**
  * Prepares a VC payload for signing by:
  * - Deep cloning
  * - Removing `.proofs` and `.credentialSubject.vcHash`
  * - Lowercasing critical IDs
+ * - Serializing price as string
  */
 function preparePayloadForSigning(vc) {
   const clone = JSON.parse(JSON.stringify(vc));
 
-  // Remove signature-related fields
   delete clone.proofs;
 
-  // Remove non-signable metadata from credentialSubject
   if (clone.credentialSubject?.vcHash) {
     delete clone.credentialSubject.vcHash;
   }
@@ -20,33 +19,53 @@ function preparePayloadForSigning(vc) {
     delete clone.credentialSubject.transactionId;
   }
 
-  // Serialize price as string for EIP-712
   if (clone.credentialSubject?.price && typeof clone.credentialSubject.price !== "string") {
-    clone.credentialSubject.price = JSON.stringify(clone.credentialSubject.price);
+    try {
+      clone.credentialSubject.price = JSON.stringify(clone.credentialSubject.price);
+    } catch {
+      clone.credentialSubject.price = String(clone.credentialSubject.price);
+    }
   }
 
-  // Normalize DIDs to lowercase
-  if (clone.issuer?.id) {
-    clone.issuer.id = clone.issuer.id.toLowerCase();
-  }
-  if (clone.holder?.id) {
-    clone.holder.id = clone.holder.id.toLowerCase();
-  }
-  if (clone.credentialSubject?.id) {
-    clone.credentialSubject.id = clone.credentialSubject.id.toLowerCase();
-  }
+  if (clone.issuer?.id) clone.issuer.id = clone.issuer.id.toLowerCase();
+  if (clone.holder?.id) clone.holder.id = clone.holder.id.toLowerCase();
+  if (clone.credentialSubject?.id) clone.credentialSubject.id = clone.credentialSubject.id.toLowerCase();
 
   return clone;
 }
 
-/**
- * Internal function to sign a clean VC payload and return the proof.
- */
+function resolveConfiguredChainId(fallbackChainId) {
+  const envChain = process.env.REACT_APP_CHAIN_ID;
+  if (envChain) {
+    const parsed = Number(envChain);
+    if (!Number.isNaN(parsed) && parsed > 0) {
+      return parsed;
+    }
+  }
+  return Number(fallbackChainId);
+}
+
 async function signPayload(vc, signer, role = "holder") {
+  // Get the active chainId from the connected wallet (MetaMask)
+  const provider =
+    signer?.provider ??
+    // fallback for safety (browser only)
+    new BrowserProvider(window.ethereum);
+
+  const { chainId } = await provider.getNetwork();
+  const configuredChainId = resolveConfiguredChainId(chainId);
+  if (configuredChainId !== Number(chainId)) {
+    console.warn(
+      `[signVcWithMetamask] Using configured chainId ${configuredChainId} for VC signing while wallet network is ${chainId}.`
+    );
+  }
+
   const domain = {
     name: "VC",
     version: "1.0",
-    chainId: 1337
+    chainId: configuredChainId,
+    // Optionally add verifyingContract to bind stronger, if you have one:
+    // verifyingContract: FACTORY_OR_ESCROW_ADDRESS,
   };
 
   const types = {
@@ -57,11 +76,11 @@ async function signPayload(vc, signer, role = "holder") {
       { name: "issuer", type: "Party" },
       { name: "holder", type: "Party" },
       { name: "issuanceDate", type: "string" },
-      { name: "credentialSubject", type: "CredentialSubject" }
+      { name: "credentialSubject", type: "CredentialSubject" },
     ],
     Party: [
       { name: "id", type: "string" },
-      { name: "name", type: "string" }
+      { name: "name", type: "string" },
     ],
     CredentialSubject: [
       { name: "id", type: "string" },
@@ -75,8 +94,8 @@ async function signPayload(vc, signer, role = "holder") {
     ],
     Certificate: [
       { name: "name", type: "string" },
-      { name: "cid", type: "string" }
-    ]
+      { name: "cid", type: "string" },
+    ],
   };
 
   const payload = preparePayloadForSigning(vc);
@@ -89,22 +108,17 @@ async function signPayload(vc, signer, role = "holder") {
     type: "EcdsaSecp256k1Signature2019",
     created: new Date().toISOString(),
     proofPurpose: "assertionMethod",
-    verificationMethod: `did:ethr:1337:${signerAddress.toLowerCase()}`,
+    verificationMethod: `did:ethr:${configuredChainId}:${signerAddress.toLowerCase()}`,
     jws: signature,
-    payloadHash
+    payloadHash,
+    role,
   };
 }
 
-/**
- * Sign a VC as the buyer (holder).
- */
 export async function signVcWithMetamask(vc, signer) {
   return await signPayload(vc, signer, "holder");
 }
 
-/**
- * Sign a VC as the seller (issuer).
- */
 export async function signVcAsSeller(vc, signer) {
   return await signPayload(vc, signer, "seller");
 }

@@ -48,8 +48,12 @@ const VerifyVCInline = ({ vc, cid }) => {
     setZkpLoading(true);
     setZkpTriggered(true);
     try {
-      const { commitment, proof } = extractZKPProof(vc);
-      const res = await fetch("http://localhost:5010/zkp/verify", {
+      const { commitment, proof, protocol, proofType } = extractZKPProof(vc);
+      const endpoint =
+        proofType === "zkRangeProof-v1" || protocol === "bulletproofs-pedersen"
+          ? "verify-value"
+          : "verify";
+      const res = await fetch(`http://localhost:5010/zkp/${endpoint}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ commitment, proof }),

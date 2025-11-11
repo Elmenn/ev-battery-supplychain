@@ -1,10 +1,19 @@
 const { verifyTypedData, TypedDataEncoder } = require("ethers");
 
 // Matching EIP-712 domain and types
-const domain = {
+const DEFAULT_CHAIN_ID = (() => {
+  const env = process.env.VC_CHAIN_ID || process.env.CHAIN_ID;
+  if (env) {
+    const parsed = Number(env);
+    if (!Number.isNaN(parsed) && parsed > 0) {
+      return parsed;
+    }
+  }
+  return 11155111;
+})();
+const BASE_DOMAIN = {
   name: "VC",
   version: "1.0",
-  chainId: 1337,
 };
 
 const types = {
@@ -36,6 +45,20 @@ const types = {
     { name: "cid", type: "string" },
   ],
 };
+
+function extractChainId(identifier) {
+  if (!identifier || typeof identifier !== "string") {
+    return null;
+  }
+  const normalized = identifier.toLowerCase();
+  const colonParts = normalized.split(":");
+  if (colonParts.length < 4) {
+    return null;
+  }
+  const chainPart = colonParts[2];
+  const numeric = Number(chainPart);
+  return Number.isNaN(numeric) ? null : numeric;
+}
 
 function prepareForVerification(vc) {
   // Support both object and array proof formats
@@ -69,7 +92,7 @@ function prepareForVerification(vc) {
   return { proofArr, dataToVerify: clone };
 }
 
-async function verifyProof(proof, dataToVerify, role) {
+async function verifyProof(proof, dataToVerify, role, chainId) {
   const result = {
     matching_vc: false,
     matching_signer: false,
@@ -85,6 +108,9 @@ async function verifyProof(proof, dataToVerify, role) {
     return result;
   }
 
+  const effectiveChainId = chainId ?? DEFAULT_CHAIN_ID;
+  const domain = { ...BASE_DOMAIN, chainId: effectiveChainId };
+
   try {
     const payloadHash = TypedDataEncoder.hash(domain, types, dataToVerify);
     console.log(`[verifyVC.js] [${role.toUpperCase()}] EIP-712 types:`, types);
@@ -99,13 +125,13 @@ async function verifyProof(proof, dataToVerify, role) {
     result.recovered_address = recovered;
 
     const verificationMethod = proof.verificationMethod;
-    if (!verificationMethod?.startsWith("did:ethr:")) {
+    if (!verificationMethod?.toLowerCase().startsWith("did:ethr:")) {
       result.error = `❌ Invalid verificationMethod format in ${role} proof`;
       console.error(result.error);
       return result;
     }
 
-    const expectedAddress = verificationMethod.split(":").pop().toLowerCase();
+    const expectedAddress = verificationMethod.split(":").pop().toLowerCase().replace(/#.*$/, "");
     result.expected_address = expectedAddress;
 
     const vcDeclaredId =
@@ -150,10 +176,21 @@ async function verifyVC(vcjsonData, isCertificate) {
   console.log("[verifyVC.js] Selected issuerProof:", issuerProof);
   console.log("[verifyVC.js] Selected holderProof:", holderProof);
 
-  const issuerResult = await verifyProof(issuerProof, dataToVerify, "issuer");
+  const issuerChainId =
+    extractChainId(issuerProof?.verificationMethod) ??
+    extractChainId(dataToVerify.issuer?.id) ??
+    DEFAULT_CHAIN_ID;
+
+  const holderChainId =
+    extractChainId(holderProof?.verificationMethod) ??
+    extractChainId(dataToVerify.holder?.id) ??
+    issuerChainId ??
+    DEFAULT_CHAIN_ID;
+
+  const issuerResult = await verifyProof(issuerProof, dataToVerify, "issuer", issuerChainId);
   const holderResult = isCertificate
     ? null
-    : await verifyProof(holderProof, dataToVerify, "holder");
+    : await verifyProof(holderProof, dataToVerify, "holder", holderChainId);
 
   console.log("🔚 VC Verification Results:", { issuer: issuerResult, holder: holderResult });
   console.log("===============================\n");

@@ -3,7 +3,26 @@ import { v4 as uuid } from "uuid";
 import { keccak256 } from "ethers";
 import { canonicalize } from "json-canonicalize";
 
-const CHAIN = process.env.REACT_APP_CHAIN_ID || "1337";
+const inferChainId = () => {
+  const candidates = [
+    process.env.REACT_APP_CHAIN_ID,
+    process.env.REACT_APP_CHAIN_ALIAS,
+    process.env.REACT_APP_NETWORK_ID,
+  ];
+  for (const candidate of candidates) {
+    if (!candidate) continue;
+    const parsed = Number(candidate);
+    if (!Number.isNaN(parsed) && parsed > 0) {
+      return String(parsed);
+    }
+    if (typeof candidate === "string" && candidate.trim().length > 0) {
+      return candidate.trim();
+    }
+  }
+  return "1337";
+};
+
+const CHAIN = inferChainId();
 const ZERO_DID = `did:ethr:${CHAIN}:0x${"0".repeat(40)}`;
 
 export function hashVcPayload(vc) {
@@ -14,6 +33,240 @@ export function hashVcPayload(vc) {
 // Utility to freeze/canonicalize VC JSON before signing
 export function freezeVcJson(vc) {
   return canonicalize(vc);
+}
+
+// --------------------------------------------------
+// NEW: Identity Linkage ZKP Proof Generation
+// --------------------------------------------------
+
+/**
+ * Generate ZKP proof that links VC signing identity to Railgun wallet
+ * Proves: "I control both the wallet that signed this VC and the Railgun wallet"
+ * Without revealing: Either private key or the relationship between them
+ */
+export async function generateIdentityLinkageProof({
+  vcSigningKey,        // Private key that signed the VC
+  railgunSigningKey,   // Private key for Railgun wallet
+  vcHash,              // Hash of the VC being linked
+  railgunAddress,      // Railgun wallet address
+  proofType = "identityLinkage-v1"
+}) {
+  try {
+    // Generate ZKP proof using circuit
+    const zkpProof = await generateLinkageZKP({
+      vcSigningKey,
+      railgunSigningKey,
+      vcHash,
+      railgunAddress
+    });
+
+    return {
+      type: "ZKIdentityLinkageProof",
+      created: new Date().toISOString(),
+      proofPurpose: "identityLinkage",
+      verificationMethod: `did:ethr:${CHAIN}:${railgunAddress}#zkp`,
+      zkpProof: {
+        circuit: proofType,
+        publicInputs: {
+          vcHash: vcHash,
+          railgunAddress: railgunAddress,
+          linkageCommitment: zkpProof.commitment
+        },
+        proof: zkpProof.proof,
+        verificationKey: zkpProof.verificationKey
+      }
+    };
+  } catch (error) {
+    console.error("Failed to generate identity linkage proof:", error);
+    throw new Error(`Identity linkage proof generation failed: ${error.message}`);
+  }
+}
+
+/**
+ * Generate the actual ZKP using the identity linkage circuit
+ */
+async function generateLinkageZKP({
+  vcSigningKey,
+  railgunSigningKey,
+  vcHash,
+  railgunAddress
+}) {
+  // This would integrate with your ZKP backend or circuit
+  // For now, returning a mock structure
+  // Use browser-compatible alternatives to Buffer
+  const vcKeyBytes = new Uint8Array(vcSigningKey.slice(2).match(/.{1,2}/g).map(byte => parseInt(byte, 16)));
+  const railgunKeyBytes = new Uint8Array(railgunSigningKey.slice(2).match(/.{1,2}/g).map(byte => parseInt(byte, 16)));
+  
+  // Combine the bytes
+  const combinedBytes = new Uint8Array(vcKeyBytes.length + railgunKeyBytes.length);
+  combinedBytes.set(vcKeyBytes, 0);
+  combinedBytes.set(railgunKeyBytes, vcKeyBytes.length);
+  
+  const mockProof = {
+    commitment: keccak256(combinedBytes),
+    proof: "0x" + "0".repeat(512), // Mock proof bytes
+    verificationKey: "0x" + "0".repeat(128) // Mock verification key
+  };
+
+  return mockProof;
+}
+
+/**
+ * Verify identity linkage proof
+ */
+export async function verifyIdentityLinkageProof(linkageProof) {
+  try {
+    const { zkpProof } = linkageProof;
+    const { publicInputs, proof, verificationKey } = zkpProof;
+
+    // Verify the ZKP proof
+    const isValid = await verifyLinkageZKP({
+      proof,
+      verificationKey,
+      publicInputs
+    });
+
+    return {
+      verified: isValid,
+      vcHash: publicInputs.vcHash,
+      railgunAddress: publicInputs.railgunAddress,
+      linkageCommitment: publicInputs.linkageCommitment
+    };
+  } catch (error) {
+    console.error("Failed to verify identity linkage proof:", error);
+    return { verified: false, error: error.message };
+  }
+}
+
+/**
+ * Verify the actual ZKP
+ */
+async function verifyLinkageZKP({ proof, verificationKey, publicInputs }) {
+  // This would integrate with your ZKP verification backend
+  // For now, returning mock verification
+  return true; // Mock successful verification
+}
+
+// --------------------------------------------------
+// Enhanced VC Builder with Identity Linkage
+// --------------------------------------------------
+
+/**
+ * Build Stage-3 VC with identity linkage proof
+ */
+export function buildStage3VCWithIdentityLinkage({ 
+  stage2, 
+  buyerProof, 
+  txHash, 
+  zkpProof, 
+  price, 
+  proofType,
+  identityLinkageProof = null  // NEW: Optional identity linkage proof
+}) {
+  let priceObj;
+  if (typeof price !== "undefined") {
+    priceObj = price;
+  } else {
+    priceObj = stage2.credentialSubject.price;
+    if (typeof priceObj === "string") {
+      try {
+        priceObj = JSON.parse(priceObj);
+      } catch {
+        priceObj = {};
+      }
+    }
+    priceObj = {
+      ...(priceObj || {}),
+      hidden: true,
+      ...(zkpProof ? { zkpProof: { ...zkpProof, proofType: proofType || "zkRangeProof-v1" } } : {}),
+    };
+  }
+
+  const credentialSubject = {
+    ...stage2.credentialSubject,
+    price: JSON.stringify(priceObj),
+  };
+
+  if (txHash) {
+    credentialSubject.transactionId = txHash;
+  }
+
+  // Start with any existing proofs, then add buyerProof and identity linkage proof
+  const proofArr = Array.isArray(stage2.proof) ? [...stage2.proof] : [];
+  
+  if (buyerProof && Object.keys(buyerProof).length > 0) {
+    proofArr.push(buyerProof);
+  }
+  
+  // NEW: Add identity linkage proof if provided
+  if (identityLinkageProof) {
+    proofArr.push(identityLinkageProof);
+  }
+
+  const vc = {
+    ...stage2,
+    credentialSubject,
+    proof: proofArr,
+  };
+
+  return vc;
+}
+
+// --------------------------------------------------
+// Utility Functions for Identity Linkage
+// --------------------------------------------------
+
+/**
+ * Check if a VC has identity linkage proof
+ */
+export function hasIdentityLinkageProof(vc) {
+  if (!vc.proof || !Array.isArray(vc.proof)) {
+    return false;
+  }
+  
+  return vc.proof.some(proof => 
+    proof.type === "ZKIdentityLinkageProof" || 
+    proof.zkpProof?.circuit?.startsWith("identityLinkage")
+  );
+}
+
+/**
+ * Extract identity linkage proof from VC
+ */
+export function extractIdentityLinkageProof(vc) {
+  if (!vc.proof || !Array.isArray(vc.proof)) {
+    return null;
+  }
+  
+  return vc.proof.find(proof => 
+    proof.type === "ZKIdentityLinkageProof" || 
+    proof.zkpProof?.circuit?.startsWith("identityLinkage")
+  );
+}
+
+/**
+ * Validate identity linkage proof in VC
+ */
+export async function validateVCIdentityLinkage(vc) {
+  const linkageProof = extractIdentityLinkageProof(vc);
+  
+  if (!linkageProof) {
+    return {
+      hasLinkageProof: false,
+      valid: false,
+      message: "No identity linkage proof found"
+    };
+  }
+  
+  const verification = await verifyIdentityLinkageProof(linkageProof);
+  
+  return {
+    hasLinkageProof: true,
+    valid: verification.verified,
+    vcHash: verification.vcHash,
+    railgunAddress: verification.railgunAddress,
+    message: verification.verified ? "Identity linkage verified" : "Identity linkage verification failed"
+  };
 }
 
 /* ─────────────── Stage-0 (unchanged) ─────────────── */

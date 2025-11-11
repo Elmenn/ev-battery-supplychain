@@ -3,7 +3,26 @@ const { v4: uuid } = require("uuid");
 const { keccak256 } = require("ethers");
 const { canonicalize } = require("json-canonicalize");
 
-const CHAIN = process.env.REACT_APP_CHAIN_ID || "1337";
+const inferChainId = () => {
+  const candidates = [
+    process.env.REACT_APP_CHAIN_ID,
+    process.env.REACT_APP_CHAIN_ALIAS,
+    process.env.REACT_APP_NETWORK_ID,
+  ];
+  for (const candidate of candidates) {
+    if (!candidate) continue;
+    const parsed = Number(candidate);
+    if (!Number.isNaN(parsed) && parsed > 0) {
+      return String(parsed);
+    }
+    if (typeof candidate === "string" && candidate.trim().length > 0) {
+      return candidate.trim();
+    }
+  }
+  return "1337";
+};
+
+const CHAIN = inferChainId();
 const ZERO_DID = `did:ethr:${CHAIN}:0x${"0".repeat(40)}`;
 
 export function hashVcPayload(vc) {
