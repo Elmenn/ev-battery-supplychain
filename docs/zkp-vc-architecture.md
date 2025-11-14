@@ -95,6 +95,8 @@ flowchart TD
 - **Commitment is stored on-chain and can be verified against the VC commitment.**
 - **Anyone can walk the VC chain, verify signatures, check the ZKP, and verify commitment integrity.**
 
+> **📖 For detailed audit instructions, see the [Auditor Guide](./AUDITOR_GUIDE.md)**
+
 ---
 
 ## Summary Table

@@ -1,0 +1,251 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Railgun SDK Function Signature Test</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; }
+        .test-section { margin: 20px 0; padding: 15px; border: 1px solid #ccc; border-radius: 5px; }
+        .success { color: green; }
+        .error { color: red; }
+        .info { color: blue; }
+        pre { background: #f5f5f5; padding: 10px; border-radius: 3px; overflow-x: auto; }
+        button { padding: 10px 20px; margin: 5px; cursor: pointer; }
+        .warning { color: orange; }
+    </style>
+</head>
+<body>
+    <h1>🔍 Railgun SDK Function Signature Test</h1>
+    <p>This page tests the exact function signatures and parameter expectations for the Railgun SDK.</p>
+    
+    <div class="warning" style="background: #fff3cd; padding: 10px; border-radius: 5px; margin: 20px 0;">
+        <strong>⚠️ IMPORTANT:</strong> This test page needs to be used AFTER your React app has loaded and initialized the Railgun SDK. 
+        The SDK functions are loaded by your React app, not directly by this HTML page.
+    </div>
+
+    <div class="test-section">
+        <h2>1. Check SDK Availability</h2>
+        <button onclick="checkSDKAvailability()">Check if SDK is Loaded</button>
+        <div id="availability-results"></div>
+    </div>
+
+    <div class="test-section">
+        <h2>2. Function Signature Analysis</h2>
+        <button onclick="analyzeFunctionSignatures()">Analyze Function Signatures</button>
+        <div id="signature-results"></div>
+    </div>
+
+    <div class="test-section">
+        <h2>3. Parameter Testing</h2>
+        <button onclick="testFunctionParameters()">Test Function Parameters</button>
+        <div id="parameter-results"></div>
+    </div>
+
+    <div class="test-section">
+        <h2>4. Console Output</h2>
+        <div id="console-output"></div>
+    </div>
+
+    <div class="test-section">
+        <h2>📋 Instructions</h2>
+        <ol>
+            <li><strong>First:</strong> Open your React app in another tab and wait for it to fully load</li>
+            <li><strong>Then:</strong> Come back to this tab and click "Check if SDK is Loaded"</li>
+            <li><strong>If successful:</strong> Click "Analyze Function Signatures" and "Test Function Parameters"</li>
+            <li><strong>If not:</strong> The SDK hasn't been loaded by your React app yet</li>
+        </ol>
+    </div>
+
+    <script>
+        // Capture console output
+        const originalLog = console.log;
+        const originalError = console.error;
+        const consoleOutput = document.getElementById('console-output');
+
+        function addToConsole(type, message) {
+            const div = document.createElement('div');
+            div.className = type;
+            div.textContent = `[${type.toUpperCase()}] ${message}`;
+            consoleOutput.appendChild(div);
+            consoleOutput.scrollTop = consoleOutput.scrollHeight;
+        }
+
+        console.log = function(...args) {
+            originalLog.apply(console, args);
+            addToConsole('info', args.join(' '));
+        };
+
+        console.error = function(...args) {
+            originalError.apply(console, args);
+            addToConsole('error', args.join(' '));
+        };
+
+        // Check if SDK is available through the React app
+        window.checkSDKAvailability = function() {
+            const results = document.getElementById('availability-results');
+            results.innerHTML = '<p class="info">Checking SDK availability...</p>';
+
+            // Look for SDK functions that might be available globally
+            const possibleSDKPaths = [
+                'window.railgunWalletClient',
+                'window.railgunFunctions',
+                'window.gasEstimateForShield',
+                'window.populateShield',
+                'window.startRailgunEngine'
+            ];
+
+            let foundFunctions = [];
+            let analysis = '<h3>SDK Availability Check:</h3>';
+
+            // Check each possible path
+            possibleSDKPaths.forEach(path => {
+                try {
+                    const func = eval(path);
+                    if (func && typeof func === 'function') {
+                        foundFunctions.push({ path, func });
+                        analysis += `<p class="success">✅ Found: ${path}</p>`;
+                    } else if (func) {
+                        analysis += `<p class="info">ℹ️ Found (not function): ${path} (${typeof func})</p>`;
+                    } else {
+                        analysis += `<p class="error">❌ Not found: ${path}</p>`;
+                    }
+                } catch (e) {
+                    analysis += `<p class="error">❌ Error checking: ${path} - ${e.message}</p>`;
+                }
+            });
+
+            // Check if we can access the functions through the React app's module system
+            analysis += '<h3>Alternative Access Methods:</h3>';
+            
+            // Try to access through window object properties
+            const windowKeys = Object.keys(window).filter(key => 
+                key.toLowerCase().includes('railgun') || 
+                key.toLowerCase().includes('shield') ||
+                key.toLowerCase().includes('gas') ||
+                key.toLowerCase().includes('wallet')
+            );
+
+            if (windowKeys.length > 0) {
+                analysis += '<p class="info">Found potential Railgun-related window properties:</p><ul>';
+                windowKeys.forEach(key => {
+                    const value = window[key];
+                    analysis += `<li><strong>${key}</strong>: ${typeof value}${typeof value === 'function' ? ` (${value.length} params)` : ''}</li>`;
+                });
+                analysis += '</ul>';
+            } else {
+                analysis += '<p class="error">No Railgun-related window properties found</p>';
+            }
+
+            // If we found functions, store them for testing
+            if (foundFunctions.length > 0) {
+                window.railgunFunctions = {};
+                foundFunctions.forEach(({ path, func }) => {
+                    const name = path.split('.').pop();
+                    window.railgunFunctions[name] = func;
+                });
+                analysis += '<p class="success">🎉 SDK functions found and stored for testing!</p>';
+            } else {
+                analysis += '<p class="warning">⚠️ No SDK functions found. Make sure your React app has loaded and initialized the Railgun SDK.</p>';
+            }
+
+            results.innerHTML = analysis;
+        };
+
+        // Analyze function signatures
+        window.analyzeFunctionSignatures = function() {
+            const results = document.getElementById('signature-results');
+            
+            if (!window.railgunFunctions || Object.keys(window.railgunFunctions).length === 0) {
+                results.innerHTML = '<p class="error">❌ No SDK functions found. Please run "Check if SDK is Loaded" first.</p>';
+                return;
+            }
+
+            results.innerHTML = '<p class="info">Analyzing function signatures...</p>';
+
+            const functions = window.railgunFunctions;
+            let analysis = '<h3>Function Signature Analysis:</h3>';
+
+            Object.entries(functions).forEach(([name, func]) => {
+                if (typeof func === 'function') {
+                    analysis += `
+                        <div style="margin: 10px 0; padding: 10px; background: #f9f9f9; border-radius: 3px;">
+                            <strong>${name}</strong><br>
+                            - Expected parameters: ${func.length}<br>
+                            - Function type: ${typeof func}<br>
+                            - Source preview: ${func.toString().substring(0, 100)}...
+                        </div>
+                    `;
+                } else {
+                    analysis += `
+                        <div style="margin: 10px 0; padding: 10px; background: #f9f9f9; border-radius: 3px;">
+                            <strong>${name}</strong><br>
+                            - Type: ${typeof func}<br>
+                            - Value: ${func}
+                        </div>
+                    `;
+                }
+            });
+
+            results.innerHTML = analysis;
+        };
+
+        // Test function parameters
+        window.testFunctionParameters = async function() {
+            const results = document.getElementById('parameter-results');
+            
+            if (!window.railgunFunctions || Object.keys(window.railgunFunctions).length === 0) {
+                results.innerHTML = '<p class="error">❌ No SDK functions found. Please run "Check if SDK is Loaded" first.</p>';
+                return;
+            }
+
+            results.innerHTML = '<p class="info">Testing function parameters...</p>';
+
+            let testResults = '<h3>Parameter Testing Results:</h3>';
+
+            // Test each available function
+            for (const [name, func] of Object.entries(window.railgunFunctions)) {
+                if (typeof func === 'function') {
+                    testResults += `<h4>${name} Tests:</h4>`;
+                    
+                    // Test with no parameters
+                    try {
+                        await func();
+                        testResults += `<p class="success">✅ ${name} with no params: SUCCESS (unexpected!)</p>`;
+                    } catch (error) {
+                        testResults += `<p class="error">❌ ${name} with no params: ${error.message}</p>`;
+                    }
+
+                    // Test with 1 parameter (if function expects at least 1)
+                    if (func.length >= 1) {
+                        try {
+                            await func('test');
+                            testResults += `<p class="success">✅ ${name} with 1 param: SUCCESS (unexpected!)</p>`;
+                        } catch (error) {
+                            testResults += `<p class="error">❌ ${name} with 1 param: ${error.message}</p>`;
+                        }
+                    }
+
+                    // Test with 2 parameters (if function expects at least 2)
+                    if (func.length >= 2) {
+                        try {
+                            await func('test1', 'test2');
+                            testResults += `<p class="success">✅ ${name} with 2 params: SUCCESS (unexpected!)</p>`;
+                        } catch (error) {
+                            testResults += `<p class="error">❌ ${name} with 2 params: ${error.message}</p>`;
+                        }
+                    }
+                }
+            }
+
+            results.innerHTML = testResults;
+        };
+
+        console.log('🚀 Railgun SDK Function Signature Test loaded');
+        console.log('📋 Instructions:');
+        console.log('  1. Open your React app in another tab and wait for it to load');
+        console.log('  2. Come back here and click "Check if SDK is Loaded"');
+        console.log('  3. If successful, run the other tests');
+    </script>
+</body>
+</html>

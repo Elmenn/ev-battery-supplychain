@@ -33,7 +33,6 @@ function Copyable({ value }) {
       className="copyable"
       title={value}
       onClick={() => navigator.clipboard.writeText(value)}
-      style={{ cursor: "pointer", textDecoration: "underline", color: "#2563eb" }}
     >
       {truncate(value)}
     </span>
@@ -101,6 +100,8 @@ const ProductDetail = ({ provider, currentUser, onConfirmDelivery }) => {
   const [vcSellerSigned, setVcSellerSigned] = useState(false);
   const [showEnableButton, setShowEnableButton] = useState(false);
   const [showPrivatePaymentModal, setShowPrivatePaymentModal] = useState(false);
+  const [provenanceVC, setProvenanceVC] = useState(null);
+  const [provenanceLoading, setProvenanceLoading] = useState(false);
   
   // Seller confirmation state
   const [pendingPrivatePayments, setPendingPrivatePayments] = useState([]);
@@ -471,6 +472,21 @@ const ProductDetail = ({ provider, currentUser, onConfirmDelivery }) => {
       // Optionally set a user-friendly error message here
     }
     setBids(bids);
+
+    // ✅ Load VC draft and seller signed state from localStorage (product-specific)
+    const vcDraftKey = `vcDraft_${address}`;
+    const vcSellerSignedKey = `vcSellerSigned_${address}`;
+    const vcDraftJson = localStorage.getItem(vcDraftKey);
+    const vcSellerSignedJson = localStorage.getItem(vcSellerSignedKey);
+    setVcDraftSaved(!!vcDraftJson);
+    setVcSellerSigned(!!vcSellerSignedJson);
+    if (vcDraftJson) {
+      try {
+        setVcDraft(JSON.parse(vcDraftJson));
+      } catch (e) {
+        console.warn('Failed to parse VC draft from localStorage:', e);
+      }
+    }
   } catch (err) {
     console.error("❌ loadProductData:", err);
     setError("Error loading data");
@@ -980,7 +996,8 @@ const statusLabel = isDelivered
       }
       // Canonicalize and save draft (to localStorage for now)
       const canonicalVcJson = freezeVcJson(draftVC);
-      localStorage.setItem('vcDraft', canonicalVcJson);
+      const vcDraftKey = `vcDraft_${address}`;
+      localStorage.setItem(vcDraftKey, canonicalVcJson);
       setVcDraft(draftVC);
       setVcDraftSaved(true);
       setStatusMessage('✅ VC draft with ZKP saved! Share with seller for signature.');
@@ -1001,7 +1018,8 @@ const statusLabel = isDelivered
     try {
       console.log('[Flow][Seller] Step 5: Seller reviewing and signing Stage 3 VC draft.');
       setStatusMessage('✍️ Loading VC draft for seller signature...');
-      const canonicalVcJson = localStorage.getItem('vcDraft');
+      const vcDraftKey = `vcDraft_${address}`;
+      const canonicalVcJson = localStorage.getItem(vcDraftKey);
       if (!canonicalVcJson) {
         setError('No VC draft found. Buyer must prepare and share the draft first.');
         setStatusMessage('');
@@ -1024,7 +1042,8 @@ const statusLabel = isDelivered
       }
       // Save updated VC (with seller's proof) to localStorage
       const sellerSignedJson = freezeVcJson(canonicalVcObj);
-      localStorage.setItem('vcSellerSigned', sellerSignedJson);
+      const vcSellerSignedKey = `vcSellerSigned_${address}`;
+      localStorage.setItem(vcSellerSignedKey, sellerSignedJson);
       setVcSellerSigned(true);
       setStatusMessage('✅ VC signed by seller! Share with buyer for final signature.');
     } catch (err) {
@@ -1038,7 +1057,8 @@ const statusLabel = isDelivered
     try {
       console.log('[Flow][Buyer] Step 6: Buyer counter-signing VC and confirming delivery on-chain.');
       setStatusMessage('🔏 Loading seller-signed VC...');
-      const sellerSignedJson = localStorage.getItem('vcSellerSigned');
+      const vcSellerSignedKey = `vcSellerSigned_${address}`;
+      const sellerSignedJson = localStorage.getItem(vcSellerSignedKey);
       if (!sellerSignedJson) {
         setError('No seller-signed VC found. Seller must sign first.');
         setStatusMessage('');
@@ -1156,6 +1176,26 @@ const statusLabel = isDelivered
     }
   }, [address, currentUser, loadProductData, checkPendingPrivatePayments, identityLocked, product?.buyer, product?.owner, sellerEOA]);
 
+  // Fetch VC for provenance display (if not already in vcStages)
+  useEffect(() => {
+    if (!product?.vcCid) return;
+    if (vcStages.length > 0) return; // Already have VC from vcStages
+    if (provenanceVC) return; // Already fetched
+    if (provenanceLoading) return; // Already loading
+    
+    setProvenanceLoading(true);
+    fetch(`https://ipfs.io/ipfs/${product.vcCid}`)
+      .then(res => res.ok ? res.json() : null)
+      .then(vc => {
+        if (vc) setProvenanceVC(vc);
+        setProvenanceLoading(false);
+      })
+      .catch(err => {
+        console.error("Failed to fetch VC for provenance:", err);
+        setProvenanceLoading(false);
+      });
+  }, [product?.vcCid, vcStages.length, provenanceVC, provenanceLoading]);
+
   // Populate separate buyer and seller address states (correct sources)
   useEffect(() => {
     if (!address || !currentUser || !provider) return;
@@ -1253,6 +1293,9 @@ const statusLabel = isDelivered
     const prev = prevAddressRef.current;
     if (prev && prev !== address) {
       localStorage.removeItem(`confirmedBuyer_${prev}`);
+      // Clear VC draft and seller signed state for previous product
+      localStorage.removeItem(`vcDraft_${prev}`);
+      localStorage.removeItem(`vcSellerSigned_${prev}`);
     }
     prevAddressRef.current = address;
     
@@ -1264,6 +1307,10 @@ const statusLabel = isDelivered
     setLastKnownBuyer(null);
     setLastKnownBuyerEOA(null);
     setIdentityLocked(false);
+    // Reset VC states when product changes
+    setVcDraftSaved(false);
+    setVcSellerSigned(false);
+    setVcDraft(null);
   }, [address]);
 
   // Resolve buyer's Railgun address when we have a pending payment with buyer's ETH address
@@ -1348,6 +1395,45 @@ return (
     {/* Alerts */}
     {statusMessage && <p className="text-blue-600">{statusMessage}</p>}
     {error && <p className="text-red-600">{error}</p>}
+
+    {/* ────────── Action Buttons (Top) ───────── */}
+    {product.purchased && !isDelivered && (
+      <div className="mt-4 mb-6 flex gap-3 flex-wrap">
+        {/* Seller: Confirm Order (disabled if buyer requested signature) */}
+        {isSeller && !isConfirmed && (
+          <Button 
+            onClick={handleConfirmOrder}
+            disabled={vcDraftSaved}
+            className={vcDraftSaved ? "opacity-50 cursor-not-allowed" : ""}
+          >
+            Confirm Order
+          </Button>
+        )}
+
+        {/* Seller: Sign as Seller (after buyer requests signature) */}
+        {isSeller && product.phase === 3 && vcDraftSaved && !vcSellerSigned && (
+          <Button onClick={handleSignAsSeller}>
+            Sign as Seller
+          </Button>
+        )}
+
+        {/* Buyer: Request Seller Signature OR Confirm Delivery */}
+        {isBuyer && product.phase === 3 && (
+          <>
+            {!vcDraftSaved && (
+              <Button onClick={handleRequestSellerSignature}>
+                Request Seller Signature
+              </Button>
+            )}
+            {vcDraftSaved && vcSellerSigned && (
+              <Button onClick={handleConfirmDeliveryClick} className="bg-blue-600 hover:bg-blue-700">
+                Confirm Delivery
+              </Button>
+            )}
+          </>
+        )}
+      </div>
+    )}
     
     {showEnableButton && isSeller && (
       <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
@@ -1480,6 +1566,189 @@ return (
       </div>
     )}
 
+      {/* ────────── Tabs: Credentials & Audit ───────── */}
+      {vcStages.length > 0 && (
+        <div className="mt-8">
+          <Tabs defaultTab={0}>
+            <Tab label="📄 Credentials">
+              <div className="space-y-6">
+                {/* Certification (only in tabs, provenance tree is shown below) */}
+                {vcStages.length > 0 && (() => {
+                  const latestVC = vcStages[vcStages.length - 1];
+                  const { vc } = latestVC;
+                  const cs = vc.credentialSubject || {};
+                  const certificateCredential = cs.certificateCredential || {};
+                  const hasCertification = certificateCredential.cid && certificateCredential.cid.trim() !== "";
+                  const certificationName = certificateCredential.name || "Unnamed Certification";
+
+                  if (!hasCertification) return null;
+
+                  return (
+                    <div>
+                      <h3 className="text-lg font-semibold mb-4">📜 Certification</h3>
+                      <div className="bg-white rounded-xl shadow-md p-6">
+                        <div className="bg-green-50 border border-green-200 rounded p-3">
+                          <p className="text-sm text-gray-700 mb-1">
+                            <strong>Certification Name:</strong> {certificationName}
+                          </p>
+                          <p className="text-sm text-gray-700 mb-1">
+                            <strong>Certification CID:</strong> <Copyable value={certificateCredential.cid} />
+                          </p>
+                          <p className="text-xs text-gray-600 mt-2">
+                            This product has an associated certification uploaded during product creation.
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })()}
+
+                {/* Current Credential - Just the VC */}
+                {vcStages.length > 0 && (() => {
+                  const latestVC = vcStages[vcStages.length - 1];
+                  const { cid, vc } = latestVC;
+                  const hasIssuerProof = vc.proofs?.issuerProof || vc.proof?.some(p => p.role === "issuer" || p.role === "seller");
+                  const hasHolderProof = vc.proofs?.holderProof || vc.proof?.some(p => p.role === "holder" || p.role === "buyer");
+                  const isDeliveredVC = hasIssuerProof && hasHolderProof;
+
+                  return (
+                    <div>
+                      <h3 className="text-lg font-semibold mb-4">📋 Current Credential</h3>
+                      <div className="bg-white rounded-xl shadow-md p-6">
+                        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between mb-4">
+                          <div>
+                            <h4 className="text-lg font-semibold mb-1">
+                              {isDeliveredVC ? "✅ Final Delivered Credential" : "⏳ Credential in Progress"}
+                            </h4>
+                            <p className="text-sm text-gray-600">
+                              {isDeliveredVC 
+                                ? "Final credential signed by both seller and buyer"
+                                : "This credential will be finalized once both seller and buyer have signed"
+                              }
+                            </p>
+                          </div>
+                          <div className="flex items-center gap-2 mt-2 sm:mt-0">
+                            <Button
+                              variant={expandedVCIndex === vcStages.length - 1 ? "ghost" : "secondary"}
+                              onClick={() =>
+                                setExpandedVCIndex(
+                                  expandedVCIndex === vcStages.length - 1 ? null : vcStages.length - 1
+                                )
+                              }
+                              icon={expandedVCIndex === vcStages.length - 1 ? EyeOff : Eye}
+                            >
+                              {expandedVCIndex === vcStages.length - 1 ? "Hide Full VC" : "View Full VC JSON"}
+                            </Button>
+                          </div>
+                        </div>
+
+                        {expandedVCIndex === vcStages.length - 1 && (
+                          <div className="rounded-lg border bg-gray-50 p-4 mt-4">
+                            <VCViewer vc={vc} />
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })()}
+              </div>
+            </Tab>
+
+            <Tab label="🔍 Audit">
+              <div className="space-y-6">
+                {vcStages.length > 0 && (
+                  <div>
+                    <h3 className="text-lg font-semibold mb-4">Verification Tools</h3>
+                    <div className="bg-white rounded-xl shadow-md p-6">
+                      <VerifyVCInline 
+                        vc={vcStages[vcStages.length - 1].vc} 
+                        cid={vcStages[vcStages.length - 1].cid} 
+                        provider={provider}
+                        contractAddress={address}
+                      />
+                    </div>
+                  </div>
+                )}
+              </div>
+            </Tab>
+          </Tabs>
+        </div>
+      )}
+
+      {/* ────────── Supply Chain Provenance (Visible to all, before purchase) ───────── */}
+      {product?.vcCid && (() => {
+        // Use VC from vcStages if available, otherwise use fetched provenanceVC
+        const currentVC = vcStages.length > 0 ? vcStages[0].vc : provenanceVC;
+        const currentCid = vcStages.length > 0 ? vcStages[0].cid : product.vcCid;
+        
+        // Show loading state if we're fetching
+        if (provenanceLoading && !currentVC) {
+          return (
+            <div className="mt-6 mb-6">
+              <h3 className="text-lg font-semibold mb-4">🔗 Supply Chain Provenance</h3>
+              <div className="bg-white rounded-xl shadow-md p-6">
+                <p className="text-gray-600">Loading provenance information...</p>
+              </div>
+            </div>
+          );
+        }
+        
+        if (!currentVC) return null;
+        
+        const hasComponents = Array.isArray(currentVC?.credentialSubject?.componentCredentials) 
+          && currentVC.credentialSubject.componentCredentials.length > 0;
+        const hasCertification = currentVC?.credentialSubject?.certificateCredential?.cid 
+          && currentVC.credentialSubject.certificateCredential.cid.trim() !== "";
+        
+        // Only show if there are components or certification
+        if (!hasComponents && !hasCertification) return null;
+        
+        return (
+          <div className="mt-6 mb-6">
+            <h3 className="text-lg font-semibold mb-4">🔗 Supply Chain Provenance</h3>
+            <div className="bg-white rounded-xl shadow-md p-6 space-y-4">
+              {/* Component Chain Tree */}
+              {hasComponents && (
+                <div>
+                  <ProvenanceChainViewer 
+                    vc={currentVC} 
+                    cid={currentCid}
+                    currentProductState={product ? {
+                      buyer: product.buyer,
+                      transporter: transporter,
+                      purchased: product.purchased,
+                      phase: product.phase,
+                      owner: product.owner
+                    } : null}
+                  />
+                </div>
+              )}
+              
+              {/* Certification */}
+              {hasCertification && (() => {
+                const cert = currentVC.credentialSubject.certificateCredential;
+                return (
+                  <div className="border-t pt-4">
+                    <h5 className="font-semibold mb-2">📜 Certification</h5>
+                    <div className="bg-green-50 border border-green-200 rounded p-3">
+                      <p className="text-sm text-gray-700 mb-1">
+                        <strong>Certification Name:</strong> {cert.name || "Unnamed Certification"}
+                      </p>
+                      <p className="text-sm text-gray-700 mb-1">
+                        <strong>Certification CID:</strong> <Copyable value={cert.cid} />
+                      </p>
+                      <p className="text-xs text-gray-600 mt-2">
+                        This product has an associated certification uploaded during product creation.
+                      </p>
+                    </div>
+                  </div>
+                );
+              })()}
+            </div>
+          </div>
+        );
+      })()}
+
       {/* ────────── Action panel (Buy / Bids / Delivery) ───────── */}
       {(canBuyPublic || canBuyPrivate) && (
         <div className="space-y-2">
@@ -1556,13 +1825,6 @@ return (
             </>
           )}
 
-          {/* Buyer action */}
-          {isBuyer && product.phase === 3 && (
-            <Button onClick={handleConfirmDeliveryClick}>
-              Confirm Delivery
-            </Button>
-          )}
-
           {/* Unrelated user – offer to deliver */}
           {isUnrelated && isConfirmed && !transporterSet && (
             <div className="mt-4 space-y-2">
@@ -1579,147 +1841,7 @@ return (
               </div>
             </div>
           )}
-
-          {/* Add the Request Seller Signature button for the buyer */}
-          {isBuyer && product.phase === 3 && !vcDraftSaved && (
-            <Button onClick={handleRequestSellerSignature}>
-              Request Seller Signature
-            </Button>
-          )}
-          {/* Add the Sign as Seller button for the seller */}
-          {isSeller && product.phase === 3 && vcDraftSaved && !vcSellerSigned && (
-            <Button onClick={handleSignAsSeller}>
-              Sign as Seller
-            </Button>
-          )}
         </>
-      )}
-
-      {/* ────────── Tabs: Credentials & Audit ───────── */}
-      {vcStages.length > 0 && (
-        <div className="mt-8">
-          <Tabs defaultTab={0}>
-            <Tab label="📄 Credentials">
-              <div className="space-y-6">
-                {/* Supply Chain Provenance */}
-                <div>
-                  <h3 className="text-lg font-semibold mb-4">🔗 Supply Chain Provenance</h3>
-                  <div className="bg-white rounded-xl shadow-md p-6 space-y-4">
-                    {/* Component Chain Tree */}
-                    <div>
-                      <ProvenanceChainViewer 
-                        vc={vcStages[vcStages.length - 1].vc} 
-                        cid={vcStages[vcStages.length - 1].cid}
-                      />
-                    </div>
-
-                    {/* Certification */}
-                    {vcStages.length > 0 && (() => {
-                      const latestVC = vcStages[vcStages.length - 1];
-                      const { vc } = latestVC;
-                      const cs = vc.credentialSubject || {};
-                      const certificateCredential = cs.certificateCredential || {};
-                      const hasCertification = certificateCredential.cid && certificateCredential.cid.trim() !== "";
-                      const certificationName = certificateCredential.name || "Unnamed Certification";
-
-                      return (
-                        <div className="border-t pt-4">
-                          <h5 className="font-semibold mb-2">📜 Certification</h5>
-                          {hasCertification ? (
-                            <div className="bg-green-50 border border-green-200 rounded p-3">
-                              <p className="text-sm text-gray-700 mb-1">
-                                <strong>Certification Name:</strong> {certificationName}
-                              </p>
-                              <p className="text-sm text-gray-700 mb-1">
-                                <strong>Certification CID:</strong> <Copyable value={certificateCredential.cid} />
-                              </p>
-                              <p className="text-xs text-gray-600 mt-2">
-                                This product has an associated certification uploaded during product creation.
-                              </p>
-                            </div>
-                          ) : (
-                            <div className="bg-gray-50 border border-gray-200 rounded p-3">
-                              <p className="text-sm text-gray-600">
-                                <strong>No certification</strong> — No certification was uploaded for this product.
-                              </p>
-                            </div>
-                          )}
-                        </div>
-                      );
-                    })()}
-                  </div>
-                </div>
-
-                {/* Current Credential - Just the VC */}
-                {vcStages.length > 0 && (() => {
-                  const latestVC = vcStages[vcStages.length - 1];
-                  const { cid, vc } = latestVC;
-                  const hasIssuerProof = vc.proofs?.issuerProof || vc.proof?.some(p => p.role === "issuer" || p.role === "seller");
-                  const hasHolderProof = vc.proofs?.holderProof || vc.proof?.some(p => p.role === "holder" || p.role === "buyer");
-                  const isDeliveredVC = hasIssuerProof && hasHolderProof;
-
-                  return (
-                    <div>
-                      <h3 className="text-lg font-semibold mb-4">📋 Current Credential</h3>
-                      <div className="bg-white rounded-xl shadow-md p-6">
-                        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between mb-4">
-                          <div>
-                            <h4 className="text-lg font-semibold mb-1">
-                              {isDeliveredVC ? "✅ Final Delivered Credential" : "⏳ Credential in Progress"}
-                            </h4>
-                            <p className="text-sm text-gray-600">
-                              {isDeliveredVC 
-                                ? "Final credential signed by both seller and buyer"
-                                : "This credential will be finalized once both seller and buyer have signed"
-                              }
-                            </p>
-                          </div>
-                          <div className="flex items-center gap-2 mt-2 sm:mt-0">
-                            <Button
-                              variant={expandedVCIndex === vcStages.length - 1 ? "ghost" : "secondary"}
-                              onClick={() =>
-                                setExpandedVCIndex(
-                                  expandedVCIndex === vcStages.length - 1 ? null : vcStages.length - 1
-                                )
-                              }
-                              icon={expandedVCIndex === vcStages.length - 1 ? EyeOff : Eye}
-                            >
-                              {expandedVCIndex === vcStages.length - 1 ? "Hide Full VC" : "View Full VC JSON"}
-                            </Button>
-                          </div>
-                        </div>
-
-                        {expandedVCIndex === vcStages.length - 1 && (
-                          <div className="rounded-lg border bg-gray-50 p-4 mt-4">
-                            <VCViewer vc={vc} />
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  );
-                })()}
-              </div>
-            </Tab>
-
-            <Tab label="🔍 Audit">
-              <div className="space-y-6">
-                {vcStages.length > 0 && (
-                  <div>
-                    <h3 className="text-lg font-semibold mb-4">Verification Tools</h3>
-                    <div className="bg-white rounded-xl shadow-md p-6">
-                      <VerifyVCInline 
-                        vc={vcStages[vcStages.length - 1].vc} 
-                        cid={vcStages[vcStages.length - 1].cid} 
-                        provider={provider}
-                        contractAddress={address}
-                      />
-                    </div>
-                  </div>
-                )}
-              </div>
-            </Tab>
-          </Tabs>
-        </div>
       )}
 
       {/* ────────── Private Payment Modal ───────── */}

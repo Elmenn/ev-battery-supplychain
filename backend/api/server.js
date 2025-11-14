@@ -21,12 +21,13 @@ app.use(express.json());
 app.post('/verify-vc', async (req, res) => {
   console.log("🔔 /verify-vc endpoint HIT");
   try {
-    const { vc, isCertificate } = req.body;
+    const { vc, isCertificate, contractAddress } = req.body; // ✅ Accept optional contractAddress
     if (!vc) {
       return res.status(400).json({ error: 'VC data is required.' });
     }
 
-    const verificationResult = await verifyVC(vc, isCertificate);
+    // ✅ Pass contractAddress to verifyVC for verifyingContract binding
+    const verificationResult = await verifyVC(vc, isCertificate || false, contractAddress || null);
 
     res.json({
       message: 'VC verification complete.',

@@ -1,0 +1,10 @@
+# .graphclientrc.yml
+# Simplified to only Sepolia for local development
+sources:
+  - name: sepolia
+    handler:
+      graphql:
+        endpoint: http://localhost:4000/graphql
+
+documents:
+  - ./quick-sync-query-V2.graphql

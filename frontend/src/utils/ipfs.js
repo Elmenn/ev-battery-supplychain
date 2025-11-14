@@ -15,8 +15,13 @@ if (!JWT) {
  * @returns {Promise<string>} the new IPFS CID
  */
 export async function uploadJson(obj) {
-  // stringify and wrap your object
-  const blob = new Blob([JSON.stringify(obj)], { type: "application/json" })
+  // Format JSON with 2-space indentation for readability
+  // This is safe because:
+  // - EIP-712 signatures use structured data, not the JSON string
+  // - vcHash uses canonicalize() which is format-independent
+  // - VCs are parsed from JSON when fetched, so formatting doesn't affect parsing
+  const formattedJson = JSON.stringify(obj, null, 2);
+  const blob = new Blob([formattedJson], { type: "application/json" })
   const form = new FormData()
   form.append("file", blob, "vc.json")
 

@@ -4,7 +4,7 @@ const { ethers } = require("ethers");
 const uploadJson = require("./utils/ipfs");
 const vcBuilder = require("./utils/vcBuilder");
 const ProductFactoryABI = require("../abis/ProductFactory.json");
-const ProductEscrowABI = require("../abis/ProductEscrow.json");
+const ProductEscrowABI = require("../abis/ProductEscrow_Initializer.json");
 
 // Replace with your actual values
 const provider = new ethers.JsonRpcProvider("https://sepolia.infura.io/v3/YOUR_INFURA_KEY");
@@ -38,7 +38,7 @@ router.post("/create-product", async (req, res) => {
       } catch { return null; }
     }).find(e => e && e.name === "ProductCreated");
 
-    const productAddress = event?.args?.productAddress;
+         const productAddress = event?.args?.product;
     const txHash = tx.hash;
 
     if (!productAddress) throw new Error("Missing product address from event");

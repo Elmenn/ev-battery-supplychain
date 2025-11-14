@@ -1,0 +1,18 @@
+version: "3"
+
+services:
+  db:
+    image: postgres:15
+    environment:
+      POSTGRES_DB: squid
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_USER: postgres
+    ports:
+      - "${DB_PORT:-5433}:5432"
+    volumes:
+      - db_data:/var/lib/postgresql/data
+    command: ["postgres", "-c", "log_statement=all", "-c", "log_min_duration_statement=0"]
+
+volumes:
+  db_data:
+

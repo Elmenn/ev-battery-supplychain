@@ -1,0 +1,37 @@
+manifestVersion: subsquid.io/v0.1
+name: ${squid_name}
+version: 1
+description: "The very first evm squid from manifest  "
+build:
+deploy:
+  addons:
+    rpc:
+      - ${rpc_proxy}
+    postgres:
+  processor:
+    cmd:
+      - sqd
+      - process:prod
+  env:
+    RAILGUN_PROXY_CONTRACT_ADDRESS: "${proxy_contract_address}"
+    RAILGUN_PROXY_DEPLOYMENT_BLOCK: ${proxy_deployment_block}
+    DB_NAME: ${db_name}
+    DB_PASSWORD: <your_password> 
+    CHAIN_ID: ${chainId}
+    RAILGUN_POSEIDONT4_CONTRACT_ADDRESS: "${poseidonT4_contract_address}"
+    RPC_ENDPOINT: ${rpc_endpoint}
+    RAILGUN_RPC_TOGGLE: ${{secrets.RAILGUN_RPC_TOGGLE}}
+  api:
+    cmd:
+      - sqd
+      - serve:prod
+scale:
+  dedicated: true
+  addons:
+    postgres:
+      profile: small 
+  processor:
+    profile: small 
+  api:
+    profile: small 
+    replicas: 2

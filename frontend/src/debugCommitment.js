@@ -1,8 +1,8 @@
 import { ethers } from "ethers";
-import ProductEscrowABI from "./abis/ProductEscrow.json";
+import ProductEscrowABI from "./abis/ProductEscrow_Initializer.json";
 
 // Update these values for your test
-const contractAddress = "0x281Ad0457f3d1eaA0D77C52973A32361F41c1B2e"; // <-- update if needed
+const contractAddress = process.env.REACT_APP_FACTORY_ADDRESS; // Get from environment
 const revealedValue = "4000000000000000000"; // as string, or use your actual value
 const blinding = "0xb3c36fafcde4a8fdf88062747a71d69f7168ac7e8642d9a9c9aee4fa2c0cd41c"; // use your actual blinding
 

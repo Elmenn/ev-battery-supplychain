@@ -1,9 +1,7 @@
 import React from "react";
 import { useNavigate } from "react-router-dom";
-import { ethers } from "ethers";
 
 import { Button } from "../ui/button";
-import ProductEscrowABI from "../../abis/ProductEscrow.json";
 
 const ZERO = "0x0000000000000000000000000000000000000000";
 const truncate = (addr) => addr?.slice(0, 6) + "..." + addr?.slice(-4);
@@ -32,31 +30,7 @@ const ProductCard = ({ product, myAddress, provider, onPurchased }) => {
   else if (hasBuyer)
     badge = { text: "Awaiting Confirm", cls: "bg-orange-100 text-orange-800" };
 
-  /* buy-now handler ------------------------------------------------------- */
-  const handleBuy = async () => {
-    if (!provider) return navigate(`/product/${product.address}`);
-
-    try {
-      if (!product.priceWei) {
-        alert("No price available for purchase. Please contact the seller.");
-        return;
-      }
-      const signer = await provider.getSigner();
-      const escrow = new ethers.Contract(
-        product.address,
-        ProductEscrowABI.abi,
-        signer
-      );
-
-      const tx = await escrow.depositPurchase({ value: product.priceWei });
-      await tx.wait();
-
-      if (onPurchased) onPurchased(); // optional refresh callback
-    } catch (err) {
-      console.error("Buy failed:", err);
-      alert("Buy failed – check the console for details.");
-    }
-  };
+  // Removed buy handlers - now handled in ProductDetail.jsx
 
   /* render ---------------------------------------------------------------- */
   return (
@@ -89,20 +63,22 @@ const ProductCard = ({ product, myAddress, provider, onPurchased }) => {
             <span className="font-medium">Buyer:</span> {truncate(product.buyer)}
           </div>
         )}
+        {/* 
+          NOTE: This component uses product.owner and product.buyer directly from the product data.
+          If you want to fix the marketplace list view to show correct wallet addresses,
+          you'll need to pass the resolved address states from the parent component.
+        */}
       </div>
 
       {/* footer */}
       <div className="flex flex-wrap gap-2">
         <Button
-          variant="secondary"
+          variant="outline"
           onClick={() => navigate(`/product/${product.address}`)}
+          className="bg-blue-50 border-blue-200 text-blue-700 hover:bg-blue-100"
         >
-          Details
+          🔍 View Details & Buy
         </Button>
-
-        {!hasBuyer && !isMine && (
-          <Button onClick={() => navigate(`/product/${product.address}`)}>Buy Now</Button>
-        )}
       </div>
     </div>
   );

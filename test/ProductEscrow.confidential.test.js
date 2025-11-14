@@ -3,7 +3,6 @@ const truffleAssert = require("truffle-assertions");
 const { toWei } = web3.utils;
 const BN = web3.utils.BN;
 const MaliciousReentrant = artifacts.require("./helpers/MaliciousReentrant.sol");
-const ProductEscrow_Test = artifacts.require("ProductEscrow_Test");
 
 const dummyValueCommitment = web3.utils.randomHex(32);
 const dummyProof = '0x00';
@@ -21,7 +20,7 @@ contract("ProductEscrow (Confidential)", accounts => {
     const blinding = "0xabc0000000000000000000000000000000000000000000000000000000000000";
     const commitment = makeCommitment(value, blinding);
 
-    const instance = await ProductEscrow.new("TestProduct", commitment, owner);
+    const instance = await ProductEscrow.new(1, "TestProduct", commitment, owner);
     const storedCommitment = await instance.priceCommitment();
     assert.equal(storedCommitment, commitment, "Commitment not stored correctly");
   });
@@ -31,7 +30,7 @@ contract("ProductEscrow (Confidential)", accounts => {
     const blinding = "0xdef0000000000000000000000000000000000000000000000000000000000000";
     const commitment = makeCommitment(value, blinding);
 
-    const instance = await ProductEscrow.new("TestProduct", commitment, owner);
+    const instance = await ProductEscrow.new(1, "TestProduct", commitment, owner);
     await instance.depositPurchase(commitment, dummyValueCommitment, dummyProof, {from: buyer, value: toWei("1", "ether")});
     const storedCommitment = await instance.priceCommitment();
     assert.equal(storedCommitment, commitment, "Commitment not updated correctly");
@@ -42,7 +41,7 @@ contract("ProductEscrow (Confidential)", accounts => {
     const blinding = "0x1230000000000000000000000000000000000000000000000000000000000000";
     const commitment = makeCommitment(value, blinding);
 
-    const instance = await ProductEscrow.new("TestProduct", commitment, owner);
+    const instance = await ProductEscrow.new(1, "TestProduct", commitment, owner);
     await instance.depositPurchase(commitment, dummyValueCommitment, dummyProof, {from: buyer, value: toWei("1", "ether")});
     const result = await instance.verifyRevealedValue.call(value, blinding, { from: buyer });
     assert.equal(result, true, "Revealed value should match commitment");
@@ -59,7 +58,7 @@ describe("ProductEscrow Purchase Logic", () => {
   });
 
   it("prevents double purchase (race condition)", async () => {
-    const esc = await ProductEscrow.new("TestProduct", commitment, seller, { from: seller });
+    const esc = await ProductEscrow.new(1, "TestProduct", commitment, seller, { from: seller });
     // First purchase
     await esc.depositPurchase(commitment, dummyValueCommitment, dummyProof, { from: buyer1, value: toWei("1", "ether") });
     // Second purchase attempt by another user
@@ -69,7 +68,7 @@ describe("ProductEscrow Purchase Logic", () => {
   });
 
   it("prevents seller from buying own product", async () => {
-    const esc = await ProductEscrow.new("TestProduct", commitment, seller, { from: seller });
+    const esc = await ProductEscrow.new(1, "TestProduct", commitment, seller, { from: seller });
     await truffleAssert.reverts(
       esc.depositPurchase(commitment, dummyValueCommitment, dummyProof, { from: seller, value: toWei("1", "ether") })
     );
@@ -92,7 +91,7 @@ contract("ProductEscrow Delivery Logic", (accounts) => {
   });
 
   it("should handle successful delivery and fund distribution", async () => {
-    const esc = await ProductEscrow.new("TestProduct", commitment, seller, { from: seller });
+    const esc = await ProductEscrow.new(1, "TestProduct", commitment, seller, { from: seller });
     // Buyer purchases
     let tx = await esc.depositPurchase(commitment, dummyValueCommitment, dummyProof, { from: buyer, value: price });
     truffleAssert.eventEmitted(tx, "PhaseChanged", ev => ev.from.toString() === "0" && ev.to.toString() === "1");
@@ -126,7 +125,7 @@ contract("ProductEscrow Delivery Logic", (accounts) => {
   });
 
   it("should revert if revealAndConfirmDelivery is called with invalid value or blinding", async () => {
-    const esc = await ProductEscrow.new("TestProduct", commitment, seller, { from: seller });
+    const esc = await ProductEscrow.new(1, "TestProduct", commitment, seller, { from: seller });
     await esc.depositPurchase(commitment, dummyValueCommitment, dummyProof, { from: buyer, value: price });
     await esc.confirmOrder("cid", { from: seller });
     await esc.createTransporter(deliveryFee, { from: transporter });
@@ -327,7 +326,7 @@ contract("ProductEscrow MAX_BIDS Slot Reuse", (accounts) => {
   });
 
   it("should allow slot reuse after withdrawBid when MAX_BIDS is reached", async () => {
-    const esc = await ProductEscrow_Test.new("TestProduct", commitment, seller, { from: seller });
+    const esc = await ProductEscrow.new(1, "TestProduct", commitment, seller, { from: seller });
     await esc.depositPurchase(commitment, dummyValueCommitment, dummyProof, { from: buyer, value: price });
     await esc.confirmOrder("cid", { from: seller });
     // Register MAX_BIDS transporters

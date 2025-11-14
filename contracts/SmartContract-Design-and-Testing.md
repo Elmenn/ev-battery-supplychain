@@ -2,12 +2,7 @@
 
 # EV Battery Supply Chain Escrow Smart Contract System
 
-**Version:** 1.0  
-**Authors:** Your Name(s)  
-**Date:** 2024-06-XX  
-**License:** MIT
 
----
 
 ## Table of Contents
 - [Overview](#overview)

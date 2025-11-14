@@ -1,0 +1,15 @@
+version: "1.0.0"
+name: railgun-sepolia-v2-reprocess
+description: Railgun Sepolia V2 Transaction Indexer (Reprocessing)
+api:
+  specVersion: 1.0.0
+  type: graphql
+  sink:
+    type: postgres
+  models:
+    - name: Transaction
+    - name: Token
+    - name: Commitment
+    - name: Nullifier
+    - name: Unshield
+

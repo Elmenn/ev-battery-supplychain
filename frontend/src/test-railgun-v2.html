@@ -1,0 +1,242 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Railgun V2 Clean Client Test</title>
+  <style>
+    body {
+      font-family: system-ui, sans-serif;
+      max-width: 800px;
+      margin: 40px auto;
+      padding: 20px;
+      background: #1a1a1a;
+      color: #e0e0e0;
+    }
+    .test-section {
+      margin: 20px 0;
+      padding: 15px;
+      background: #2a2a2a;
+      border-radius: 8px;
+    }
+    button {
+      background: #4a90e2;
+      color: white;
+      border: none;
+      padding: 10px 20px;
+      border-radius: 5px;
+      cursor: pointer;
+      margin: 5px;
+    }
+    button:hover { background: #357abd; }
+    button:disabled { background: #555; cursor: not-allowed; }
+    .output {
+      margin-top: 10px;
+      padding: 10px;
+      background: #1a1a1a;
+      border-left: 3px solid #4a90e2;
+      white-space: pre-wrap;
+      font-family: 'Courier New', monospace;
+      font-size: 12px;
+      max-height: 200px;
+      overflow: auto;
+    }
+    input {
+      padding: 8px;
+      background: #1a1a1a;
+      border: 1px solid #444;
+      color: #e0e0e0;
+      border-radius: 4px;
+      width: 200px;
+    }
+    h2 { color: #4a90e2; }
+    h3 { color: #888; font-size: 14px; margin-top: 0; }
+  </style>
+</head>
+<body>
+  <h1>🔒 Railgun V2 Sepolia Test</h1>
+  <p>Clean client for private transactions on Sepolia (no POI, no broadcaster)</p>
+
+  <div class="test-section">
+    <h2>1️⃣ Engine & Wallet Setup</h2>
+    <h3>Initialize engine and connect wallet</h3>
+    <button onclick="init()">Init Engine</button>
+    <button onclick="connect()">Connect Wallet</button>
+    <button onclick="createOrLoad()">Create/Load Railgun Wallet</button>
+    <button onclick="loadScanProvider()">Load Scan Provider</button>
+    <div class="output" id="setup-output"></div>
+  </div>
+
+  <div class="test-section">
+    <h2>2️⃣ Shield WETH</h2>
+    <h3>Wrap ETH → Approve → Shield</h3>
+    <label>Amount (ETH): <input type="number" id="shield-amount" value="0.001" step="0.001"></label><br>
+    <button onclick="wrapETH()">Wrap ETH</button>
+    <button onclick="ensureAllowance()">Approve WETH</button>
+    <button onclick="shield()">Shield WETH</button>
+    <div class="output" id="shield-output"></div>
+  </div>
+
+  <div class="test-section">
+    <h2>3️⃣ Check Balances</h2>
+    <h3>View private WETH balance (Spendable + Pending)</h3>
+    <button onclick="waitSync()">Wait for Sync</button>
+    <button onclick="checkBalance()">Check Private Balance</button>
+    <div class="output" id="balance-output"></div>
+  </div>
+
+  <div class="test-section">
+    <h2>4️⃣ Private Transfer</h2>
+    <h3>Send private WETH to another Railgun address</h3>
+    <label>Recipient (0zk address): <input type="text" id="recipient" placeholder="0zk..."></label><br>
+    <label>Amount (wei): <input type="text" id="transfer-amount" value="100000000000000"></label><br>
+    <button onclick="transfer()">Private Transfer</button>
+    <div class="output" id="transfer-output"></div>
+  </div>
+
+  <script type="module">
+    import * as RGV2 from './lib/railgunV2SepoliaClient.js';
+
+    window.RGV2 = RGV2;
+    let walletInfo = null;
+
+    function log(section, msg) {
+      const el = document.getElementById(section + '-output');
+      el.textContent += msg + '\n';
+      el.scrollTop = el.scrollHeight;
+    }
+
+    window.init = async () => {
+      try {
+        const rpc = 'https://ethereum-sepolia.publicnode.com';
+        log('setup', `🔧 Initializing engine with RPC: ${rpc}`);
+        await RGV2.initEngine({ rpcUrl: rpc });
+        log('setup', '✅ Engine initialized');
+      } catch (e) {
+        log('setup', `❌ ${e.message}`);
+      }
+    };
+
+    window.connect = async () => {
+      try {
+        log('setup', '🔗 Connecting public wallet...');
+        await RGV2.connectPublicWallet();
+        log('setup', '✅ Public wallet connected');
+      } catch (e) {
+        log('setup', `❌ ${e.message}`);
+      }
+    };
+
+    window.createOrLoad = async () => {
+      try {
+        const key = prompt('Enter 32-byte encryption key (hex):', '0x' + '00'.repeat(32));
+        const id = prompt('Enter wallet ID:', 'test-wallet-001');
+        if (!key || !id) return;
+        log('setup', `🔑 Creating/loading wallet ${id}...`);
+        const info = await RGV2.createOrLoadRailgunWallet(id, key);
+        walletInfo = info;
+        log('setup', `✅ Wallet loaded: ${info.walletID}`);
+        log('setup', `📍 Railgun address: ${info.railgunAddress}`);
+      } catch (e) {
+        log('setup', `❌ ${e.message}`);
+      }
+    };
+
+    window.loadScanProvider = async () => {
+      try {
+        log('setup', '📡 Loading provider for scanning...');
+        await RGV2.loadProviderForScanning('https://ethereum-sepolia.publicnode.com');
+        log('setup', '✅ Scan provider loaded');
+      } catch (e) {
+        log('setup', `❌ ${e.message}`);
+      }
+    };
+
+    window.wrapETH = async () => {
+      try {
+        const amount = parseFloat(document.getElementById('shield-amount').value);
+        log('shield', `💰 Wrapping ${amount} ETH...`);
+        const hash = await RGV2.wrapETH(amount);
+        log('shield', `✅ Wrapped ETH, tx: ${hash}`);
+      } catch (e) {
+        log('shield', `❌ ${e.message}`);
+      }
+    };
+
+    window.ensureAllowance = async () => {
+      try {
+        log('shield', '✅ Checking/approving WETH allowance...');
+        const hash = await RGV2.ensureWETHAllowance(ethers.parseEther('100'));
+        if (hash) log('shield', `✅ Approved, tx: ${hash}`);
+        else log('shield', '✅ Already approved');
+      } catch (e) {
+        log('shield', `❌ ${e.message}`);
+      }
+    };
+
+    window.shield = async () => {
+      try {
+        const amount = document.getElementById('shield-amount').value;
+        log('shield', `🛡️ Shielding ${amount} WETH...`);
+        const hash = await RGV2.shieldWETH(amount);
+        log('shield', `✅ Shielded, tx: ${hash}`);
+      } catch (e) {
+        log('shield', `❌ ${e.message}`);
+      }
+    };
+
+    window.waitSync = async () => {
+      try {
+        log('balance', '⏳ Waiting for sync (max 30s)...');
+        await RGV2.waitForSync();
+        log('balance', '✅ Sync complete');
+      } catch (e) {
+        log('balance', `❌ ${e.message}`);
+      }
+    };
+
+    window.checkBalance = async () => {
+      try {
+        log('balance', '💵 Checking private balance...');
+        const bal = await RGV2.getPrivateWETHBalances();
+        const spendable = ethers.formatEther(bal.spendable || 0n);
+        const pending = ethers.formatEther(bal.pending || 0n);
+        log('balance', `💰 Spendable: ${spendable} WETH`);
+        log('balance', `⏳ Pending: ${pending} WETH`);
+      } catch (e) {
+        log('balance', `❌ ${e.message}`);
+      }
+    };
+
+    window.transfer = async () => {
+      try {
+        const recipient = document.getElementById('recipient').value;
+        const amount = document.getElementById('transfer-amount').value;
+        if (!recipient.startsWith('0zk')) {
+          log('transfer', '❌ Invalid recipient (must be 0zk...)');
+          return;
+        }
+        log('transfer', `📤 Transferring ${amount} wei to ${recipient}...`);
+        const hash = await RGV2.privateTransfer({
+          toRailgunAddress: recipient,
+          amountWei: amount
+        });
+        log('transfer', `✅ Transferred, tx: ${hash}`);
+      } catch (e) {
+        log('transfer', `❌ ${e.message}`);
+      }
+    };
+
+    // Expose ethers for button handlers
+    window.ethers = ethers;
+  </script>
+</body>
+</html>
+
+
+
+
+
+
+
+

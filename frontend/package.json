@@ -3,54 +3,53 @@
   "version": "0.1.0",
   "private": true,
   "dependencies": {
+    "@adraffy/ens-normalize": "^1.11.0",
     "@emotion/react": "^11.14.0",
     "@emotion/styled": "^11.14.1",
     "@mui/icons-material": "^6.1.2",
     "@mui/material": "^6.1.2",
     "@mui/system": "^6.1.2",
     "@mui/utils": "^6.1.2",
-    "@railgun-community/engine": "^9.4.0",
-    "@railgun-community/wallet": "^10.4.1",
+    "@railgun-community/deployments": "0.4.9",
+    "@railgun-community/engine": "9.4.0",
+    "@railgun-community/shared-models": "7.6.1",
+    "@railgun-community/wallet": "10.4.0",
     "@testing-library/jest-dom": "^5.17.0",
     "@testing-library/react": "^13.4.0",
     "@testing-library/user-event": "^13.5.0",
     "@textea/json-viewer": "^4.0.1",
+    "@types/level-js": "^4.0.5",
     "ajv": "^8.12.0",
     "ajv-keywords": "^5.1.0",
     "axios": "^1.9.0",
-    "ethers": "^6.14.4",
+    "dotenv": "^17.2.3",
+    "ethers": "6.13.1",
     "file-saver": "^2.0.5",
     "json-canonicalize": "^2.0.0",
+    "level-js": "^6.1.0",
+    "loader-runner": "^4.3.0",
+    "localforage": "^1.10.0",
     "lucide-react": "^0.525.0",
     "react": "^18.3.1",
+    "react-app-rewired": "^2.2.1",
     "react-dom": "^18.3.1",
     "react-hot-toast": "^2.5.2",
     "react-modal": "^3.16.3",
-    "react-router-dom": "^7.6.3",
+    "react-router": "^6.30.1",
+    "react-router-dom": "^6.30.1",
     "react-scripts": "5.0.1",
+    "snarkjs": "^0.7.5",
     "uuid": "^11.1.0",
     "web-vitals": "^2.1.4",
     "web3": "^4.16.0"
   },
-  "resolutions": {
-    "@mui/styled-engine": "@mui/styled-engine@latest"
-  },
-  "overrides": {
-    "@mui/styled-engine": {
-      "path": "@mui/styled-engine"
-    }
-  },
   "scripts": {
-    "start": "react-scripts start",
-    "build": "react-scripts build",
-    "test": "react-scripts test",
+    "start": "react-app-rewired start",
+    "start:sepolia": "copy .env.sepolia .env && react-app-rewired start",
+    "start:ganache": "copy .env.ganache .env && react-app-rewired start",
+    "build": "react-app-rewired build",
+    "test": "react-app-rewired test",
     "eject": "react-scripts eject"
-  },
-  "eslintConfig": {
-    "extends": [
-      "react-app",
-      "react-app/jest"
-    ]
   },
   "browserslist": {
     "production": [
@@ -64,9 +63,27 @@
       "last 1 safari version"
     ]
   },
+  "overrides": {
+    "@railgun-community/shared-models": "7.6.1"
+  },
   "devDependencies": {
+    "assert": "^2.1.0",
     "autoprefixer": "^10.4.21",
+    "browserify-zlib": "^0.2.0",
+    "buffer": "^6.0.3",
+    "crypto-browserify": "^3.12.1",
+    "events": "^3.3.0",
+    "https-browserify": "^1.0.0",
+    "os-browserify": "^0.3.0",
+    "path-browserify": "^1.0.1",
     "postcss": "^8.5.6",
-    "tailwindcss": "^3.4.17"
+    "process": "^0.11.10",
+    "stream-browserify": "^3.0.0",
+    "stream-http": "^3.2.0",
+    "tailwindcss": "^3.4.17",
+    "tty-browserify": "^0.0.1",
+    "url": "^0.11.4",
+    "util": "^0.12.5",
+    "vm-browserify": "^1.1.2"
   }
 }

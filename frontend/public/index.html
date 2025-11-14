@@ -29,6 +29,19 @@
   <body>
     <noscript>You need to enable JavaScript to run this app.</noscript>
     <div id="root"></div>
+    
+    <!-- Railgun SDK Dependencies -->
+    <!-- SnarkJS for Groth16 proof generation (Railgun-optimized version) -->
+    <script src="%PUBLIC_URL%/snarkjs.min.js"></script>
+    
+    <!-- Set GraphQL subgraph override BEFORE app loads -->
+    <script>
+      // Override Sepolia V2 subgraph to use public Squids.live endpoint
+      // To use local Subsquid indexer instead, change to: 'http://localhost:4000/graphql'
+      // (requires running: cd subsquid/railgun-sepolia-v2 && npm run serve)
+      window.__OVERRIDE_SEPOLIA_V2_SUBGRAPH__ = 'https://rail-squid.squids.live/squid-railgun-eth-sepolia-v2/graphql';
+    </script>
+    
     <!--
       This HTML file is a template.
       If you open it directly in the browser, you will see an empty page.

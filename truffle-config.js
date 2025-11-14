@@ -8,43 +8,39 @@
  *
  * https://trufflesuite.com/docs/truffle/reference/configuration
  *
- * Hands-off deployment with Infura
- * --------------------------------
+ * Deployment with Alchemy (Sepolia Testnet)
+ * -----------------------------------------
+ * 
+ * This configuration uses Alchemy for Sepolia deployment with either:
+ * - PRIVATE_KEY: Direct private key (faster, less secure)
+ * - MNEMONIC: 12-word phrase (more secure, recommended)
  *
- * Do you have a complex application that requires lots of transactions to deploy?
- * Use this approach to make deployment a breeze 🏖️:
- *
- * Infura deployment needs a wallet provider (like @truffle/hdwallet-provider)
- * to sign transactions before they're sent to a remote public node.
- * Infura accounts are available for free at 🔍: https://infura.io/register
- *
- * You'll need a mnemonic - the twelve word phrase the wallet uses to generate
- * public/private key pairs. You can store your secrets 🤐 in a .env file.
- * In your project root, run `$ npm install dotenv`.
- * Create .env (which should be .gitignored) and declare your MNEMONIC
- * and Infura PROJECT_ID variables inside.
- * For example, your .env file will have the following structure:
- *
- * MNEMONIC = <Your 12 phrase mnemonic>
- * PROJECT_ID = <Your Infura project id>
- *
- * Deployment with Truffle Dashboard (Recommended for best security practice)
- * --------------------------------------------------------------------------
- *
- * Are you concerned about security and minimizing rekt status 🤔?
- * Use this method for best security:
- *
- * Truffle Dashboard lets you review transactions in detail, and leverages
- * MetaMask for signing, so there's no need to copy-paste your mnemonic.
- * More details can be found at 🔎:
- *
- * https://trufflesuite.com/docs/truffle/getting-started/using-the-truffle-dashboard/
+ * Get your Alchemy API key at: https://www.alchemy.com/
  */
 
-// require('dotenv').config();
-// const { MNEMONIC, PROJECT_ID } = process.env;
+require('dotenv').config({ path: '.env.truffle' });
+const HDWalletProvider = require('@truffle/hdwallet-provider');
 
-// const HDWalletProvider = require('@truffle/hdwallet-provider');
+const {
+  MNEMONIC,
+  ALCHEMY_API_KEY,
+} = process.env;
+
+const makeProvider = () => {
+  const ALCHEMY_URL = `https://eth-sepolia.g.alchemy.com/v2/${ALCHEMY_API_KEY}`;
+  if (MNEMONIC) {
+    return new HDWalletProvider({
+      mnemonic: { phrase: process.env.MNEMONIC },
+      providerOrUrl: ALCHEMY_URL,
+      addressIndex: 0,          // use the first account
+      numberOfAddresses: 1,     // only derive one
+      derivationPath: "m/44'/60'/0'/0/", // standard ETH path
+      chainId: 11155111,
+      pollingInterval: 15000
+    });
+  }
+  throw new Error('Set MNEMONIC in .env.truffle');
+};
 
 module.exports = {
   /**
@@ -63,11 +59,23 @@ module.exports = {
     // You should run a client (like ganache, geth, or parity) in a separate terminal
     // tab if you use this network and you must also set the `host`, `port` and `network_id`
     // options below to some value.
-    development: {
-      host: "127.0.0.1",
-      port: 8545, // Updated to match Ganache CLI
-      network_id: "*",
-    },
+      development: {
+        host: "127.0.0.1",
+        port: 8545,        // Ganache CLI port
+        network_id: "*",   // Accept any network ID
+        evmVersion: "shanghai"  // Match Ganache hardfork
+      },
+      
+      // Sepolia testnet deployment via Alchemy
+      sepolia: {
+        provider: () => makeProvider(),
+        network_id: 11155111,
+        confirmations: 2,
+        timeoutBlocks: 500,        // was 200
+        networkCheckTimeout: 300000, // Increased timeout to 5 minutes
+        skipDryRun: true,
+        gasPrice: 1500000000,
+      },
     //
     // An additional network, but with some advanced options…
     // advanced: {
@@ -109,8 +117,9 @@ module.exports = {
       settings: {
         optimizer: {
           enabled: true,
-          runs: 200
-        }
+          runs: 200,
+        },
+        evmVersion: "shanghai"  // Ensure compiler matches runtime
       }
       // docker: true,        // Use "0.5.1" you've installed locally with docker (default: false)
       // settings: {          // See the solidity docs for advice about optimization and evmVersion

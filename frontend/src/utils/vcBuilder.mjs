@@ -290,6 +290,7 @@ export function buildStage2VC({
     "@context": stage0["@context"],
     id: stage0.id || `https://example.edu/credentials/${uuid()}`,
     type: stage0.type || ["VerifiableCredential"],
+    schemaVersion: stage0.schemaVersion || "1.0", // ✅ Preserve schemaVersion from previous stage or default to "1.0"
 
     issuer: {
       id: `did:ethr:${CHAIN}:${sellerAddr}`,
@@ -314,7 +315,17 @@ export function buildStage2VC({
 }
 
 // --------------------------------------------------
-export function buildStage3VC({ stage2, buyerProof, txHash, zkpProof, price, proofType }) {
+export function buildStage3VC({ 
+  stage2, 
+  buyerProof, 
+  txHash, 
+  zkpProof, 
+  price, 
+  proofType,
+  transporter,           // ✅ Transporter address (optional)
+  onChainCommitment,     // ✅ On-chain commitment reference (optional)
+  deliveryStatus         // ✅ Delivery status (optional)
+}) {
   let priceObj;
   if (typeof price !== "undefined") {
     priceObj = price;
@@ -339,8 +350,30 @@ export function buildStage3VC({ stage2, buyerProof, txHash, zkpProof, price, pro
     price: JSON.stringify(priceObj),
   };
 
+  // ✅ Add delivery-related fields if provided
   if (txHash) {
     credentialSubject.transactionId = txHash;
+  }
+  
+  // ✅ Add transporter address to subjectDetails
+  if (transporter) {
+    if (!credentialSubject.subjectDetails) {
+      credentialSubject.subjectDetails = {};
+    }
+    credentialSubject.subjectDetails.transporter = transporter;
+  }
+  
+  // ✅ Add on-chain commitment reference for verification
+  if (onChainCommitment) {
+    if (!credentialSubject.subjectDetails) {
+      credentialSubject.subjectDetails = {};
+    }
+    credentialSubject.subjectDetails.onChainCommitment = onChainCommitment;
+  }
+  
+  // ✅ Add delivery status
+  if (deliveryStatus !== undefined) {
+    credentialSubject.deliveryStatus = deliveryStatus;
   }
 
   // Start with any existing proofs (e.g., issuerProof), then add buyerProof
@@ -351,6 +384,7 @@ export function buildStage3VC({ stage2, buyerProof, txHash, zkpProof, price, pro
 
   const vc = {
     ...stage2,
+    schemaVersion: stage2.schemaVersion || "1.0", // ✅ Preserve schemaVersion from previous stage or default to "1.0"
     credentialSubject,
     proof: proofArr,
   };

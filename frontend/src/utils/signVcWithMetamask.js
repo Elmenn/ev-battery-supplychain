@@ -6,6 +6,7 @@ import { TypedDataEncoder, BrowserProvider } from "ethers";
  * - Removing `.proofs` and `.credentialSubject.vcHash`
  * - Lowercasing critical IDs
  * - Serializing price as string
+ * - Ensuring schemaVersion is set (defaults to "1.0" if not present)
  */
 function preparePayloadForSigning(vc) {
   const clone = JSON.parse(JSON.stringify(vc));
@@ -27,9 +28,35 @@ function preparePayloadForSigning(vc) {
     }
   }
 
+  // ✅ Ensure all required EIP-712 fields are present
+  if (!clone.credentialSubject) {
+    clone.credentialSubject = {};
+  }
+  
+  // Ensure certificateCredential is present (required by EIP-712 types)
+  if (!clone.credentialSubject.certificateCredential) {
+    clone.credentialSubject.certificateCredential = {
+      name: '',
+      cid: '',
+    };
+  }
+  
+  // Ensure other required fields have defaults
+  if (clone.credentialSubject.previousCredential === undefined || clone.credentialSubject.previousCredential === null) {
+    clone.credentialSubject.previousCredential = '';
+  }
+  if (!Array.isArray(clone.credentialSubject.componentCredentials)) {
+    clone.credentialSubject.componentCredentials = [];
+  }
+
   if (clone.issuer?.id) clone.issuer.id = clone.issuer.id.toLowerCase();
   if (clone.holder?.id) clone.holder.id = clone.holder.id.toLowerCase();
   if (clone.credentialSubject?.id) clone.credentialSubject.id = clone.credentialSubject.id.toLowerCase();
+
+  // ✅ Ensure schemaVersion is set (defaults to "1.0" for backward compatibility)
+  if (!clone.schemaVersion) {
+    clone.schemaVersion = "1.0";
+  }
 
   return clone;
 }
@@ -45,7 +72,7 @@ function resolveConfiguredChainId(fallbackChainId) {
   return Number(fallbackChainId);
 }
 
-async function signPayload(vc, signer, role = "holder") {
+async function signPayload(vc, signer, role = "holder", contractAddress = null) {
   // Get the active chainId from the connected wallet (MetaMask)
   const provider =
     signer?.provider ??
@@ -64,8 +91,8 @@ async function signPayload(vc, signer, role = "holder") {
     name: "VC",
     version: "1.0",
     chainId: configuredChainId,
-    // Optionally add verifyingContract to bind stronger, if you have one:
-    // verifyingContract: FACTORY_OR_ESCROW_ADDRESS,
+    // ✅ Add verifyingContract to bind signature to specific contract (prevents cross-contract replay)
+    ...(contractAddress ? { verifyingContract: contractAddress } : {}),
   };
 
   const types = {
@@ -73,6 +100,7 @@ async function signPayload(vc, signer, role = "holder") {
       { name: "id", type: "string" },
       { name: "@context", type: "string[]" },
       { name: "type", type: "string[]" },
+      { name: "schemaVersion", type: "string" }, // ✅ Add schemaVersion to EIP-712 types
       { name: "issuer", type: "Party" },
       { name: "holder", type: "Party" },
       { name: "issuanceDate", type: "string" },
@@ -115,10 +143,24 @@ async function signPayload(vc, signer, role = "holder") {
   };
 }
 
-export async function signVcWithMetamask(vc, signer) {
-  return await signPayload(vc, signer, "holder");
+/**
+ * Sign VC as holder (buyer)
+ * @param {Object} vc - Verifiable Credential object
+ * @param {Object} signer - Ethers signer (from MetaMask)
+ * @param {string} [contractAddress] - Optional contract address for verifyingContract binding
+ * @returns {Promise<Object>} Proof object with signature
+ */
+export async function signVcWithMetamask(vc, signer, contractAddress = null) {
+  return await signPayload(vc, signer, "holder", contractAddress);
 }
 
-export async function signVcAsSeller(vc, signer) {
-  return await signPayload(vc, signer, "seller");
+/**
+ * Sign VC as seller (issuer)
+ * @param {Object} vc - Verifiable Credential object
+ * @param {Object} signer - Ethers signer (from MetaMask)
+ * @param {string} [contractAddress] - Optional contract address for verifyingContract binding
+ * @returns {Promise<Object>} Proof object with signature
+ */
+export async function signVcAsSeller(vc, signer, contractAddress = null) {
+  return await signPayload(vc, signer, "seller", contractAddress);
 }

@@ -26,5 +26,7 @@ export function extractZKPProof(vc) {
     verified: zkp.verified,
     description: zkp.description,
     proofType: zkp.proofType,
+    bindingTag: zkp.bindingTag, // ✅ Extract binding tag if available
+    bindingContext: zkp.bindingContext, // ✅ Extract binding context if available
   };
 }

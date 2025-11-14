@@ -13,14 +13,23 @@ export async function fetchVCFromServer(cid, backendUrl) {
   return data.vc;
 }
 
-export async function verifyVCWithServer(vc) {
-
+/**
+ * Verify VC with backend server
+ * @param {Object} vc - Verifiable Credential object
+ * @param {string} [contractAddress] - Optional contract address for verifyingContract binding
+ * @returns {Promise<Object>} Verification result
+ */
+export async function verifyVCWithServer(vc, contractAddress = null) {
   const response = await fetch(`${BACKEND_URL}/verify-vc`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
     },
-    body: JSON.stringify({ vc, isCertificate: false }),
+    body: JSON.stringify({ 
+      vc, 
+      isCertificate: false,
+      ...(contractAddress ? { contractAddress } : {}), // ✅ Pass contractAddress if provided
+    }),
   });
 
   if (!response.ok) {

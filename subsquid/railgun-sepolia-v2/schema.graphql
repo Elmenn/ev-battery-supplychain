@@ -1,0 +1,207 @@
+# Sync with TS enum in railgun-smart-wallet.ts
+enum CommitmentType {
+  ShieldCommitment
+  TransactCommitment
+  LegacyGeneratedCommitment
+  LegacyEncryptedCommitment
+}
+
+# Sync with TS enum in railgun-smart-wallet.ts
+enum TokenType {
+  ERC20
+  ERC721
+  ERC1155
+}
+
+type Token @entity {
+  id: ID! # output of getTokenID()
+  tokenType: TokenType!
+  tokenAddress: Bytes! #address
+  tokenSubID: ID!
+}
+
+type CommitmentPreimage @entity {
+  id: ID! # commitment hash
+  npk: Bytes!
+  token: Token!
+  value: BigInt!
+}
+
+type Ciphertext @entity {
+  id: ID! # commitment hash
+  iv: Bytes!
+  tag: Bytes!
+  data: [Bytes!]!
+}
+
+type LegacyCommitmentCiphertext @entity {
+  id: ID! # commitment hash
+  ciphertext: Ciphertext!
+  ephemeralKeys: [Bytes!]!
+  memo: [Bytes!]!
+}
+
+type CommitmentCiphertext @entity {
+  id: ID! # commitment hash
+  ciphertext: Ciphertext!
+  blindedSenderViewingKey: Bytes!
+  blindedReceiverViewingKey: Bytes!
+  annotationData: Bytes!
+  memo: Bytes!
+}
+
+# We use an Interface in order to query all Commitment types at once,
+#  but retain strong typings for individual fields.
+interface Commitment @query {
+  id: ID! # tree number + tree position
+  blockNumber: BigInt!
+  blockTimestamp: BigInt!
+  transactionHash: Bytes!
+  treeNumber: Int!
+  batchStartTreePosition: Int!
+  treePosition: Int!
+  commitmentType: CommitmentType!
+  hash: BigInt!
+}
+
+type LegacyGeneratedCommitment implements Commitment @entity @index(fields: ["blockNumber", "treePosition"]) {
+  # Common interface values
+  id: ID! # tree number + tree position
+  blockNumber: BigInt! 
+  blockTimestamp: BigInt!
+  transactionHash: Bytes!
+  treeNumber: Int!
+  batchStartTreePosition: Int!
+  treePosition: Int!
+  commitmentType: CommitmentType!
+  hash: BigInt!
+
+  # Custom values: GeneratedCommitmentBatch event
+  preimage: CommitmentPreimage!
+  encryptedRandom: [Bytes!]!
+}
+
+type LegacyEncryptedCommitment implements Commitment @entity @index(fields: ["blockNumber", "treePosition"]) {
+  # Common interface values
+  id: ID! # tree number + tree position
+  blockNumber: BigInt! 
+  blockTimestamp: BigInt!
+  transactionHash: Bytes!
+  treeNumber: Int!
+  batchStartTreePosition: Int!
+  treePosition: Int!
+  commitmentType: CommitmentType!
+  hash: BigInt!
+
+  # Custom values: CommitmentBatch event
+  ciphertext: LegacyCommitmentCiphertext!
+}
+
+type ShieldCommitment implements Commitment @entity @index(fields: ["blockNumber", "treePosition"]) {
+  # Common interface values
+  id: ID! # tree number + tree position
+  blockNumber: BigInt! 
+  blockTimestamp: BigInt!
+  transactionHash: Bytes!
+  treeNumber: Int!
+  batchStartTreePosition: Int!
+  treePosition: Int!
+  commitmentType: CommitmentType!
+  hash: BigInt!
+
+  # Custom values: Shield event
+  preimage: CommitmentPreimage!
+  encryptedBundle: [Bytes!]!
+  shieldKey: Bytes!
+  fee: BigInt # optional
+}
+
+type TransactCommitment implements Commitment @entity @index(fields: ["blockNumber", "treePosition"]) {
+  # Common interface values
+  id: ID! # tree number + tree position
+  blockNumber: BigInt! 
+  blockTimestamp: BigInt!
+  transactionHash: Bytes!
+  treeNumber: Int!
+  batchStartTreePosition: Int!
+  treePosition: Int!
+  commitmentType: CommitmentType!
+  hash: BigInt!
+
+  # Custom values: Transact event
+  ciphertext: CommitmentCiphertext!
+}
+
+type Unshield @entity @index(fields: ["blockNumber", "eventLogIndex"]) {
+  id: ID! # transaction hash + event log index
+  blockNumber: BigInt! 
+  blockTimestamp: BigInt!
+  transactionHash: Bytes!
+
+  # Custom required values
+  to: Bytes! #address
+  token: Token!
+  amount: BigInt!
+  fee: BigInt!
+  eventLogIndex: BigInt!
+}
+
+type Nullifier @entity @index(fields: ["blockNumber", "nullifier"]) {
+  id: ID! # transaction hash + event log index
+  blockNumber: BigInt! 
+  blockTimestamp: BigInt!
+  transactionHash: Bytes!
+
+  # Custom required values
+  treeNumber: Int!
+  nullifier: Bytes!
+}
+
+type Transaction implements TransactionInterface @entity {
+  id: ID!
+  blockNumber: BigInt!
+  transactionHash: Bytes!
+  merkleRoot: Bytes!
+  nullifiers: [Bytes!]!
+  commitments: [Bytes!]!
+  boundParamsHash: Bytes!
+  hasUnshield: Boolean!
+  utxoTreeIn: BigInt!
+  utxoTreeOut: BigInt!
+  utxoBatchStartPositionOut: BigInt!
+  unshieldToken: Token!
+  unshieldToAddress: Bytes!
+  unshieldValue: BigInt!
+  blockTimestamp: BigInt!
+  verificationHash: Bytes!
+}
+
+interface TransactionInterface {
+  id: ID!
+  blockNumber: BigInt!
+  transactionHash: Bytes!
+  merkleRoot: Bytes!
+  nullifiers: [Bytes!]!
+  commitments: [Bytes!]!
+  boundParamsHash: Bytes!
+  hasUnshield: Boolean!
+  utxoTreeIn: BigInt!
+  utxoTreeOut: BigInt!
+  utxoBatchStartPositionOut: BigInt!
+  unshieldToken: Token!
+  unshieldToAddress: Bytes!
+  unshieldValue: BigInt!
+  blockTimestamp: BigInt!
+  verificationHash: Bytes!
+}
+
+type VerificationHash @entity {
+  id: ID!
+  verificationHash: Bytes!
+}
+
+type CommitmentBatchEventNew @entity {
+  id: ID! # commitment hash
+  treeNumber: BigInt!
+  batchStartTreePosition: BigInt!
+}

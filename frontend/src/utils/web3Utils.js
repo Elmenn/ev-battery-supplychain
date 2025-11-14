@@ -2,7 +2,7 @@
 
 import { JsonRpcProvider, BrowserProvider, Wallet, Contract } from "ethers";
 import Web3 from "web3";
-import ProductEscrowArtifact from "../abis/ProductEscrow.json";
+import ProductEscrowArtifact from "../abis/ProductEscrow_Initializer.json";
 
 // 1) Ethers provider for read-only calls
 export const ethersProvider = new JsonRpcProvider(

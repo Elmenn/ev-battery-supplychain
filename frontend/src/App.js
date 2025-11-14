@@ -9,8 +9,8 @@ import { getCurrentCid } from "./utils/web3Utils";
 import { uploadJson } from "./utils/ipfs";
 import { signVcWithMetamask } from "./utils/signVcWithMetamask";
 import { buildStage3VC } from "./utils/vcBuilder.mjs";
-import ProductEscrowABI from "./abis/ProductEscrow.json";
-import { RailgunIntegration } from "./components/railgun";
+import ProductEscrowABI from "./abis/ProductEscrow_Initializer.json";
+
 
 function App() {
   const [provider, setProvider] = useState(null);
@@ -123,7 +123,7 @@ function App() {
   if (!provider || !myAddress) return <div>⏳ Connecting wallet…</div>;
 
   return (
-    <BrowserRouter>
+    <BrowserRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
       <div className="App">
         <Routes>
           <Route
@@ -146,14 +146,7 @@ function App() {
               />
             }
           />
-          <Route
-            path="/railgun"
-            element={
-              <RailgunIntegration
-                escrowContract={null} // Will be passed when needed
-              />
-            }
-          />
+
         </Routes>
       </div>
     </BrowserRouter>

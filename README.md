@@ -311,6 +311,9 @@ Detailed architecture, cryptography notes, and protocol specifications live unde
 3. `docs/SMART_CONTRACT_SPECIFICATION.md` - Smart contract details and API
 4. `docs/zkp-vc-architecture.md` - Detailed workflow with numbered sequence diagrams
 
+**For Auditors:**
+- **`docs/AUDITOR_GUIDE.md`** - **Step-by-step guide for verifying product credentials** ⭐
+
 **Additional Resources:**
 - `docs/zkp-documentation-index.md` - Complete index of all ZKP documentation
 - `docs/architecture.md` - Overall system architecture

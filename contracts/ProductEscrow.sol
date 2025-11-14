@@ -1,25 +1,25 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.0;
 
-// Custom errors for gas savings and better debugging
-error WrongPhase(ProductEscrow.Phase expected, ProductEscrow.Phase got);
-error NotTransporter();
-error BidCap();
-error Exists();
-error NotRegistered();
-error Fee();
-error Delivered();
-error Timeout();
-error Confirm();
-error Deposit();
-error Refund();
-error Penalty();
-error Transfer();
-error VC();
-error AlreadyPaid();
-error ZeroMemoHash();
-error ZeroTxRef();
-error NotParticipant();
+// Custom errors for gas savings and better debugging - TEMPORARILY COMMENTED FOR TRUFFLE V5 COMPATIBILITY
+// error WrongPhase(ProductEscrow.Phase expected, ProductEscrow.Phase got);
+// error NotTransporter();
+// error BidCap();
+// error Exists();
+// error NotRegistered();
+// error Fee();
+// error Delivered();
+// error Timeout();
+// error Confirm();
+// error Deposit();
+// error Refund();
+// error Penalty();
+// error Transfer();
+// error VC();
+// error AlreadyPaid();
+// error ZeroMemoHash();
+// error ZeroTxRef();
+// error NotParticipant();
 
 import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 
@@ -39,6 +39,7 @@ contract ProductEscrow is ReentrancyGuard {
     bool public delivered;
     enum Phase { Listed, Purchased, OrderConfirmed, Bound, Delivered, Expired }
     Phase public phase;
+    
     // Cap on number of transporter bids to prevent DoS and high gas
     function maxBids() internal view virtual returns (uint8) {
         return 20;
@@ -53,7 +54,6 @@ contract ProductEscrow is ReentrancyGuard {
     uint32 public constant DELIVERY_WINDOW = 2 days; // Delivery window after transporter is set
     uint public orderConfirmedTimestamp; // Timestamp when seller confirms order (start of bidding window)
     uint public productPrice; // Explicitly track the buyer's deposit amount
-
 
     struct TransporterFees {
         uint fee;
@@ -76,22 +76,22 @@ contract ProductEscrow is ReentrancyGuard {
     event ValueCommitted(bytes32 commitment, bytes proof);
 
     modifier onlyBuyer() {
-        if (msg.sender != buyer) revert NotTransporter();
+        require(msg.sender == buyer, "Not buyer");
         _;
     }
 
     modifier onlySeller() {
-        if (msg.sender != owner) revert NotTransporter();
+        require(msg.sender == owner, "Not seller");
         _;
     }
 
     modifier transporterSet() {
-        if (transporter == address(0)) revert NotTransporter();
+        require(transporter != address(0), "Transporter not set");
         _;
     }
 
     modifier onlyTransporter() {
-        if (msg.sender != transporter) revert NotTransporter();
+        require(msg.sender == transporter, "Not transporter");
         _;
     }
 
@@ -128,8 +128,8 @@ contract ProductEscrow is ReentrancyGuard {
     }
 
     function confirmOrder(string memory vcCID) public onlySeller {
-        if (phase != Phase.Purchased) revert WrongPhase(Phase.Purchased, phase);
-        if (block.timestamp > purchaseTimestamp + SELLER_WINDOW) revert Confirm();
+        require(phase == Phase.Purchased, "Wrong phase");
+        require(block.timestamp <= purchaseTimestamp + SELLER_WINDOW, "Seller window expired");
         orderConfirmedTimestamp = block.timestamp;
         Phase oldPhase = phase;
         phase = Phase.OrderConfirmed;
@@ -140,14 +140,13 @@ contract ProductEscrow is ReentrancyGuard {
     }
 
     function updateVcCid(string memory cid) public onlySeller {
-    vcCid = cid;
-    emit VcUpdated(cid);
+        vcCid = cid;
+        emit VcUpdated(cid);
     }
 
-
     function depositPurchase(bytes32 _commitment, bytes32 _valueCommitment, bytes calldata _valueRangeProof) public payable nonReentrant {
-        if (purchased) revert Deposit();
-        if (msg.sender == owner) revert Deposit();
+        require(!purchased, "Already purchased");
+        require(msg.sender != owner, "Owner cannot purchase");
         purchased    = true;
         buyer        = payable(msg.sender);
         purchaseTimestamp = block.timestamp;
@@ -162,8 +161,29 @@ contract ProductEscrow is ReentrancyGuard {
         emit OrderConfirmed(buyer, priceCommitment, ""); // Optionally emit event
     }
 
+    // Simple public purchase function for non-private transactions
+    function publicPurchase() public payable nonReentrant {
+        require(!purchased, "Already purchased");
+        require(msg.sender != owner, "Owner cannot purchase");
+        
+        purchased = true;
+        buyer = payable(msg.sender);
+        purchaseTimestamp = block.timestamp;
+        productPrice = msg.value;
+        
+        Phase oldPhase = phase;
+        phase = Phase.Purchased;
+        
+        // Create a simple commitment from the actual price for consistency
+        bytes32 simpleCommitment = keccak256(abi.encodePacked(msg.value, block.timestamp));
+        priceCommitment = simpleCommitment;
+        
+        emit PhaseChanged(oldPhase, phase, block.timestamp);
+        emit OrderConfirmed(buyer, priceCommitment, "");
+    }
+
     function withdrawProductPrice() public onlyBuyer transporterSet {
-        if (!purchased) revert Deposit();
+        require(purchased, "Not purchased");
         // Ether transfer logic commented out
         // owner.transfer(price);
         // transporter.transfer(price + deliveryFee);
@@ -171,7 +191,7 @@ contract ProductEscrow is ReentrancyGuard {
     }
 
     function cancelDelivery() public onlySeller transporterSet {
-        if (!purchased) revert Deposit();
+        require(purchased, "Not purchased");
         // Ether transfer logic commented out
         // transporter.transfer((2 * price) / 10 + deliveryFee + price);
         // owner.transfer(price / 10);
@@ -180,13 +200,13 @@ contract ProductEscrow is ReentrancyGuard {
     }
 
     function setTransporter(address payable _transporter) external payable onlySeller {
-        if (phase != Phase.OrderConfirmed) revert WrongPhase(Phase.OrderConfirmed, phase);
-        if (block.timestamp > orderConfirmedTimestamp + BID_WINDOW) revert Timeout();
+        require(phase == Phase.OrderConfirmed, "Wrong phase");
+        require(block.timestamp <= orderConfirmedTimestamp + BID_WINDOW, "Bidding window expired");
         Phase oldPhase = phase;
         phase = Phase.Bound; // Move to Bound phase after transporter is set
         emit PhaseChanged(oldPhase, phase, block.timestamp); // Emit on phase change
-        if (msg.value != transporters[_transporter].fee) revert Fee();
-        if (transporters[_transporter].fee == 0) revert NotTransporter();
+        require(msg.value == transporters[_transporter].fee, "Incorrect fee");
+        require(transporters[_transporter].fee != 0, "Not a transporter");
         deliveryFee = msg.value;
         transporter = _transporter;
         // Refund security deposits to all non-selected transporters
@@ -196,7 +216,7 @@ contract ProductEscrow is ReentrancyGuard {
 
     function createTransporter(uint _feeInWei) public {
         require(transporterCount < maxBids(), "Bid cap reached");
-        if (transporters[msg.sender].fee != 0) revert Exists();
+        require(transporters[msg.sender].fee == 0, "Already exists");
         // Store fee in wei for precision
         transporters[msg.sender] = TransporterFees({ fee: _feeInWei });
         isTransporter[msg.sender] = true;
@@ -207,7 +227,7 @@ contract ProductEscrow is ReentrancyGuard {
 
     function securityDeposit() public payable {
         // Allow any registered transporter to deposit before selection
-        if (!isTransporter[msg.sender]) revert NotRegistered();
+        require(isTransporter[msg.sender], "Not registered");
         securityDeposits[msg.sender] += msg.value;
         emit TransporterSecurityDeposit(msg.sender, msg.value);
     }
@@ -225,8 +245,8 @@ contract ProductEscrow is ReentrancyGuard {
     }
 
     function checkAndDeleteProduct() public {
-        if (!purchased) revert Deposit();
-        if (block.timestamp < purchaseTimestamp + 2 days) revert Timeout();
+        require(purchased, "Not purchased");
+        require(block.timestamp >= purchaseTimestamp + 2 days, "Too early to delete");
 
         emit ProductDeleted(id, name);
         deleteProduct(); // Custom logic to delete the product from storage
@@ -265,10 +285,9 @@ contract ProductEscrow is ReentrancyGuard {
 
     // Internal delivery logic, only callable after valid reveal
     function _confirmDelivery(string memory vcCID) internal {
-        if (delivered) revert("delivered");
-        if (block.timestamp > orderConfirmedTimestamp + DELIVERY_WINDOW) revert("timeout");
+        require(!delivered, "Already delivered");
+        require(block.timestamp <= orderConfirmedTimestamp + DELIVERY_WINDOW, "Delivery timeout");
         delivered = true;
-        Phase oldPhase = phase;
         phase = Phase.Delivered;
         
         // Check if private payment was recorded
@@ -279,11 +298,11 @@ contract ProductEscrow is ReentrancyGuard {
         } else {
             // Fallback to on-chain payment (for backward compatibility)
             uint price = productPrice;
-            if (price == 0) revert("price zero");
+            require(price != 0, "Price zero");
             (bool sentSeller, ) = owner.call{value: price}("");
-            if (!sentSeller) revert("seller transfer fail");
+            require(sentSeller, "Seller transfer failed");
             (bool sentTransporter, ) = transporter.call{value: deliveryFee + securityDeposits[transporter]}("");
-            if (!sentTransporter) revert("transporter transfer fail");
+            require(sentTransporter, "Transporter transfer failed");
         }
         
         owner = buyer;
@@ -296,8 +315,8 @@ contract ProductEscrow is ReentrancyGuard {
     // function confirmDelivery(string memory vcCID) public onlyBuyer transporterSet nonReentrant { ... }
 
     function timeout() public nonReentrant {
-        if (delivered) revert Delivered();
-        if (block.timestamp <= orderConfirmedTimestamp + DELIVERY_WINDOW) revert Timeout();
+        require(!delivered, "Already delivered");
+        require(block.timestamp > orderConfirmedTimestamp + DELIVERY_WINDOW, "Not yet timeout");
         Phase oldPhase = phase;
         phase = Phase.Expired;
         emit PhaseChanged(oldPhase, phase, block.timestamp); // Emit on phase change
@@ -309,51 +328,51 @@ contract ProductEscrow is ReentrancyGuard {
         // Refund buyer: productPrice + penalty (if any)
         uint refundToBuyer = productPrice + penalty;
         (bool sentBuyer, ) = buyer.call{value: refundToBuyer}("");
-        if (!sentBuyer) revert Refund();
+        require(sentBuyer, "Buyer refund failed");
         emit FundsTransferred(buyer, refundToBuyer);
         // Forfeit penalty from transporter to buyer
         if (penalty > 0) {
             (bool sentPenalty, ) = buyer.call{value: penalty}("");
-            if (!sentPenalty) revert Penalty();
+            require(sentPenalty, "Penalty transfer failed");
             emit PenaltyApplied(transporter, penalty, "Late delivery");
         }
         emit DeliveryTimeout(msg.sender, block.timestamp);
     }
 
     function sellerTimeout() public nonReentrant {
-        if (delivered) revert Delivered();
-        if (phase != Phase.Purchased) revert WrongPhase(Phase.Purchased, phase);
-        if (block.timestamp <= purchaseTimestamp + SELLER_WINDOW) revert Timeout();
+        require(!delivered, "Already delivered");
+        require(phase == Phase.Purchased, "Wrong phase");
+        require(block.timestamp > purchaseTimestamp + SELLER_WINDOW, "Seller window not expired");
         Phase oldPhase = phase;
         phase = Phase.Expired;
         emit PhaseChanged(oldPhase, phase, block.timestamp); // Emit on phase change
         // Refund buyer: productPrice
         (bool sentBuyer, ) = buyer.call{value: productPrice}("");
-        if (!sentBuyer) revert Refund();
+        require(sentBuyer, "Buyer refund failed");
         emit FundsTransferred(buyer, productPrice);
         emit SellerTimeout(msg.sender, block.timestamp);
     }
 
     function bidTimeout() public nonReentrant {
-        if (phase != Phase.OrderConfirmed) revert WrongPhase(Phase.OrderConfirmed, phase);
-        if (block.timestamp <= orderConfirmedTimestamp + BID_WINDOW) revert Timeout();
+        require(phase == Phase.OrderConfirmed, "Wrong phase");
+        require(block.timestamp > orderConfirmedTimestamp + BID_WINDOW, "Bidding window not expired");
         Phase oldPhase = phase;
         phase = Phase.Expired;
         emit PhaseChanged(oldPhase, phase, block.timestamp); // Emit on phase change
         // Refund buyer: productPrice
         (bool sentBuyer, ) = buyer.call{value: productPrice}("");
-        if (!sentBuyer) revert Refund();
+        require(sentBuyer, "Buyer refund failed");
         emit FundsTransferred(buyer, productPrice);
         // Optionally emit a BidTimeout event if desired
     }
 
     function withdrawBid() public nonReentrant {
         // Only allow withdrawal before transporter is set and in OrderConfirmed phase
-        if (phase != Phase.OrderConfirmed) revert WrongPhase(Phase.OrderConfirmed, phase);
-        if (transporter == msg.sender) revert NotTransporter(); // Can't withdraw if already selected
+        require(phase == Phase.OrderConfirmed, "Wrong phase");
+        require(transporter != msg.sender, "Already selected");
         uint fee = transporters[msg.sender].fee;
         uint deposit = securityDeposits[msg.sender];
-        if (fee == 0 && deposit == 0) revert NotRegistered(); // Not an active bid
+        require(fee != 0 || deposit != 0, "Not registered");
         // Remove transporter from mapping
         transporters[msg.sender].fee = 0;
         securityDeposits[msg.sender] = 0;
@@ -362,7 +381,7 @@ contract ProductEscrow is ReentrancyGuard {
         uint refundAmount = deposit;
         if (refundAmount > 0) {
             (bool sent, ) = payable(msg.sender).call{value: refundAmount}("");
-            if (!sent) revert Refund();
+            require(sent, "Refund failed");
             emit FundsTransferred(msg.sender, refundAmount);
         }
         emit BidWithdrawn(msg.sender, refundAmount);
@@ -383,26 +402,26 @@ contract ProductEscrow is ReentrancyGuard {
      */
     function recordPrivatePayment(uint256 _productId, bytes32 _memoHash, bytes32 _railgunTxRef) external {
         // Input validation
-        if (_productId != id) revert NotRegistered(); // Ensure correct product
-        if (_memoHash == bytes32(0)) revert ZeroMemoHash();
-        if (_railgunTxRef == bytes32(0)) revert ZeroTxRef();
+        require(_productId == id, "Wrong product ID");
+        require(_memoHash != bytes32(0), "Zero memo hash");
+        require(_railgunTxRef != bytes32(0), "Zero tx ref");
         
         // Phase and state validation
-        if (phase != Phase.Bound) revert WrongPhase(Phase.Bound, phase);
-        if (delivered) revert Delivered();
-        if (transporter == address(0)) revert NotTransporter();
+        require(phase == Phase.Bound, "Wrong phase");
+        require(!delivered, "Already delivered");
+        require(transporter != address(0), "No transporter");
         
         // Prevent multiple payments for the same product
-        if (productMemoHashes[id] != bytes32(0)) revert AlreadyPaid();
+        require(productMemoHashes[id] == bytes32(0), "Already paid");
         
         // Prevent global memo reuse first (cross-product protection)
-        if (usedMemoHash[_memoHash]) revert Exists();
+        require(!usedMemoHash[_memoHash], "Memo already used");
         
         // Prevent duplicate recordings for this specific memo
-        if (privatePayments[_memoHash]) revert Exists();
+        require(!privatePayments[_memoHash], "Payment already recorded");
         
         // Only allow buyer, seller, or transporter to record
-        if (msg.sender != buyer && msg.sender != owner && msg.sender != transporter) revert NotParticipant();
+        require(msg.sender == buyer || msg.sender == owner || msg.sender == transporter, "Not participant");
         
         // Record the private payment
         privatePayments[_memoHash] = true;
