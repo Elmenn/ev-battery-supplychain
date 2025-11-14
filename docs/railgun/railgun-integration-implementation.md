@@ -291,7 +291,7 @@ await railgunEngine.unshield(token, amount, toAddress);
 ### **Documentation**
 - [Railgun Integration Plan](railgun-integration-plan.md)
 - [Railgun Audit Operations](railgun-audit-operations.md)
-- [Value Privacy Comparison](./value-privacy-comparison.md)
+- [Value Privacy Comparison](../value-privacy-comparison.md)
 
 ### **Technical Resources**
 - [Railgun Documentation](https://railgun.org/docs)
