@@ -21,12 +21,6 @@ Install the following before you begin:
 - [MetaMask](https://metamask.io/) browser extension (optional for UI testing)
 - [Git](https://git-scm.com/)
 
-(Optional) If you plan to use the Rust backend frequently, install the `wasm32-unknown-unknown` toolchain:
-
-```bash
-rustup target add wasm32-unknown-unknown
-```
-
 ---
 
 ## 2. Clone the Repository
