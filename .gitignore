@@ -1,1 +1,41 @@
 node_modules
+
+# Railgun backend (optional - not needed for public flow)
+backend/railgun/
+backend/railgun/**/*
+
+# Railgun database files
+*.db
+*.sqlite
+*.sqlite3
+
+# Railgun test files
+test-railgun-*.js
+test/*railgun*.js
+
+# Railgun documentation (optional - not needed for public flow)
+RAILGUN_*.md
+docs/railgun-*.md
+docs/*railgun*.md
+figure3_railgun_mechanics.md
+railgun-ecosystem-analysis.mjs
+
+# Environment files
+.env
+.env.local
+.env.*.local
+
+# Build outputs
+build/
+dist/
+*.log
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
