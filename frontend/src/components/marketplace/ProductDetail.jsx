@@ -706,12 +706,48 @@ const statusLabel = isDelivered
         return;
       }
       console.log('[Flow][Buyer] Step 2 → Transaction sent, hash:', tx.hash);
+      
+      // Show transaction hash and link to block explorer
+      const chainId = await provider.getNetwork().then(n => n.chainId);
+      const explorerUrl = chainId === 11155111n 
+        ? `https://sepolia.etherscan.io/tx/${tx.hash}`
+        : chainId === 1337n || chainId === 5777n
+        ? `#` // Local network, no explorer
+        : `https://etherscan.io/tx/${tx.hash}`;
+      
+      // Show transaction hash with link
+      const txHashShort = `${tx.hash.slice(0, 10)}...${tx.hash.slice(-8)}`;
+      if (explorerUrl !== '#') {
+        setStatusMessage(`⏳ Transaction submitted! Hash: ${txHashShort} - View on explorer: ${explorerUrl}`);
+      } else {
+        setStatusMessage(`⏳ Transaction submitted! Hash: ${txHashShort}`);
+      }
+      
+      // Wait for transaction confirmation
+      const receipt = await tx.wait();
       setStatusMessage("✅ Public purchase complete!");
       loadProductData();
     } catch (err) {
+      // Better error messages
+      let errorMsg = "Purchase failed";
       const reason = err?.shortMessage || err?.info?.error?.message || err?.message || String(err);
+      
+      if (reason.includes("user rejected") || reason.includes("User denied")) {
+        errorMsg = "Transaction was cancelled. Please try again.";
+      } else if (reason.includes("insufficient funds") || reason.includes("insufficient balance")) {
+        errorMsg = "Insufficient funds. Please add more ETH to your wallet.";
+      } else if (reason.includes("gas") || reason.includes("intrinsic gas")) {
+        errorMsg = "Transaction failed due to gas estimation. Please try again.";
+      } else if (reason.includes("network") || reason.includes("connection")) {
+        errorMsg = "Network error. Please check your connection and try again.";
+      } else if (reason.includes("nonce")) {
+        errorMsg = "Transaction nonce error. Please wait a moment and try again.";
+      } else {
+        errorMsg = `Purchase failed: ${reason}`;
+      }
+      
       console.error("Public purchase failed:", err);
-      setError(`Buy failed: ${reason}`);
+      setError(errorMsg);
     }
   };
 
@@ -807,12 +843,34 @@ const statusLabel = isDelivered
       }
       const tx = await confirmOrder(address, newCid);
       console.log('[Flow][Seller] Step 3 → Order confirmed on-chain, tx hash:', tx.hash);
+      
+      // Show transaction hash
+      const chainId = await provider.getNetwork().then(n => n.chainId);
+      setStatusMessage(`⏳ Confirming order... Transaction: ${tx.hash.slice(0, 10)}...${tx.hash.slice(-8)}`);
+      await tx.wait();
 
       loadProductData();
       setStatusMessage("✅ Order confirmed");
     } catch (err) {
+      // Better error messages
+      let errorMsg = "Failed to confirm order";
+      const reason = err?.shortMessage || err?.info?.error?.message || err?.message || String(err);
+      
+      if (reason.includes("user rejected") || reason.includes("User denied")) {
+        errorMsg = "Transaction was cancelled. Please try again.";
+      } else if (reason.includes("insufficient funds")) {
+        errorMsg = "Insufficient funds. Please add more ETH to your wallet.";
+      } else if (reason.includes("gas")) {
+        errorMsg = "Transaction failed due to gas estimation. Please try again.";
+      } else if (reason.includes("network") || reason.includes("connection")) {
+        errorMsg = "Network error. Please check your connection and try again.";
+      } else {
+        errorMsg = `Failed to confirm order: ${reason}`;
+      }
+      
       console.error(err);
-      setError("Confirm order failed");
+      setError(errorMsg);
+      setStatusMessage("");
     }
   };
 
@@ -1127,12 +1185,39 @@ const statusLabel = isDelivered
         blinding,
         vcCID
       );
+      // Show transaction hash
+      const chainId = await provider.getNetwork().then(n => n.chainId);
+      const explorerUrl = chainId === 11155111n 
+        ? `https://sepolia.etherscan.io/tx/${tx.hash}`
+        : chainId === 1337n || chainId === 5777n
+        ? `#`
+        : `https://etherscan.io/tx/${tx.hash}`;
+      
+      setStatusMessage(`⏳ Confirming delivery... Transaction: ${tx.hash.slice(0, 10)}...${tx.hash.slice(-8)}`);
       await tx.wait();
       console.log('[Flow][Buyer] Step 6 → Delivery confirmed on-chain, tx hash:', tx.hash);
       setStatusMessage('✅ Delivery confirmed!');
       loadProductData();
     } catch (err) {
-      setError('Delivery confirmation failed: ' + err.message);
+      // Better error messages
+      let errorMsg = "Failed to confirm delivery";
+      const reason = err?.shortMessage || err?.info?.error?.message || err?.message || String(err);
+      
+      if (reason.includes("user rejected") || reason.includes("User denied")) {
+        errorMsg = "Transaction was cancelled. Please try again.";
+      } else if (reason.includes("insufficient funds")) {
+        errorMsg = "Insufficient funds. Please add more ETH to your wallet.";
+      } else if (reason.includes("gas")) {
+        errorMsg = "Transaction failed due to gas estimation. Please try again.";
+      } else if (reason.includes("network") || reason.includes("connection")) {
+        errorMsg = "Network error. Please check your connection and try again.";
+      } else if (reason.includes("No seller-signed VC")) {
+        errorMsg = "Seller must sign the VC first. Please wait for the seller to sign.";
+      } else {
+        errorMsg = `Delivery confirmation failed: ${reason}`;
+      }
+      
+      setError(errorMsg);
       setStatusMessage('');
       console.error(err);
     }
@@ -1393,7 +1478,25 @@ return (
     </div>
 
     {/* Alerts */}
-    {statusMessage && <p className="text-blue-600">{statusMessage}</p>}
+    {statusMessage && (
+      <div className="text-blue-600">
+        {statusMessage.includes("View on explorer:") ? (
+          <p>
+            {statusMessage.split("View on explorer:")[0]}
+            <a 
+              href={statusMessage.split("View on explorer:")[1]?.trim()} 
+              target="_blank" 
+              rel="noopener noreferrer"
+              className="ml-2 underline hover:text-blue-800"
+            >
+              View on explorer
+            </a>
+          </p>
+        ) : (
+          <p>{statusMessage}</p>
+        )}
+      </div>
+    )}
     {error && <p className="text-red-600">{error}</p>}
 
     {/* ────────── Action Buttons (Top) ───────── */}

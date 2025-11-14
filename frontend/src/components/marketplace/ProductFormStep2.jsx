@@ -23,10 +23,25 @@ const ProductFormStep2 = ({ onNext }) => {
     }));
   };
 
+  // Validate IPFS CID format
+  const isValidCID = (cid) => {
+    if (!cid || typeof cid !== 'string') return false;
+    // IPFS CID v0: Qm... (46 chars) or CID v1: starts with b, z, etc.
+    const cidV0Pattern = /^Qm[1-9A-HJ-NP-Za-km-z]{44}$/;
+    const cidV1Pattern = /^[bBzZ][a-zA-Z0-9]{58,}$/;
+    return cidV0Pattern.test(cid) || cidV1Pattern.test(cid);
+  };
+
   // Fetch and verify a component VC from IPFS
   const fetchAndVerifyComponentVC = async (cid) => {
     try {
       setVerifyingComponent(true);
+      
+      // Validate CID format first
+      if (!isValidCID(cid)) {
+        throw new Error("Invalid IPFS CID format. Please check the CID and try again.");
+      }
+      
       const response = await fetch(`https://ipfs.io/ipfs/${cid}`);
       if (!response.ok) {
         throw new Error(`Failed to fetch VC from IPFS: ${response.status}`);
@@ -73,6 +88,12 @@ const ProductFormStep2 = ({ onNext }) => {
   const handleAddComponent = async () => {
     if (!componentCidInput.trim()) {
       toast.error("Please enter a component VC CID");
+      return;
+    }
+    
+    // Validate CID format
+    if (!isValidCID(componentCidInput.trim())) {
+      toast.error("Invalid IPFS CID format. Please check the CID and try again.");
       return;
     }
 
@@ -177,6 +198,12 @@ const ProductFormStep2 = ({ onNext }) => {
           name="certificateCid"
           value={formData.certificateCid}
           onChange={handleChange}
+          onBlur={(e) => {
+            const value = e.target.value.trim();
+            if (value && !isValidCID(value)) {
+              toast.error("Invalid IPFS CID format for certificate");
+            }
+          }}
           placeholder="Qm..."
         />
       </div>

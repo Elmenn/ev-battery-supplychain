@@ -58,23 +58,19 @@ const ProvenanceChainViewer = ({ vc, cid, currentProductState = null }) => {
       const { buyer, transporter, purchased, phase, owner } = currentProductState;
       const ZERO = "0x0000000000000000000000000000000000000000";
       
-      // Extract addresses from VC for comparison
-      const extractAddress = (did) => {
-        if (!did) return null;
-        const parts = did.split(':');
-        return parts.length > 3 ? parts[3] : null;
-      };
+      // Normalize addresses for comparison
+      const normalizeAddr = (addr) => addr ? addr.toLowerCase() : null;
+      const ownerAddr = normalizeAddr(owner);
+      const buyerAddr = normalizeAddr(buyer);
       
-      const holder = vc.holder?.id;
-      const issuer = vc.issuer?.id;
-      const holderAddress = extractAddress(holder);
-      const issuerAddress = extractAddress(issuer);
-      const ownerIsBuyer = holderAddress && issuerAddress && holderAddress.toLowerCase() === issuerAddress.toLowerCase();
+      // Check if product is delivered: phase >= 4 OR owner === buyer (same as ProductCard logic)
+      const isDelivered = (typeof phase === 'number' && phase >= 4) || 
+                         (ownerAddr && buyerAddr && ownerAddr === buyerAddr);
       const hasTransporter = transporter && transporter !== ZERO;
       const hasBuyer = buyer && buyer !== ZERO;
       
       // Match ProductCard status logic using current product state:
-      if (ownerIsBuyer) {
+      if (isDelivered) {
         return { status: "Delivered", label: "Delivered", color: "#28a745", bgColor: "#d4edda" };
       } else if (hasTransporter) {
         return { status: "In Delivery", label: "In Delivery", color: "#004085", bgColor: "#cce5ff" };
