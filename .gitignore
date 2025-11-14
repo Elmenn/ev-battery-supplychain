@@ -29,6 +29,7 @@ railgun-ecosystem-analysis.mjs
 build/
 dist/
 *.log
+bin/
 
 # Ganache database (local blockchain state)
 ganache-db/
@@ -42,3 +43,10 @@ ganache-db/
 # OS
 .DS_Store
 Thumbs.db
+
+# Rust build artifacts (already in zkp-backend/.gitignore, but adding here for completeness)
+**/target/
+**/Cargo.lock
+
+# Solidity compiler outputs
+solc-output-*.json
