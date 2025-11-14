@@ -98,6 +98,9 @@ Choose your network: **Ganache (local)** or **Sepolia (testnet)**.
 2. **Configure frontend environment:**
    ```bash
    cd frontend
+   copy .env.ganache.example .env.ganache     # Windows
+   # cp .env.ganache.example .env.ganache      # macOS/Linux
+   # Then edit .env.ganache and fill in your actual values
    copy .env.ganache .env     # Windows
    # cp .env.ganache .env      # macOS/Linux
    cd ..
@@ -115,8 +118,9 @@ Choose your network: **Ganache (local)** or **Sepolia (testnet)**.
 
 1. **Create `.env.truffle` in repo root:**
    ```bash
-   MNEMONIC="your twelve word mnemonic phrase here"
-   ALCHEMY_API_KEY="your-alchemy-api-key"
+   copy .env.truffle.example .env.truffle     # Windows
+   # cp .env.truffle.example .env.truffle      # macOS/Linux
+   # Then edit .env.truffle and fill in your actual values
    ```
 
 2. **Get Sepolia ETH:**
@@ -126,6 +130,9 @@ Choose your network: **Ganache (local)** or **Sepolia (testnet)**.
 3. **Configure frontend environment:**
    ```bash
    cd frontend
+   copy .env.sepolia.example .env.sepolia     # Windows
+   # cp .env.sepolia.example .env.sepolia      # macOS/Linux
+   # Then edit .env.sepolia and fill in your actual values
    copy .env.sepolia .env     # Windows
    # cp .env.sepolia .env      # macOS/Linux
    cd ..
