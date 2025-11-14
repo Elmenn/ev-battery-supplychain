@@ -30,6 +30,9 @@ build/
 dist/
 *.log
 
+# Ganache database (local blockchain state)
+ganache-db/
+
 # IDE
 .vscode/
 .idea/
