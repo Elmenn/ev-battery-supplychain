@@ -7,15 +7,38 @@ import { buildStage2VC, buildStage3VC, freezeVcJson } from "../../utils/vcBuilde
 import { signVcAsSeller } from "../../utils/signVcWithMetamask";
 import { signVcWithMetamask } from "../../utils/signVcWithMetamask";
 import debugReveal from "../../debugCommitment";
+import { generateCommitmentWithBindingTag, verifyCommitmentMatch, generateDeterministicBlinding } from "../../utils/commitmentUtils";
 import { saveAs } from 'file-saver'; // For optional file download (npm install file-saver)
 import toast from 'react-hot-toast';
 import ProductEscrowABI from "../../abis/ProductEscrow_Initializer.json";
 import VCViewer from "../../components/vc/VCViewer";
 import VerifyVCInline from "../../components/vc/VerifyVCInline";
+import ProvenanceChainViewer from "../../components/vc/ProvenanceChainViewer";
 import PrivatePaymentModal from "../railgun/PrivatePaymentModal";
-import StageCard from "../ui/StageCard";
 import { Button } from "../ui/button";
+import { Tabs, Tab } from "../ui/Tabs";
 import { Eye, EyeOff } from "lucide-react";
+
+// Copyable component (same as in VCViewer)
+function truncate(text, length = 12) {
+  if (!text || text.length <= length) return text;
+  const start = text.slice(0, 6);
+  const end = text.slice(-4);
+  return `${start}…${end}`;
+}
+
+function Copyable({ value }) {
+  return (
+    <span
+      className="copyable"
+      title={value}
+      onClick={() => navigator.clipboard.writeText(value)}
+      style={{ cursor: "pointer", textDecoration: "underline", color: "#2563eb" }}
+    >
+      {truncate(value)}
+    </span>
+  );
+}
 
 // Extract the actual ABI array from the imported JSON
 const ESCROW_ABI = ProductEscrowABI.abi;
@@ -25,8 +48,9 @@ const VC_CHAIN =
   process.env.REACT_APP_NETWORK_ID ||
   "1337";
 
-// API base constant (mirror railgunUtils.js)
-const RAILGUN_API_BASE = process.env.REACT_APP_RAILGUN_API_URL || 'http://localhost:3001';
+const rawRailgunApiBase = (process.env.REACT_APP_RAILGUN_API_URL || '').trim();
+const RAILGUN_API_BASE = rawRailgunApiBase.length > 0 ? rawRailgunApiBase : null;
+const IS_RAILGUN_API_CONFIGURED = !!RAILGUN_API_BASE;
 
 // Utility function for safe JSON serialization (handles BigInt)
 const safeJSON = (x) => JSON.parse(JSON.stringify(x, (_, v) =>
@@ -38,6 +62,9 @@ const ZERO = "0x0000000000000000000000000000000000000000";
 const ProductDetail = ({ provider, currentUser, onConfirmDelivery }) => {
   // quick helper to gate private UI
   const checkRailgunReady = useCallback(async () => {
+    if (!IS_RAILGUN_API_CONFIGURED) {
+      return false;
+    }
     try {
       const res = await fetch(`${RAILGUN_API_BASE}/api/railgun/status`);
       const json = await res.json();
@@ -50,7 +77,7 @@ const ProductDetail = ({ provider, currentUser, onConfirmDelivery }) => {
   const openPrivatePaymentModal = useCallback(async () => {
     const ok = await checkRailgunReady();
     if (!ok) {
-      toast.error('Private flow temporarily unavailable (engine in fallback). Try again later.');
+      toast.error('Private flow temporarily unavailable (Railgun engine offline).');
       return;
     }
     setShowPrivatePaymentModal(true);
@@ -99,7 +126,7 @@ const ProductDetail = ({ provider, currentUser, onConfirmDelivery }) => {
 
   // Robust delete function that prevents multiple calls
   const deletePendingReceipt = useCallback(async (productId) => {
-    if (deletingReceipt) {
+    if (!IS_RAILGUN_API_CONFIGURED || deletingReceipt) {
       return;
     }
 
@@ -123,7 +150,10 @@ const ProductDetail = ({ provider, currentUser, onConfirmDelivery }) => {
 
   // Check for pending private payments that need seller confirmation
   const checkPendingPrivatePayments = useCallback(async () => {
-    if (!address || !currentUser) return;
+    if (!address || !currentUser || !IS_RAILGUN_API_CONFIGURED) {
+      setPendingPrivatePayments([]);
+      return;
+    }
     
     // Guard against multiple simultaneous executions
     if (isCheckingPending.current) {
@@ -183,6 +213,10 @@ const ProductDetail = ({ provider, currentUser, onConfirmDelivery }) => {
 
   // Confirm private payment on-chain
   const confirmPrivatePayment = async (pendingPayment) => {
+    if (!IS_RAILGUN_API_CONFIGURED) {
+      toast.error('Private payments are disabled (Railgun API offline).');
+      return;
+    }
     if (!provider || !address || !currentUser) {
       toast.error('Please connect your wallet first');
       return;
@@ -340,6 +374,8 @@ const ProductDetail = ({ provider, currentUser, onConfirmDelivery }) => {
       transporterAddr,
       phaseRaw,
       publicPriceWei,
+      publicPriceCommitment,
+      commitmentFrozen,
       publicEnabled,
       privateEnabled,  // ⬅️ add this
     ] = await Promise.all([
@@ -351,6 +387,8 @@ const ProductDetail = ({ provider, currentUser, onConfirmDelivery }) => {
       contract.transporter(),
       contract.phase(), // fetch phase from contract
       contract.publicPriceWei().catch(() => 0n), // ✅ Read public price from contract
+      contract.publicPriceCommitment().catch(() => "0x" + "0".repeat(64)), // ✅ Read on-chain commitment
+      contract.commitmentFrozen().catch(() => false), // ✅ Read commitment frozen status
       contract.publicEnabled().catch(() => false), // ✅ Check if public purchases are enabled
       contract.privateEnabled().catch(() => false),  // ⬅️ add this
     ]);
@@ -377,8 +415,10 @@ const ProductDetail = ({ provider, currentUser, onConfirmDelivery }) => {
       priceWei,
       priceBlinding,
       publicPriceWei,
+      publicPriceCommitment, // ✅ Store on-chain commitment
+      commitmentFrozen, // ✅ Store commitment frozen status
       publicEnabled,   // <— persist
-      privateEnabled,   // ⬅️ add this
+      privateEnabled: privateEnabled && IS_RAILGUN_API_CONFIGURED,   // ⬅️ add this
       owner,
       buyer,
       purchased,
@@ -390,6 +430,15 @@ const ProductDetail = ({ provider, currentUser, onConfirmDelivery }) => {
       sellerWalletID,
       privatePaymentsEnabled: !!sellerRailgunAddress,
     });
+    
+    // ✅ Log commitment status for debugging
+    if (publicPriceCommitment && publicPriceCommitment !== "0x" + "0".repeat(64)) {
+      console.log('✅ Commitment loaded:', {
+        commitment: publicPriceCommitment,
+        frozen: commitmentFrozen,
+        price: ethers.formatEther(publicPriceWei || 0n) + ' ETH'
+      });
+    }
     setTransporter(transporterAddr);
     
     // ✅ Update enable button state based on publicEnabled
@@ -508,7 +557,8 @@ const ProductDetail = ({ provider, currentUser, onConfirmDelivery }) => {
     product?.phase === 0 &&
     !product?.purchased &&
     isUnrelated &&
-    product?.privateEnabled; // ⬅️ new
+    product?.privateEnabled &&
+    IS_RAILGUN_API_CONFIGURED; // ⬅️ require API availability
 
 /* you’ll also need statusLabel for the header */
 const statusLabel = isDelivered
@@ -563,6 +613,7 @@ const statusLabel = isDelivered
   // ✅ Public purchase - bullet-proof handler for old/new clones
   const handleBuyPublic = async () => {
     try {
+      console.log('[Flow][Buyer] Step 2: Buyer initiating public purchase at listed price.');
       setError(null);
       setStatusMessage("⏳ Processing public purchase...");
       
@@ -586,6 +637,7 @@ const statusLabel = isDelivered
         setError("This product is no longer listed for public purchase.");
         return;
       }
+      console.log('[Flow][Buyer] Step 2 → Contract reports price in wei:', onchainPrice.toString());
       
       // ✅ 2) Feature-detect the correct function name on this clone
       const hasPurchasePublic = typeof esc.purchasePublic === "function";
@@ -602,6 +654,7 @@ const statusLabel = isDelivered
         if (!publicEnabled) {
           setError("Public purchases are disabled for this product. Click 'Enable Public Purchases' to fix this.");
           setShowEnableButton(true);
+          console.log('[Flow][Buyer] Step 2 → Purchase blocked: publicEnabled flag is false.');
           return;
         }
       } catch (e) {
@@ -636,6 +689,7 @@ const statusLabel = isDelivered
         setError("This clone doesn't expose a public purchase function.");
         return;
       }
+      console.log('[Flow][Buyer] Step 2 → Transaction sent, hash:', tx.hash);
       setStatusMessage("✅ Public purchase complete!");
       loadProductData();
     } catch (err) {
@@ -667,6 +721,7 @@ const statusLabel = isDelivered
       return;
     }
     try {
+      console.log('[Flow][Seller] Step 3: Seller confirming order and issuing Stage 2 VC.');
       setStatusMessage("⏳ Confirming order…");
       const signer = await provider.getSigner();
       const sellerAddr = await signer.getAddress();
@@ -721,18 +776,21 @@ const statusLabel = isDelivered
       }
 
       // Sign the VC as issuer (Stage 2)
-      const issuerProof = await signVcAsSeller(vc, signer);
+      // Sign with contract address for verifyingContract binding
+      const issuerProof = await signVcAsSeller(vc, signer, address);
       vc.proofs = { issuerProof };
       if (VERBOSE) {
       console.log("[ProductDetail] Issuer proof:", issuerProof);
       }
 
+      console.log('[Flow][Seller] Step 3 → Stage 2 VC signed, uploading to IPFS.');
       // Upload the intermediate VC (Stage 2) to IPFS and update the contract's vcCid
       const newCid = await uploadJson(vc);
       if (VERBOSE) {
       console.log("[ProductDetail] Uploaded VC CID:", newCid);
       }
       const tx = await confirmOrder(address, newCid);
+      console.log('[Flow][Seller] Step 3 → Order confirmed on-chain, tx hash:', tx.hash);
 
       loadProductData();
       setStatusMessage("✅ Order confirmed");
@@ -773,27 +831,102 @@ const statusLabel = isDelivered
   // Step 1: Buyer builds VC with ZKP, canonicalizes, and saves draft
   const handleRequestSellerSignature = async () => {
     try {
+      console.log('[Flow][Buyer] Step 4: Buyer building Stage 3 VC draft with fresh ZKP.');
       setStatusMessage('🔏 Building VC draft with ZKP...');
       const signer = await provider.getSigner();
       const buyerAddr = await signer.getAddress();
+      
+      // Get seller address from contract
+      const contract = new ethers.Contract(address, ESCROW_ABI, provider);
+      const sellerAddr = await contract.owner();
+      const normalizedSellerAddr = ethers.getAddress(sellerAddr);
+      const normalizedProductAddr = ethers.getAddress(address);
+      
       // Fetch the latest Stage 2 VC from IPFS
       const stage2Cid = product.vcCid;
-              const stage2 = await fetch(`https://ipfs.io/ipfs/${stage2Cid}`).then(r => r.json());
-      // Fetch/generate ZKP from backend
-      setStatusMessage('🔐 Generating ZKP proof...');
-      const zkpRes = await fetch('http://localhost:5010/zkp/generate-value-commitment', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ value: Number(product.priceWei) })
-      });
-      let zkpData;
-      if (zkpRes.ok) {
-        zkpData = await zkpRes.json();
-      } else {
-        const text = await zkpRes.text();
-        throw new Error('ZKP backend error: ' + text);
+      const stage2 = await fetch(`https://ipfs.io/ipfs/${stage2Cid}`).then(r => r.json());
+      
+      // ✅ Fetch product ID from contract
+      setStatusMessage('📋 Fetching product ID...');
+      let productId;
+      try {
+        productId = await contract.id();
+        console.log("✅ Product ID:", productId.toString());
+      } catch (error) {
+        console.error("❌ Failed to fetch product ID:", error);
+        throw new Error("Failed to fetch product ID: " + error.message);
       }
-      const { commitment, proof, verified } = zkpData;
+      
+      // ✅ Extract binding context from Stage 2 VC (if available) or generate new one
+      // For Stage 3 (Delivery Credential), we use Stage 2 as the previous stage
+      let bindingContext;
+      let bindingTag;
+      
+      // Try to extract binding context from Stage 2 VC's price object
+      try {
+        const stage2Price = typeof stage2.credentialSubject?.price === 'string' 
+          ? JSON.parse(stage2.credentialSubject.price) 
+          : stage2.credentialSubject?.price;
+        
+        if (stage2Price?.zkpProof?.bindingContext) {
+          // Use binding context from Stage 2 VC
+          bindingContext = stage2Price.zkpProof.bindingContext;
+          console.log("✅ Extracted binding context from Stage 2 VC:", bindingContext);
+        }
+      } catch (error) {
+        console.warn("⚠️ Could not extract binding context from Stage 2 VC:", error);
+      }
+      
+      // If no binding context found, create one for Stage 3
+      if (!bindingContext) {
+        bindingContext = {
+          chainId: VC_CHAIN,
+          escrowAddr: normalizedProductAddr,
+          productId: productId.toString(),
+          stage: 2, // Stage 3 uses Stage 2 as previous stage
+          schemaVersion: "1.0",
+        };
+        console.log("✅ Created new binding context for Stage 3:", bindingContext);
+      }
+      
+      // ✅ Generate ZKP with binding tag (Stage 3: Delivery Credential)
+      setStatusMessage('🔐 Generating ZKP proof with binding tag...');
+      const priceWei = product.publicPriceWei || product.priceWei;
+      if (!priceWei) {
+        throw new Error('Price not available. Cannot generate ZKP.');
+      }
+      
+      const zkpBackendUrl = process.env.REACT_APP_ZKP_BACKEND_URL || 'http://localhost:5010';
+      const commitmentData = await generateCommitmentWithBindingTag(
+        priceWei.toString(),
+        normalizedProductAddr,
+        normalizedSellerAddr,
+        bindingContext.chainId || VC_CHAIN,
+        bindingContext.productId || productId.toString(),
+        2, // Stage 2 (for Stage 3 delivery credential)
+        bindingContext.schemaVersion || "1.0",
+        stage2Cid, // Previous VC CID (Stage 2)
+        zkpBackendUrl
+      );
+      
+      const { commitment, proof, verified, bindingTag: generatedBindingTag } = commitmentData;
+      bindingTag = generatedBindingTag;
+      
+      console.log('[Flow][Buyer] Step 4 → ZKP generated. Binding tag:', bindingTag);
+      
+      // ✅ Verify commitment matches on-chain commitment
+      if (product.publicPriceCommitment && product.publicPriceCommitment !== "0x" + "0".repeat(64)) {
+        const commitmentMatch = verifyCommitmentMatch(commitment, product.publicPriceCommitment);
+        if (!commitmentMatch) {
+          console.warn('⚠️ Warning: Generated commitment does not match on-chain commitment');
+          console.log('Generated commitment:', commitment);
+          console.log('On-chain commitment:', product.publicPriceCommitment);
+          // Don't throw error - still allow the flow to continue, but log warning
+        } else {
+          console.log('[Flow][Buyer] Step 4 → Commitment matches on-chain commitment.');
+        }
+      }
+      
       const priceObj = {
         hidden: true,
         zkpProof: {
@@ -804,15 +937,34 @@ const statusLabel = isDelivered
           encoding: 'hex',
           verified,
           description: 'This ZKP proves the price is in the allowed range without revealing it.',
-          proofType: 'zkRangeProof-v1'
+          proofType: 'zkRangeProof-v1',
+          bindingTag: bindingTag, // ✅ Store binding tag in VC
+          bindingContext: {
+            chainId: bindingContext.chainId || VC_CHAIN,
+            escrowAddr: normalizedProductAddr,
+            productId: productId.toString(),
+            stage: 2, // Stage 2 (for Stage 3 delivery credential)
+            schemaVersion: bindingContext.schemaVersion || "1.0",
+            previousVCCid: stage2Cid, // Previous VC CID (Stage 2)
+          },
         }
       };
-      // Build the VC draft (no proofs yet)
+      // ✅ Get transporter and on-chain commitment for VC (available before delivery)
+      // Transporter is already set when buyer requests seller signature
+      const transporterAddr = transporter && transporter !== ZERO ? transporter : null;
+      const onChainCommitment = product.publicPriceCommitment && product.publicPriceCommitment !== "0x" + "0".repeat(64) 
+        ? product.publicPriceCommitment 
+        : null;
+      
+      // Build the VC draft (no proofs yet) with delivery-related fields
       let draftVC = buildStage3VC({
         stage2,
         price: priceObj,
         buyerProof: {},
-        proofType: 'zkRangeProof-v1'
+        proofType: 'zkRangeProof-v1',
+        transporter: transporterAddr,           // ✅ Add transporter address (if set)
+        onChainCommitment: onChainCommitment,   // ✅ Add on-chain commitment reference for verification
+        // Note: deliveryStatus is not set here - it's implicit that if Stage 3 VC exists, delivery is being confirmed
       });
       // Normalize all string fields
       const cs = draftVC.credentialSubject;
@@ -832,6 +984,7 @@ const statusLabel = isDelivered
       setVcDraft(draftVC);
       setVcDraftSaved(true);
       setStatusMessage('✅ VC draft with ZKP saved! Share with seller for signature.');
+      console.log('[Flow][Buyer] Step 4 → Stage 3 VC draft ready and stored locally.');
       // Debug log
       if (VERBOSE) {
       console.log('[DEBUG] VC draft after buyer builds:', draftVC);
@@ -846,6 +999,7 @@ const statusLabel = isDelivered
   // Step 2: Seller loads, canonicalizes, and signs the VC draft
   const handleSignAsSeller = async () => {
     try {
+      console.log('[Flow][Seller] Step 5: Seller reviewing and signing Stage 3 VC draft.');
       setStatusMessage('✍️ Loading VC draft for seller signature...');
       const canonicalVcJson = localStorage.getItem('vcDraft');
       if (!canonicalVcJson) {
@@ -859,8 +1013,10 @@ const statusLabel = isDelivered
       canonicalVcObj = JSON.parse(stableJson);
       // Seller signs
       const signer = await provider.getSigner();
-      const sellerProof = await signVcAsSeller(canonicalVcObj, signer);
+      // Sign with contract address for verifyingContract binding
+      const sellerProof = await signVcAsSeller(canonicalVcObj, signer, address);
       canonicalVcObj.proof = [sellerProof];
+      console.log('[Flow][Seller] Step 5 → Seller signature appended to VC draft.');
       // Debug log
       if (VERBOSE) {
       console.log('[DEBUG] VC after seller signs:', canonicalVcObj);
@@ -880,6 +1036,7 @@ const statusLabel = isDelivered
   // Step 3: Buyer loads seller-signed VC, signs, and uploads
   const handleConfirmDeliveryClick = async () => {
     try {
+      console.log('[Flow][Buyer] Step 6: Buyer counter-signing VC and confirming delivery on-chain.');
       setStatusMessage('🔏 Loading seller-signed VC...');
       const sellerSignedJson = localStorage.getItem('vcSellerSigned');
       if (!sellerSignedJson) {
@@ -899,27 +1056,50 @@ const statusLabel = isDelivered
       // Buyer signs
       setStatusMessage('✍️ Buyer signing VC...');
       const signer = await provider.getSigner();
-      const buyerProof = await signVcWithMetamask(canonicalVcObj, signer);
+      // Sign with contract address for verifyingContract binding
+      const buyerProof = await signVcWithMetamask(canonicalVcObj, signer, address);
       canonicalVcObj.proof.push(buyerProof);
+      console.log('[Flow][Buyer] Step 6 → Buyer signature appended. VC hash:', buyerProof.payloadHash);
       // Debug log after buyer signs
       if (VERBOSE) {
       console.log('[DEBUG] VC after buyer signs:', canonicalVcObj);
       console.log('[DEBUG] VC proof array after buyer signs:', canonicalVcObj.proof);
       }
-      // Canonicalize again and upload to IPFS
+      // ✅ Add VC hash to credential subject (using buyer's payload hash, same as private flow)
+      // The payloadHash is the hash of the EIP-712 typed data that was signed
+      // This is used to link the VC to other systems (e.g., Railgun private payments)
+      canonicalVcObj.credentialSubject.vcHash = buyerProof.payloadHash;
+      
+      // Canonicalize again with VC hash included
       canonicalVcJson = freezeVcJson(canonicalVcObj);
       setStatusMessage('📤 Uploading final VC to IPFS...');
       const vcCID = await uploadJson(JSON.parse(canonicalVcJson));
+      console.log('[Flow][Buyer] Step 6 → Final Stage 3 VC uploaded. CID:', vcCID);
       if (VERBOSE) {
       console.log('[ProductDetail] Uploaded final VC CID:', vcCID);
+      console.log('[ProductDetail] VC Hash:', buyerProof.payloadHash);
       }
       // Continue with on-chain delivery confirmation, etc.
-      const revealedValue = ethers.toBigInt(product.priceWei);
-      const blinding = product.priceBlinding;
-      if (!revealedValue || !blinding) {
-        setError('Missing price or blinding factor for delivery confirmation.');
+      // ✅ Use publicPriceWei from contract (not localStorage)
+      const revealedValue = product.publicPriceWei || ethers.toBigInt(product.priceWei || 0);
+      if (!revealedValue || revealedValue === 0n) {
+        setError('Missing price for delivery confirmation.');
         return;
       }
+      
+      // ✅ Generate deterministic blinding factor (same as seller used)
+      const sellerAddr = product.owner;
+      const productAddr = product.address;
+      if (!sellerAddr || !productAddr) {
+        setError('Missing seller address or product address for blinding factor generation.');
+        return;
+      }
+      
+      setStatusMessage('🔐 Generating deterministic blinding factor...');
+      const blindingHex = generateDeterministicBlinding(productAddr, sellerAddr);
+      // Convert hex string to bytes32 (32 bytes)
+      const blinding = "0x" + blindingHex.padStart(64, '0');
+      
       setStatusMessage('⏳ Confirming delivery on-chain...');
       const esc = new ethers.Contract(product.address, ESCROW_ABI, signer);
       const tx = await esc.revealAndConfirmDelivery(
@@ -928,6 +1108,7 @@ const statusLabel = isDelivered
         vcCID
       );
       await tx.wait();
+      console.log('[Flow][Buyer] Step 6 → Delivery confirmed on-chain, tx hash:', tx.hash);
       setStatusMessage('✅ Delivery confirmed!');
       loadProductData();
     } catch (err) {
@@ -1032,6 +1213,9 @@ const statusLabel = isDelivered
 
         // Helper to resolve a Railgun address from backend wallet-info API
         const resolveRailgun = async (eoa) => {
+          if (!IS_RAILGUN_API_CONFIGURED) {
+            return null;
+          }
           try {
             // ✅ FIXED: Use correct endpoint /api/railgun/wallet-info?userAddress=<EOA>
             const r = await fetch(`${RAILGUN_API_BASE}/api/railgun/wallet-info?userAddress=${eoa}`);
@@ -1084,7 +1268,7 @@ const statusLabel = isDelivered
 
   // Resolve buyer's Railgun address when we have a pending payment with buyer's ETH address
   useEffect(() => {
-    if (pendingPrivatePayments.length > 0 && pendingPrivatePayments[0]?.buyerAddress && !buyerRailgun) {
+    if (pendingPrivatePayments.length > 0 && pendingPrivatePayments[0]?.buyerAddress && !buyerRailgun && IS_RAILGUN_API_CONFIGURED) {
       const resolveBuyerRailgun = async () => {
         try {
           const response = await fetch(`${RAILGUN_API_BASE}/api/railgun/wallet-info?userAddress=${pendingPrivatePayments[0].buyerAddress}`);
@@ -1411,51 +1595,143 @@ return (
         </>
       )}
 
-      {/* ────────── VC Timeline ───────── */}
-      <h3 className="mt-8 text-lg font-semibold">VC Timeline</h3>
+      {/* ────────── Tabs: Credentials & Audit ───────── */}
+      {vcStages.length > 0 && (
+        <div className="mt-8">
+          <Tabs defaultTab={0}>
+            <Tab label="📄 Credentials">
+              <div className="space-y-6">
+                {/* Supply Chain Provenance */}
+                <div>
+                  <h3 className="text-lg font-semibold mb-4">🔗 Supply Chain Provenance</h3>
+                  <div className="bg-white rounded-xl shadow-md p-6 space-y-4">
+                    {/* Component Chain Tree */}
+                    <div>
+                      <ProvenanceChainViewer 
+                        vc={vcStages[vcStages.length - 1].vc} 
+                        cid={vcStages[vcStages.length - 1].cid}
+                      />
+                    </div>
 
-      <ul className="space-y-10">
-        {vcStages.map(({ cid, vc }, idx) => {
-          const isLatest = idx === vcStages.length - 1;
+                    {/* Certification */}
+                    {vcStages.length > 0 && (() => {
+                      const latestVC = vcStages[vcStages.length - 1];
+                      const { vc } = latestVC;
+                      const cs = vc.credentialSubject || {};
+                      const certificateCredential = cs.certificateCredential || {};
+                      const hasCertification = certificateCredential.cid && certificateCredential.cid.trim() !== "";
+                      const certificationName = certificateCredential.name || "Unnamed Certification";
 
-          return (
-            <StageCard key={cid} title={`Stage ${idx}`}>
-              <div className="flex items-center justify-between">
-                {!isLatest && (
-                  <Button
-                    variant={expandedVCIndex === idx ? "ghost" : "secondary"}
-                    onClick={() =>
-                      setExpandedVCIndex(
-                        expandedVCIndex === idx ? null : idx
-                      )
-                    }
-                    icon={expandedVCIndex === idx ? EyeOff : Eye}
-                  >
-                    {expandedVCIndex === idx ? "Hide VC" : "View VC"}
-                  </Button>
+                      return (
+                        <div className="border-t pt-4">
+                          <h5 className="font-semibold mb-2">📜 Certification</h5>
+                          {hasCertification ? (
+                            <div className="bg-green-50 border border-green-200 rounded p-3">
+                              <p className="text-sm text-gray-700 mb-1">
+                                <strong>Certification Name:</strong> {certificationName}
+                              </p>
+                              <p className="text-sm text-gray-700 mb-1">
+                                <strong>Certification CID:</strong> <Copyable value={certificateCredential.cid} />
+                              </p>
+                              <p className="text-xs text-gray-600 mt-2">
+                                This product has an associated certification uploaded during product creation.
+                              </p>
+                            </div>
+                          ) : (
+                            <div className="bg-gray-50 border border-gray-200 rounded p-3">
+                              <p className="text-sm text-gray-600">
+                                <strong>No certification</strong> — No certification was uploaded for this product.
+                              </p>
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })()}
+                  </div>
+                </div>
+
+                {/* Current Credential - Just the VC */}
+                {vcStages.length > 0 && (() => {
+                  const latestVC = vcStages[vcStages.length - 1];
+                  const { cid, vc } = latestVC;
+                  const hasIssuerProof = vc.proofs?.issuerProof || vc.proof?.some(p => p.role === "issuer" || p.role === "seller");
+                  const hasHolderProof = vc.proofs?.holderProof || vc.proof?.some(p => p.role === "holder" || p.role === "buyer");
+                  const isDeliveredVC = hasIssuerProof && hasHolderProof;
+
+                  return (
+                    <div>
+                      <h3 className="text-lg font-semibold mb-4">📋 Current Credential</h3>
+                      <div className="bg-white rounded-xl shadow-md p-6">
+                        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between mb-4">
+                          <div>
+                            <h4 className="text-lg font-semibold mb-1">
+                              {isDeliveredVC ? "✅ Final Delivered Credential" : "⏳ Credential in Progress"}
+                            </h4>
+                            <p className="text-sm text-gray-600">
+                              {isDeliveredVC 
+                                ? "Final credential signed by both seller and buyer"
+                                : "This credential will be finalized once both seller and buyer have signed"
+                              }
+                            </p>
+                          </div>
+                          <div className="flex items-center gap-2 mt-2 sm:mt-0">
+                            <Button
+                              variant={expandedVCIndex === vcStages.length - 1 ? "ghost" : "secondary"}
+                              onClick={() =>
+                                setExpandedVCIndex(
+                                  expandedVCIndex === vcStages.length - 1 ? null : vcStages.length - 1
+                                )
+                              }
+                              icon={expandedVCIndex === vcStages.length - 1 ? EyeOff : Eye}
+                            >
+                              {expandedVCIndex === vcStages.length - 1 ? "Hide Full VC" : "View Full VC JSON"}
+                            </Button>
+                          </div>
+                        </div>
+
+                        {expandedVCIndex === vcStages.length - 1 && (
+                          <div className="rounded-lg border bg-gray-50 p-4 mt-4">
+                            <VCViewer vc={vc} />
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })()}
+              </div>
+            </Tab>
+
+            <Tab label="🔍 Audit">
+              <div className="space-y-6">
+                {vcStages.length > 0 && (
+                  <div>
+                    <h3 className="text-lg font-semibold mb-4">Verification Tools</h3>
+                    <div className="bg-white rounded-xl shadow-md p-6">
+                      <VerifyVCInline 
+                        vc={vcStages[vcStages.length - 1].vc} 
+                        cid={vcStages[vcStages.length - 1].cid} 
+                        provider={provider}
+                        contractAddress={address}
+                      />
+                    </div>
+                  </div>
                 )}
               </div>
-
-              {isLatest && <VerifyVCInline vc={vc} cid={cid} />}
-
-              {!isLatest && expandedVCIndex === idx && (
-                <div className="rounded-lg border bg-gray-50 p-4">
-                  <VCViewer vc={vc} />
-                </div>
-              )}
-            </StageCard>
-          );
-        })}
-      </ul>
+            </Tab>
+          </Tabs>
+        </div>
+      )}
 
       {/* ────────── Private Payment Modal ───────── */}
-      <PrivatePaymentModal
-        product={product}
-        isOpen={showPrivatePaymentModal}
-        onClose={() => setShowPrivatePaymentModal(false)}
-        onSuccess={handlePrivatePurchaseSuccess}
-        currentUser={currentUser}
-      />
+      {IS_RAILGUN_API_CONFIGURED && (
+        <PrivatePaymentModal
+          product={product}
+          isOpen={showPrivatePaymentModal}
+          onClose={() => setShowPrivatePaymentModal(false)}
+          onSuccess={handlePrivatePurchaseSuccess}
+          currentUser={currentUser}
+        />
+      )}
     </div>
   );
 };

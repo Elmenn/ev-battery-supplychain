@@ -1,0 +1,366 @@
+import React, { useState, useEffect } from "react";
+import { ChevronDown, ChevronRight, CheckCircle2, XCircle, AlertTriangle, Loader2 } from "lucide-react";
+
+/**
+ * ProvenanceChainViewer - Displays the full supply chain provenance tree
+ * Recursively fetches and displays component VCs and their components
+ */
+const ProvenanceChainViewer = ({ vc, cid }) => {
+  const [chainData, setChainData] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+  const [expandedNodes, setExpandedNodes] = useState(new Set());
+
+  // Fetch a VC from IPFS
+  const fetchVC = async (cid) => {
+    try {
+      const response = await fetch(`https://ipfs.io/ipfs/${cid}`);
+      if (!response.ok) {
+        throw new Error(`Failed to fetch VC: ${response.status}`);
+      }
+      const vcData = await response.json();
+      return { cid, vc: vcData, error: null };
+    } catch (err) {
+      return { cid, vc: null, error: err.message };
+    }
+  };
+
+  // Verify a VC (basic checks)
+  const verifyVC = (vc) => {
+    if (!vc) return { verified: false, error: "VC not found" };
+    
+    // Check structure
+    if (!vc["@context"] || !vc.type || !vc.credentialSubject) {
+      return { verified: false, error: "Invalid VC structure" };
+    }
+
+    // Check proofs
+    const proofs = vc.proof || [];
+    const hasIssuerProof = proofs.some((p) => p.role === "seller" || p.role === "issuer");
+    const hasHolderProof = proofs.some((p) => p.role === "holder" || p.role === "buyer");
+    const isDelivered = hasIssuerProof && hasHolderProof;
+
+    return {
+      verified: true,
+      isDelivered,
+      hasIssuerProof,
+      hasHolderProof,
+      productName: vc.credentialSubject?.productName || "Unknown",
+      componentCount: Array.isArray(vc.credentialSubject?.componentCredentials) 
+        ? vc.credentialSubject.componentCredentials.length 
+        : 0,
+    };
+  };
+
+  // Recursively build the SUPPLY CHAIN provenance chain
+  // NOTE: This does NOT walk transaction lifecycle chains
+  // It only follows componentCredentials to show which component products were used
+  // Each CID in componentCredentials should be the final delivered VC of that component
+  const buildChain = async (vc, cid, depth = 0) => {
+    if (depth > 10) {
+      // Prevent infinite recursion
+      return { cid, vc, verification: { verified: false, error: "Max depth reached" }, components: [] };
+    }
+
+    const verification = verifyVC(vc);
+    
+    // Get component VCs from componentCredentials (supply chain, NOT transaction lifecycle)
+    const componentCids = Array.isArray(vc?.credentialSubject?.componentCredentials)
+      ? vc.credentialSubject.componentCredentials
+      : [];
+
+    // Fetch all component VCs (these should be final delivered VCs)
+    const componentPromises = componentCids.map((compCid) => fetchVC(compCid));
+    const componentResults = await Promise.all(componentPromises);
+
+    // Recursively build chains for each component (following their componentCredentials)
+    const componentChains = await Promise.all(
+      componentResults.map((result) => {
+        if (result.vc) {
+          // Recursively follow componentCredentials (supply chain), NOT previousCredential (transaction lifecycle)
+          return buildChain(result.vc, result.cid, depth + 1);
+        }
+        return {
+          cid: result.cid,
+          vc: null,
+          verification: { verified: false, error: result.error },
+          components: [],
+        };
+      })
+    );
+
+    return {
+      cid,
+      vc,
+      verification,
+      components: componentChains,
+    };
+  };
+
+  // Load the provenance chain
+  // NOTE: This shows SUPPLY CHAIN provenance (component products), NOT transaction lifecycle
+  // Each CID in componentCredentials should be the final delivered VC of that component product
+  useEffect(() => {
+    const loadChain = async () => {
+      if (!vc || !cid) {
+        setError("No VC or CID provided");
+        setLoading(false);
+        return;
+      }
+
+      // Verify this is a delivered VC (has both seller and buyer signatures)
+      const proofs = vc.proof || [];
+      const hasIssuerProof = proofs.some((p) => p.role === "seller" || p.role === "issuer");
+      const hasHolderProof = proofs.some((p) => p.role === "holder" || p.role === "buyer");
+      const isDelivered = hasIssuerProof && hasHolderProof;
+
+      if (!isDelivered) {
+        // For non-delivered products, check if there are component credentials
+        const componentCids = Array.isArray(vc?.credentialSubject?.componentCredentials)
+          ? vc.credentialSubject.componentCredentials
+          : [];
+        
+        if (componentCids.length === 0) {
+          // No components and not delivered - show informational message
+          setError(null);
+          setChainData({
+            cid,
+            vc,
+            verification: { verified: true, isDelivered: false, productName: vc.credentialSubject?.productName || "Unknown" },
+            components: [],
+          });
+          setLoading(false);
+          return;
+        } else {
+          // Has components but not delivered - show message that provenance will be available after delivery
+          setError("Supply chain provenance chain will be available once this product is delivered (signed by both seller and buyer).");
+          setLoading(false);
+          return;
+        }
+      }
+
+      try {
+        setLoading(true);
+        setError(null);
+        const chain = await buildChain(vc, cid);
+        setChainData(chain);
+        // Auto-expand the root node
+        setExpandedNodes(new Set([cid]));
+      } catch (err) {
+        console.error("Error loading provenance chain:", err);
+        setError(err.message);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    loadChain();
+  }, [vc, cid]);
+
+  // Toggle node expansion
+  const toggleNode = (nodeCid) => {
+    setExpandedNodes((prev) => {
+      const next = new Set(prev);
+      if (next.has(nodeCid)) {
+        next.delete(nodeCid);
+      } else {
+        next.add(nodeCid);
+      }
+      return next;
+    });
+  };
+
+  // Render a single node in the tree
+  const renderNode = (node, level = 0) => {
+    const isExpanded = expandedNodes.has(node.cid);
+    const hasComponents = node.components && node.components.length > 0;
+    const indent = level * 24;
+
+    return (
+      <div key={node.cid} style={{ marginLeft: `${indent}px` }}>
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            padding: "0.5rem",
+            marginBottom: "0.25rem",
+            backgroundColor: level === 0 ? "#e3f2fd" : "#f5f5f5",
+            border: `1px solid ${level === 0 ? "#2196f3" : "#ddd"}`,
+            borderRadius: "4px",
+            cursor: hasComponents ? "pointer" : "default",
+          }}
+          onClick={() => hasComponents && toggleNode(node.cid)}
+        >
+          {/* Expand/Collapse Icon */}
+          {hasComponents ? (
+            isExpanded ? (
+              <ChevronDown size={16} style={{ marginRight: "0.5rem" }} />
+            ) : (
+              <ChevronRight size={16} style={{ marginRight: "0.5rem" }} />
+            )
+          ) : (
+            <div style={{ width: "16px", marginRight: "0.5rem" }} />
+          )}
+
+          {/* Verification Status */}
+          {node.verification.verified ? (
+            node.verification.isDelivered ? (
+              <CheckCircle2 size={16} color="#28a745" style={{ marginRight: "0.5rem" }} />
+            ) : (
+              <AlertTriangle size={16} color="#ffc107" style={{ marginRight: "0.5rem" }} />
+            )
+          ) : (
+            <XCircle size={16} color="#dc3545" style={{ marginRight: "0.5rem" }} />
+          )}
+
+          {/* Product Name */}
+          <div style={{ flex: 1 }}>
+            <div style={{ fontWeight: "bold" }}>
+              {node.verification.productName || "Unknown Product"}
+            </div>
+            <div style={{ fontSize: "0.75rem", color: "#666", fontFamily: "monospace" }}>
+              {node.cid.slice(0, 20)}...
+            </div>
+          </div>
+
+          {/* Status Badge */}
+          <div style={{ fontSize: "0.75rem", marginLeft: "0.5rem" }}>
+            {node.verification.verified ? (
+              node.verification.isDelivered ? (
+                <span style={{ color: "#28a745" }}>✅ Delivered</span>
+              ) : (
+                <span style={{ color: "#ffc107" }}>⚠️ Not Delivered</span>
+              )
+            ) : (
+              <span style={{ color: "#dc3545" }}>❌ Invalid</span>
+            )}
+            {hasComponents && (
+              <span style={{ marginLeft: "0.5rem", color: "#666" }}>
+                ({node.components.length} component{node.components.length !== 1 ? "s" : ""})
+              </span>
+            )}
+          </div>
+        </div>
+
+        {/* Component Children */}
+        {hasComponents && isExpanded && (
+          <div style={{ marginTop: "0.25rem" }}>
+            {node.components.map((component) => renderNode(component, level + 1))}
+          </div>
+        )}
+      </div>
+    );
+  };
+
+  if (loading) {
+    return (
+      <div style={{ padding: "2rem", textAlign: "center" }}>
+        <Loader2 className="animate-spin" size={24} style={{ margin: "0 auto" }} />
+        <div style={{ marginTop: "1rem" }}>Loading provenance chain...</div>
+      </div>
+    );
+  }
+
+  if (error) {
+    // Check if it's an informational message (not an error)
+    if (error.includes("will be available")) {
+      return (
+        <div style={{ padding: "2rem", textAlign: "center", color: "#856404", backgroundColor: "#fff3cd", borderRadius: "8px", border: "1px solid #ffc107" }}>
+          <AlertTriangle size={24} style={{ margin: "0 auto", color: "#856404" }} />
+          <div style={{ marginTop: "1rem", fontWeight: "500" }}>{error}</div>
+        </div>
+      );
+    }
+    // Actual error
+    return (
+      <div style={{ padding: "2rem", textAlign: "center", color: "#dc3545" }}>
+        <XCircle size={24} style={{ margin: "0 auto" }} />
+        <div style={{ marginTop: "1rem" }}>Error loading provenance chain: {error}</div>
+      </div>
+    );
+  }
+
+  if (!chainData) {
+    return (
+      <div style={{ padding: "2rem", textAlign: "center", color: "#666" }}>
+        No provenance data available
+      </div>
+    );
+  }
+
+  const hasComponents = chainData.components && chainData.components.length > 0;
+
+  return (
+    <div style={{ padding: "1rem" }}>
+      <h4 style={{ marginBottom: "1rem", fontWeight: "bold" }}>
+        🔗 Supply Chain Provenance Chain
+      </h4>
+      
+      {!hasComponents ? (
+        <div style={{ padding: "1rem", backgroundColor: "#f5f5f5", borderRadius: "4px", color: "#666" }}>
+          {chainData.verification.isDelivered ? (
+            <p>This product has no component products. It is a raw material or base component.</p>
+          ) : (
+            <p>
+              <strong>No component products</strong> — This product has no component products linked. 
+              {chainData.verification.isDelivered 
+                ? "" 
+                : " Supply chain provenance will be available once the product is delivered."}
+            </p>
+          )}
+        </div>
+      ) : (
+        <>
+          <div style={{ marginBottom: "1rem", fontSize: "0.875rem", color: "#666" }}>
+            Click on nodes to expand/collapse. The tree shows all component products and their components recursively.
+          </div>
+          {renderNode(chainData)}
+        </>
+      )}
+
+      {/* Summary */}
+      <div style={{ marginTop: "1.5rem", padding: "1rem", backgroundColor: "#f0f9ff", borderRadius: "4px" }}>
+        <div style={{ fontWeight: "bold", marginBottom: "0.5rem" }}>Chain Summary:</div>
+        <div style={{ fontSize: "0.875rem" }}>
+          • Total components: {countTotalComponents(chainData)}
+          <br />
+          • Verified components: {countVerifiedComponents(chainData)}
+          <br />
+          • Delivered components: {countDeliveredComponents(chainData)}
+        </div>
+      </div>
+    </div>
+  );
+};
+
+// Helper functions to count components
+const countTotalComponents = (node) => {
+  if (!node.components || node.components.length === 0) return 0;
+  return (
+    node.components.length +
+    node.components.reduce((sum, comp) => sum + countTotalComponents(comp), 0)
+  );
+};
+
+const countVerifiedComponents = (node) => {
+  if (!node.components || node.components.length === 0) return 0;
+  let count = node.components.filter((comp) => comp.verification.verified).length;
+  node.components.forEach((comp) => {
+    count += countVerifiedComponents(comp);
+  });
+  return count;
+};
+
+const countDeliveredComponents = (node) => {
+  if (!node.components || node.components.length === 0) return 0;
+  let count = node.components.filter(
+    (comp) => comp.verification.verified && comp.verification.isDelivered
+  ).length;
+  node.components.forEach((comp) => {
+    count += countDeliveredComponents(comp);
+  });
+  return count;
+};
+
+export default ProvenanceChainViewer;
+
