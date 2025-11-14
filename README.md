@@ -100,7 +100,15 @@ Choose your network: **Ganache (local)** or **Sepolia (testnet)**.
    cd frontend
    copy .env.ganache.example .env.ganache     # Windows
    # cp .env.ganache.example .env.ganache      # macOS/Linux
-   # Then edit .env.ganache and fill in your actual values
+   ```
+   
+   **Edit `.env.ganache` and fill in:**
+   - `REACT_APP_PINATA_JWT`: Get a free JWT token from [Pinata](https://www.pinata.cloud/) (required for IPFS uploads)
+   - `REACT_APP_FACTORY_ADDRESS`: Will be filled after contract deployment (see step 3)
+   - `REACT_APP_ZKP_BACKEND_URL`: Default is `http://localhost:5010` (change if using different port)
+   
+   Then copy to `.env`:
+   ```bash
    copy .env.ganache .env     # Windows
    # cp .env.ganache .env      # macOS/Linux
    cd ..
@@ -111,8 +119,13 @@ Choose your network: **Ganache (local)** or **Sepolia (testnet)**.
    npx truffle compile
    npx truffle migrate --network development
    ```
+   
+   **Copy the deployed `ProductFactory` address from the migration output.**
 
-4. **Update frontend `.env` with deployed contract addresses** (from migration output).
+4. **Update frontend `.env` with the deployed factory address:**
+   - Open `frontend/.env`
+   - Set `REACT_APP_FACTORY_ADDRESS` to the `ProductFactory` address from step 3
+   - Example: `REACT_APP_FACTORY_ADDRESS=0x1234567890123456789012345678901234567890`
 
 ### Option B: Sepolia (Testnet)
 
@@ -132,7 +145,16 @@ Choose your network: **Ganache (local)** or **Sepolia (testnet)**.
    cd frontend
    copy .env.sepolia.example .env.sepolia     # Windows
    # cp .env.sepolia.example .env.sepolia      # macOS/Linux
-   # Then edit .env.sepolia and fill in your actual values
+   ```
+   
+   **Edit `.env.sepolia` and fill in:**
+   - `REACT_APP_PINATA_JWT`: Get a free JWT token from [Pinata](https://www.pinata.cloud/) (required for IPFS uploads)
+   - `REACT_APP_FACTORY_ADDRESS`: Will be filled after contract deployment (see step 4)
+   - `REACT_APP_RPC_URL`: Default is public Sepolia RPC (or use your Alchemy/Infura endpoint)
+   - `REACT_APP_ZKP_BACKEND_URL`: Default is `http://localhost:5010` (change if using different port)
+   
+   Then copy to `.env`:
+   ```bash
    copy .env.sepolia .env     # Windows
    # cp .env.sepolia .env      # macOS/Linux
    cd ..
@@ -143,14 +165,17 @@ Choose your network: **Ganache (local)** or **Sepolia (testnet)**.
    npx truffle compile
    npx truffle migrate --network sepolia
    ```
+   
+   **Copy the deployed `ProductFactory` address from the migration output.**
 
-5. **Update frontend `.env` with:**
-   - Deployed contract addresses (from migration output)
-   - Your RPC endpoint URL
-   - Chain ID: `11155111`
+5. **Update frontend `.env` with the deployed factory address:**
+   - Open `frontend/.env`
+   - Set `REACT_APP_FACTORY_ADDRESS` to the `ProductFactory` address from step 4
+   - Example: `REACT_APP_FACTORY_ADDRESS=0x1234567890123456789012345678901234567890`
+   - Verify `REACT_APP_CHAIN_ID=11155111` is set correctly
 
 6. **Configure MetaMask:**
-   - Add Sepolia network if not already added
+   - Add Sepolia network if not already added (Chain ID: 11155111)
    - Import the account you used for deployment (or connect a different account with Sepolia ETH)
 
 ---
@@ -262,10 +287,23 @@ cargo test
 
 ## 8. Common Issues & Tips
 
-1. **Contracts not found in frontend**: After migration, confirm the frontend `src/config` (or `.env`) references the new contract addresses.
-2. **ZKP verification fails**: Ensure the Rust backend is running and the frontend `.env` points to it.
-3. **Railgun is optional**: The public purchase flow with ZKP commitments works completely without Railgun. The frontend automatically detects if the Railgun API is offline and hides private payment features. You only need the Railgun backend if you want to test private payments.
-4. **Port conflicts**: If you already use ports 3000, 5000, 5010, or 7545, adjust `.env` files, Express config, or start commands accordingly.
+1. **"Invalid factory address" error**: Make sure `REACT_APP_FACTORY_ADDRESS` in `frontend/.env` matches the deployed `ProductFactory` address from the migration output. Restart `npm start` after updating `.env`.
+
+2. **"REACT_APP_PINATA_JWT is missing" error**: 
+   - Sign up for a free account at [Pinata](https://www.pinata.cloud/)
+   - Create a new API key and copy the JWT token
+   - Add it to `frontend/.env` as `REACT_APP_PINATA_JWT=your-token-here`
+   - Restart `npm start`
+
+3. **ZKP verification fails**: Ensure the Rust backend is running (`cd zkp-backend && cargo run`) and `REACT_APP_ZKP_BACKEND_URL` in `frontend/.env` points to it (default: `http://localhost:5010`).
+
+4. **Contracts not found in frontend**: After migration, confirm `REACT_APP_FACTORY_ADDRESS` in `frontend/.env` references the new contract address. Restart the frontend after updating.
+
+5. **Railgun is optional**: The public purchase flow with ZKP commitments works completely without Railgun. The frontend automatically detects if the Railgun API is offline and hides private payment features. You only need the Railgun backend if you want to test private payments.
+
+6. **Port conflicts**: If you already use ports 3000, 5000, 5010, or 7545, adjust `.env` files, Express config, or start commands accordingly.
+
+7. **Environment variables not updating**: After changing `.env` files, you must restart `npm start` for changes to take effect (React apps read env vars at build time).
 
 ---
 
