@@ -289,8 +289,8 @@ await railgunEngine.unshield(token, amount, toAddress);
 ## 📚 **References**
 
 ### **Documentation**
-- [Railgun Integration Plan](./railgun-integration-plan.md)
-- [Railgun Audit Operations](./railgun-audit-operations.md)
+- [Railgun Integration Plan](railgun-integration-plan.md)
+- [Railgun Audit Operations](railgun-audit-operations.md)
 - [Value Privacy Comparison](./value-privacy-comparison.md)
 
 ### **Technical Resources**
