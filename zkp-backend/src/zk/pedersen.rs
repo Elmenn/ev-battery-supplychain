@@ -73,6 +73,57 @@ pub fn prove_value_commitment_with_blinding(
     prove_value_commitment_with_binding(value, blinding, None)
 }
 
+/// Proves knowledge of a value with a specific blinding factor, binding tag, and bit range
+/// The binding tag binds the proof to VC context to prevent replay attacks
+/// bit_range: number of bits for the range proof (e.g., 32 for [0, 2^32), 64 for [0, 2^64))
+#[allow(dead_code)]
+pub fn prove_value_commitment_with_binding_and_range(
+    value: u64,
+    blinding: Scalar,
+    binding_tag: Option<&[u8]>,
+    bit_range: usize,
+) -> (CompressedRistretto, Vec<u8>, bool) {
+    let pc_gens = PedersenGens::default();
+    let bp_gens = BulletproofGens::new(bit_range, 1); // variable bit range, 1 party
+
+    // Prover phase: use RangeProof API with provided blinding and binding tag
+    let mut transcript = Transcript::new(b"ValueRangeProof");
+    
+    // ✅ Add binding tag to transcript if provided
+    if let Some(binding) = binding_tag {
+        transcript.append_message(b"bind", binding);
+    }
+    
+    let (proof, commitment) = RangeProof::prove_single(
+        &bp_gens,
+        &pc_gens,
+        &mut transcript,
+        value,
+        &blinding,
+        bit_range,
+    ).expect("Range proof generation should not fail");
+    let proof_bytes = proof.to_bytes();
+
+    // Verifier phase (optional, for sanity check)
+    let mut transcript = Transcript::new(b"ValueRangeProof");
+    
+    // ✅ Add binding tag to verification transcript if provided
+    if let Some(binding) = binding_tag {
+        transcript.append_message(b"bind", binding);
+    }
+    
+    let verified = RangeProof::verify_single(
+        &proof,
+        &bp_gens,
+        &pc_gens,
+        &mut transcript,
+        &commitment,
+        bit_range,
+    ).is_ok();
+
+    (commitment, proof_bytes, verified)
+}
+
 /// Proves knowledge of a value with a specific blinding factor and binding tag
 /// The binding tag binds the proof to VC context to prevent replay attacks
 pub fn prove_value_commitment_with_binding(

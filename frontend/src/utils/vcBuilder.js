@@ -47,9 +47,21 @@ export function buildStage2VC({
   buyerAddr,
   sellerAddr,
   issuerProof,
+  purchaseTxHashCommitment, // Phase 1: Optional purchase TX hash commitment
 }) {
   if (!stage0Cid) {
     throw new Error("stage0Cid is missing – cannot link previousCredential");
+  }
+
+  const credentialSubject = {
+    ...stage0.credentialSubject,
+    id: `did:ethr:${CHAIN}:${buyerAddr}`,
+    previousCredential: stage0Cid,
+  };
+
+  // Phase 1: Store purchase TX hash commitment for privacy
+  if (purchaseTxHashCommitment) {
+    credentialSubject.purchaseTxHashCommitment = purchaseTxHashCommitment;
   }
 
   const vc = {
@@ -67,11 +79,7 @@ export function buildStage2VC({
     },
     issuanceDate: stage0.issuanceDate, // preserve original date
 
-    credentialSubject: {
-      ...stage0.credentialSubject,
-      id: `did:ethr:${CHAIN}:${buyerAddr}`,
-      previousCredential: stage0Cid,
-    },
+    credentialSubject,
 
     proof: issuerProof ? [issuerProof] : [], // W3C VC proof array
   };
@@ -80,7 +88,7 @@ export function buildStage2VC({
 }
 
 // --------------------------------------------------
-export function buildStage3VC({ stage2, buyerProof, txHash, zkpProof, price, proofType }) {
+export function buildStage3VC({ stage2, buyerProof, txHashCommitment, zkpProof, price, proofType, stage2Cid }) {
   let priceObj;
   if (typeof price !== "undefined") {
     priceObj = price;
@@ -102,11 +110,16 @@ export function buildStage3VC({ stage2, buyerProof, txHash, zkpProof, price, pro
 
   const credentialSubject = {
     ...stage2.credentialSubject,
+    previousCredential: stage2Cid || stage2.credentialSubject.previousCredential, // ✅ Set to stage2Cid for linear chain S0→S1→S2
     price: JSON.stringify(priceObj),
   };
 
-  if (txHash) {
-    credentialSubject.transactionId = txHash;
+  // Phase 1: Preserve purchase TX hash commitment from stage2 (if present)
+  // It's already in stage2.credentialSubject, so it's preserved via spread operator above
+
+  // Store delivery TX hash commitment for privacy (Step 4)
+  if (txHashCommitment) {
+    credentialSubject.txHashCommitment = txHashCommitment;
   }
 
   // Start with any existing proofs (e.g., issuerProof), then add buyerProof

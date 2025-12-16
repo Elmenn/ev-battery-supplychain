@@ -7,7 +7,7 @@ import { buildStage2VC, buildStage3VC, freezeVcJson } from "../../utils/vcBuilde
 import { signVcAsSeller } from "../../utils/signVcWithMetamask";
 import { signVcWithMetamask } from "../../utils/signVcWithMetamask";
 import debugReveal from "../../debugCommitment";
-import { generateCommitmentWithBindingTag, verifyCommitmentMatch, generateDeterministicBlinding } from "../../utils/commitmentUtils";
+import { generateCommitmentWithBindingTag, verifyCommitmentMatch, generateDeterministicBlinding, generateTxHashCommitmentBindingTag } from "../../utils/commitmentUtils";
 import { saveAs } from 'file-saver'; // For optional file download (npm install file-saver)
 import toast from 'react-hot-toast';
 import ProductEscrowABI from "../../abis/ProductEscrow_Initializer.json";
@@ -416,6 +416,7 @@ const ProductDetail = ({ provider, currentUser, onConfirmDelivery }) => {
       priceWei,
       priceBlinding,
       publicPriceWei,
+      seller: owner.toLowerCase(), // ✅ Add seller field (same as owner for consistency)
       publicPriceCommitment, // ✅ Store on-chain commitment
       commitmentFrozen, // ✅ Store commitment frozen status
       publicEnabled,   // <— persist
@@ -451,6 +452,10 @@ const ProductDetail = ({ provider, currentUser, onConfirmDelivery }) => {
     /* walk the VC chain (stage-0 → stage-n) */
     const chain = [];
     let cid = vcCid;
+    
+    // Note: No need to check localStorage anymore - the on-chain CID is now updated
+    // The contract's updateVcCidAfterDelivery ensures the on-chain CID points to the VC with TX hash commitment
+    
     while (cid) {
       const res = await fetch(`https://ipfs.io/ipfs/${cid}`);
       if (!res.ok) break;
@@ -725,6 +730,73 @@ const statusLabel = isDelivered
       
       // Wait for transaction confirmation
       const receipt = await tx.wait();
+      console.log('[Flow][Buyer] Step 2 → Purchase transaction confirmed, hash:', tx.hash);
+      
+      // Generate purchase TX hash commitment for privacy (Phase 1 + Feature 2: Linkable Commitment)
+      setStatusMessage('🔐 Generating purchase TX hash commitment with binding tag...');
+      try {
+        // Feature 2: Generate binding tag for linking purchase and delivery TX commitments
+        const buyerAddr = await signer.getAddress();
+        const chainId = await provider.getNetwork().then(n => n.chainId);
+        let productId;
+        try {
+          productId = await esc.id();
+        } catch (error) {
+          console.warn("⚠️ Could not fetch product ID for binding tag:", error);
+          productId = null;
+        }
+        
+        let bindingTag = null;
+        if (productId !== null) {
+          try {
+            bindingTag = generateTxHashCommitmentBindingTag({
+              chainId: chainId.toString(),
+              escrowAddr: address,
+              productId: productId.toString(),
+              buyerAddress: buyerAddr,
+            });
+            console.log('[Flow][Buyer] Step 2 → Generated binding tag for purchase TX hash commitment');
+          } catch (err) {
+            console.warn("⚠️ Failed to generate binding tag:", err);
+            // Continue without binding tag (backward compatible)
+          }
+        }
+        
+        const zkpBackendUrl = process.env.REACT_APP_ZKP_BACKEND_URL || 'http://localhost:5010';
+        const requestBody = {
+          tx_hash: tx.hash,
+          ...(bindingTag ? { binding_tag_hex: `0x${bindingTag}` } : {}),
+        };
+        
+        const zkpRes = await fetch(`${zkpBackendUrl}/zkp/commit-tx-hash`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(requestBody),
+        });
+
+        const { commitment, proof, verified } = await zkpRes.json();
+        if (!verified) {
+          console.warn("⚠️ Purchase TX hash commitment verification failed, but continuing...");
+        } else {
+          // Store purchase TX hash commitment temporarily for seller to include in Stage 1 VC
+          const purchaseTxCommitmentKey = `purchase_tx_commitment_${address}`;
+          localStorage.setItem(purchaseTxCommitmentKey, JSON.stringify({
+            commitment,
+            proof,
+            protocol: "bulletproofs-pedersen",
+            version: "1.0",
+            encoding: "hex",
+            bindingTag: bindingTag ? `0x${bindingTag}` : null, // Feature 2: Store binding tag
+            txHash: tx.hash, // Store for reference (will be removed from VC)
+            timestamp: Date.now(),
+          }));
+          console.log('[Flow][Buyer] Step 2 → Purchase TX hash commitment stored for Stage 1 VC', bindingTag ? '(with binding tag)' : '(without binding tag)');
+        }
+      } catch (err) {
+        console.warn("⚠️ Failed to generate purchase TX hash commitment:", err);
+        // Continue anyway - commitment is optional for now
+      }
+      
       setStatusMessage("✅ Public purchase complete!");
       loadProductData();
     } catch (err) {
@@ -788,8 +860,68 @@ const statusLabel = isDelivered
       }
       const stage0 = await res.json();
 
-      // Build the price object for stage 1
-      const priceObj = { hidden: true };
+      // Build the price object for stage 2 - preserve ZKP proof from Stage 0
+      let priceObj = { hidden: true };
+      
+      // Extract ZKP proof from Stage 0 VC if present
+      try {
+        let stage0Price = stage0?.credentialSubject?.price;
+        if (typeof stage0Price === "string") {
+          try {
+            stage0Price = JSON.parse(stage0Price);
+          } catch {
+            stage0Price = {};
+          }
+        }
+        
+        if (stage0Price?.zkpProof) {
+          // Preserve the ZKP proof from Stage 0
+          priceObj = {
+            hidden: true,
+            zkpProof: stage0Price.zkpProof
+          };
+          console.log('[Flow][Seller] Step 3 → Preserved ZKP proof from Stage 0 VC');
+        } else {
+          console.warn('[Flow][Seller] Step 3 → No ZKP proof found in Stage 0 VC, price will be hidden without proof');
+        }
+      } catch (err) {
+        console.warn("⚠️ Failed to extract ZKP proof from Stage 0:", err);
+        // Continue with hidden price without ZKP proof
+      }
+
+      // Retrieve purchase TX hash commitment if available (Phase 1 + Feature 2)
+      let purchaseTxHashCommitment = null;
+      let purchaseBindingTag = null; // Feature 2: Store binding tag for later use in delivery
+      try {
+        const purchaseTxCommitmentKey = `purchase_tx_commitment_${address}`;
+        const storedCommitment = localStorage.getItem(purchaseTxCommitmentKey);
+        if (storedCommitment) {
+          const commitmentData = JSON.parse(storedCommitment);
+          // Extract only the commitment fields (exclude txHash and timestamp)
+          purchaseTxHashCommitment = {
+            commitment: commitmentData.commitment,
+            proof: commitmentData.proof,
+            protocol: commitmentData.protocol,
+            version: commitmentData.version,
+            encoding: commitmentData.encoding,
+            ...(commitmentData.bindingTag ? { bindingTag: commitmentData.bindingTag } : {}), // Feature 2: Include binding tag
+          };
+          // Feature 2: Store binding tag for later use in delivery
+          if (commitmentData.bindingTag) {
+            purchaseBindingTag = commitmentData.bindingTag;
+            // Store binding tag for delivery flow
+            const bindingTagKey = `tx_hash_binding_tag_${address}`;
+            localStorage.setItem(bindingTagKey, purchaseBindingTag);
+            console.log('[Flow][Seller] Step 3 → Stored binding tag for delivery TX hash commitment');
+          }
+          console.log('[Flow][Seller] Step 3 → Found purchase TX hash commitment, will include in Stage 1 VC', purchaseBindingTag ? '(with binding tag)' : '(without binding tag)');
+          // Clean up localStorage after retrieving
+          localStorage.removeItem(purchaseTxCommitmentKey);
+        }
+      } catch (err) {
+        console.warn("⚠️ Failed to retrieve purchase TX hash commitment:", err);
+        // Continue anyway - commitment is optional
+      }
 
       // Build the VC for stage 1
       const vc = buildStage2VC({
@@ -797,6 +929,7 @@ const statusLabel = isDelivered
         stage0Cid: currentCid,
         buyerAddr: product.buyer,
         sellerAddr,
+        purchaseTxHashCommitment, // Phase 1: Include purchase TX hash commitment
       });
       vc.issuer = {
         id: `did:ethr:${VC_CHAIN}:${sellerAddr}`,
@@ -807,7 +940,7 @@ const statusLabel = isDelivered
       // Normalize all string fields to non-null strings
       const cs = vc.credentialSubject;
       const stringFields = [
-        "id", "productName", "batch", "previousCredential", "transactionId"
+        "id", "productName", "batch", "previousCredential"
       ];
       stringFields.forEach(field => {
         if (cs[field] == null) cs[field] = "";
@@ -830,9 +963,14 @@ const statusLabel = isDelivered
       // Sign the VC as issuer (Stage 2)
       // Sign with contract address for verifyingContract binding
       const issuerProof = await signVcAsSeller(vc, signer, address);
+      
+      // Set proofs in both formats for compatibility (backend supports both)
       vc.proofs = { issuerProof };
+      vc.proof = [issuerProof]; // Also set proof array format for W3C compatibility
+      
       if (VERBOSE) {
       console.log("[ProductDetail] Issuer proof:", issuerProof);
+      console.log("[ProductDetail] VC with proofs:", JSON.stringify(vc, null, 2));
       }
 
       console.log('[Flow][Seller] Step 3 → Stage 2 VC signed, uploading to IPFS.');
@@ -841,8 +979,25 @@ const statusLabel = isDelivered
       if (VERBOSE) {
       console.log("[ProductDetail] Uploaded VC CID:", newCid);
       }
-      const tx = await confirmOrder(address, newCid);
+      
+      // Extract purchase TX hash commitment for on-chain event emission (Feature 1: Purchase Transaction Verification)
+      let purchaseTxHashCommitmentBytes32 = "0x0000000000000000000000000000000000000000000000000000000000000000";
+      if (purchaseTxHashCommitment?.commitment) {
+        // Ensure commitment is properly formatted as bytes32 (64 hex chars with 0x prefix)
+        let commitmentHex = purchaseTxHashCommitment.commitment.replace(/^0x/, '');
+        if (commitmentHex.length === 64) {
+          purchaseTxHashCommitmentBytes32 = "0x" + commitmentHex;
+          console.log('[Flow][Seller] Step 3 → Extracted purchase TX hash commitment for event emission:', purchaseTxHashCommitmentBytes32);
+        } else {
+          console.warn('[Flow][Seller] Step 3 → Invalid purchase TX hash commitment length, using zero commitment');
+        }
+      }
+      
+      const tx = await confirmOrder(address, newCid, purchaseTxHashCommitmentBytes32);
       console.log('[Flow][Seller] Step 3 → Order confirmed on-chain, tx hash:', tx.hash);
+      if (purchaseTxHashCommitmentBytes32 !== "0x0000000000000000000000000000000000000000000000000000000000000000") {
+        console.log('[Flow][Seller] ✅ Purchase TX hash commitment is now stored on-chain and event emitted for verification');
+      }
       
       // Show transaction hash
       const chainId = await provider.getNetwork().then(n => n.chainId);
@@ -1033,6 +1188,7 @@ const statusLabel = isDelivered
       // Build the VC draft (no proofs yet) with delivery-related fields
       let draftVC = buildStage3VC({
         stage2,
+        stage2Cid, // ✅ Stage 2 VC CID for linear chain S0→S1→S2
         price: priceObj,
         buyerProof: {},
         proofType: 'zkRangeProof-v1',
@@ -1043,7 +1199,7 @@ const statusLabel = isDelivered
       // Normalize all string fields
       const cs = draftVC.credentialSubject;
       const stringFields = [
-        'id', 'productName', 'batch', 'previousCredential', 'transactionId'
+        'id', 'productName', 'batch', 'previousCredential'
       ];
       stringFields.forEach(field => {
         if (cs[field] == null) cs[field] = '';
@@ -1148,15 +1304,6 @@ const statusLabel = isDelivered
       // This is used to link the VC to other systems (e.g., Railgun private payments)
       canonicalVcObj.credentialSubject.vcHash = buyerProof.payloadHash;
       
-      // Canonicalize again with VC hash included
-      canonicalVcJson = freezeVcJson(canonicalVcObj);
-      setStatusMessage('📤 Uploading final VC to IPFS...');
-      const vcCID = await uploadJson(JSON.parse(canonicalVcJson));
-      console.log('[Flow][Buyer] Step 6 → Final Stage 3 VC uploaded. CID:', vcCID);
-      if (VERBOSE) {
-      console.log('[ProductDetail] Uploaded final VC CID:', vcCID);
-      console.log('[ProductDetail] VC Hash:', buyerProof.payloadHash);
-      }
       // Continue with on-chain delivery confirmation, etc.
       // ✅ Use publicPriceWei from contract (not localStorage)
       const revealedValue = product.publicPriceWei || ethers.toBigInt(product.priceWei || 0);
@@ -1180,11 +1327,20 @@ const statusLabel = isDelivered
       
       setStatusMessage('⏳ Confirming delivery on-chain...');
       const esc = new ethers.Contract(product.address, ESCROW_ABI, signer);
+      
+      // First, upload VC without TX hash commitment (we'll add it after we get the tx hash)
+      canonicalVcJson = freezeVcJson(canonicalVcObj);
+      setStatusMessage('📤 Uploading final VC to IPFS...');
+      const vcCID = await uploadJson(JSON.parse(canonicalVcJson));
+      console.log('[Flow][Buyer] Step 6 → Final Stage 3 VC uploaded. CID:', vcCID);
+      
+      // Now call revealAndConfirmDelivery to get the transaction
       const tx = await esc.revealAndConfirmDelivery(
         revealedValue,
         blinding,
         vcCID
       );
+      
       // Show transaction hash
       const chainId = await provider.getNetwork().then(n => n.chainId);
       const explorerUrl = chainId === 11155111n 
@@ -1196,6 +1352,151 @@ const statusLabel = isDelivered
       setStatusMessage(`⏳ Confirming delivery... Transaction: ${tx.hash.slice(0, 10)}...${tx.hash.slice(-8)}`);
       await tx.wait();
       console.log('[Flow][Buyer] Step 6 → Delivery confirmed on-chain, tx hash:', tx.hash);
+      
+      // Generate TX hash commitment for privacy (Step 4) - NOW we have the real tx hash
+      // Feature 2: Use same binding tag as purchase TX hash commitment
+      console.log('[Flow][Buyer] Step 6 → Starting TX hash commitment generation for delivery tx:', tx.hash);
+      setStatusMessage('🔐 Generating delivery TX hash commitment with binding tag...');
+      try {
+        // Feature 2: Retrieve binding tag from purchase (if available)
+        let bindingTag = null;
+        try {
+          const bindingTagKey = `tx_hash_binding_tag_${address}`;
+          const storedBindingTag = localStorage.getItem(bindingTagKey);
+          if (storedBindingTag) {
+            bindingTag = storedBindingTag;
+            console.log('[Flow][Buyer] Step 6 → Using binding tag from purchase for delivery TX hash commitment');
+          } else {
+            // Generate binding tag if not found (shouldn't happen, but backward compatible)
+            const buyerAddr = await signer.getAddress();
+            const chainId = await provider.getNetwork().then(n => n.chainId);
+            let productId;
+            try {
+              productId = await esc.id();
+              bindingTag = `0x${generateTxHashCommitmentBindingTag({
+                chainId: chainId.toString(),
+                escrowAddr: address,
+                productId: productId.toString(),
+                buyerAddress: buyerAddr,
+              })}`;
+              console.log('[Flow][Buyer] Step 6 → Generated new binding tag for delivery TX hash commitment');
+            } catch (err) {
+              console.warn("⚠️ Could not generate binding tag:", err);
+              // Continue without binding tag (backward compatible)
+            }
+          }
+        } catch (err) {
+          console.warn("⚠️ Failed to retrieve/generate binding tag:", err);
+          // Continue without binding tag (backward compatible)
+        }
+        
+        const zkpBackendUrl = process.env.REACT_APP_ZKP_BACKEND_URL || 'http://localhost:5010';
+        const requestBody = {
+          tx_hash: tx.hash,
+          ...(bindingTag ? { binding_tag_hex: bindingTag } : {}),
+        };
+        
+        console.log('[Flow][Buyer] Step 6 → Calling ZKP backend:', `${zkpBackendUrl}/zkp/commit-tx-hash`);
+        console.log('[Flow][Buyer] Step 6 → Request body:', JSON.stringify(requestBody, null, 2));
+        
+        let zkpRes;
+        try {
+          zkpRes = await fetch(`${zkpBackendUrl}/zkp/commit-tx-hash`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(requestBody),
+          });
+          
+          if (!zkpRes.ok) {
+            const errorText = await zkpRes.text();
+            console.error('[Flow][Buyer] Step 6 → ZKP backend HTTP error:', zkpRes.status, errorText);
+            throw new Error(`ZKP backend returned ${zkpRes.status}: ${errorText}`);
+          }
+        } catch (fetchError) {
+          console.error('[Flow][Buyer] Step 6 → Failed to call ZKP backend:', fetchError);
+          throw new Error(`ZKP backend unavailable: ${fetchError.message}. Please ensure the ZKP backend is running at ${zkpBackendUrl}`);
+        }
+
+        const zkpData = await zkpRes.json();
+        console.log('[Flow][Buyer] Step 6 → ZKP backend response:', JSON.stringify(zkpData, null, 2));
+        const { commitment, proof, verified } = zkpData;
+        if (!verified) {
+          console.warn("⚠️ TX hash commitment verification failed, but adding commitment to VC anyway...");
+        } else {
+          console.log("✅ TX hash commitment verification passed");
+        }
+        
+        // Always add TX hash commitment to the VC, regardless of verification status
+        // The verification is just a check - the commitment itself should be stored
+        if (commitment && proof) {
+          canonicalVcObj.credentialSubject.txHashCommitment = {
+            commitment,
+            proof,
+            protocol: "bulletproofs-pedersen",
+            version: "1.0",
+            encoding: "hex",
+            ...(bindingTag ? { bindingTag } : {}), // Feature 2: Include binding tag
+          };
+          console.log('[Flow][Buyer] Step 6 → TX hash commitment added to VC', bindingTag ? '(with binding tag)' : '(without binding tag)');
+          
+          // Feature 2: Clean up binding tag from localStorage after use
+          if (bindingTag) {
+            const bindingTagKey = `tx_hash_binding_tag_${address}`;
+            localStorage.removeItem(bindingTagKey);
+            console.log('[Flow][Buyer] Step 6 → Cleaned up binding tag from localStorage');
+          }
+          
+          // Re-upload updated VC to IPFS with TX hash commitment
+          const updatedVcJson = freezeVcJson(canonicalVcObj);
+          const updatedVcCID = await uploadJson(JSON.parse(updatedVcJson));
+          console.log('[Flow][Buyer] Step 6 → Updated VC with TX hash commitment. CID:', updatedVcCID);
+          
+          // Update on-chain CID to point to the VC with TX hash commitment
+          // This is done automatically - no extra user step required
+          setStatusMessage('📡 Updating on-chain VC CID with TX hash commitment...');
+          try {
+            // Extract TX hash commitment from the updated VC for event emission (Feature 1: Transaction Verification)
+            let txHashCommitmentBytes32 = "0x0000000000000000000000000000000000000000000000000000000000000000";
+            if (canonicalVcObj.credentialSubject?.txHashCommitment?.commitment) {
+              // Ensure commitment is properly formatted as bytes32 (64 hex chars with 0x prefix)
+              let commitmentHex = canonicalVcObj.credentialSubject.txHashCommitment.commitment.replace(/^0x/, '');
+              if (commitmentHex.length === 64) {
+                txHashCommitmentBytes32 = "0x" + commitmentHex;
+                console.log('[Flow][Buyer] Step 6 → Extracted TX hash commitment for event emission:', txHashCommitmentBytes32);
+              } else {
+                console.warn('[Flow][Buyer] Step 6 → Invalid commitment length, using zero commitment');
+              }
+            }
+            
+            const updateCidTx = await esc.updateVcCidAfterDelivery(updatedVcCID, txHashCommitmentBytes32);
+            await updateCidTx.wait();
+            console.log('[Flow][Buyer] Step 6 → On-chain CID updated to:', updatedVcCID);
+            console.log('[Flow][Buyer] ✅ TX hash commitment is now stored on-chain and event emitted for verification');
+          } catch (updateErr) {
+            console.error("❌ Failed to update on-chain CID:", updateErr);
+            // Fallback: Store in localStorage as backup (but this shouldn't happen)
+            const updatedCidKey = `vcCid_updated_${product.address}`;
+            localStorage.setItem(updatedCidKey, updatedVcCID);
+            console.warn('[Flow][Buyer] ⚠️ Stored updated CID in localStorage as fallback');
+            setError('Failed to update on-chain CID. TX hash commitment is in IPFS but not linked on-chain.');
+          }
+        } else {
+          console.error("❌ Missing commitment or proof from ZKP backend response");
+          setError('Failed to generate TX hash commitment - missing commitment or proof');
+        }
+      } catch (err) {
+        console.error("❌ Failed to generate TX hash commitment:", err);
+        console.error("❌ Error details:", {
+          message: err.message,
+          stack: err.stack,
+          name: err.name
+        });
+        setError(`Failed to generate TX hash commitment: ${err.message}`);
+        // Continue anyway - commitment is optional for now, but log the error
+        // Don't return here - let the flow continue even if TX hash commitment fails
+      }
+      
+      console.log('[Flow][Buyer] Step 6 → Delivery flow completed');
       setStatusMessage('✅ Delivery confirmed!');
       loadProductData();
     } catch (err) {

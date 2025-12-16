@@ -3,10 +3,15 @@ import { Button } from '../ui/button';
 import { ethers } from 'ethers';
 import toast from 'react-hot-toast';
 import ProductEscrowABI from '../../abis/ProductEscrow_Initializer.json';
-// Phase 1: Minimal imports - remove complex wallet management for now
-import ShieldingTestButton from './ShieldingTestButton';
 import PrivateFundsDrawer from './PrivateFundsDrawer';
 import { fmt18 } from '../../helpers/format';
+
+// TODO: Update to use new Railgun structure
+// Temporary legacy shim for old API
+import * as legacyRailgun from '../../lib/railgun-legacy-shim';
+const { connectRailgun, setRailgunIdentity, disconnectRailgun, refreshBalances, getAllBalances, privateTransfer, getRailgunAddressFromCredentials } = legacyRailgun;
+const paySellerV2 = privateTransfer; // Alias for now
+const checkWalletState = async () => ({ connected: false, message: 'Please update to new Railgun structure' });
 
 // API base constant (mirror railgunUtils.js)
 const RAILGUN_API_BASE = process.env.REACT_APP_RAILGUN_API_URL || 'http://localhost:3001';
@@ -15,13 +20,18 @@ const RAILGUN_API_BASE = process.env.REACT_APP_RAILGUN_API_URL || 'http://localh
 const ESCROW_ABI = ProductEscrowABI.abi;
 
 const PrivatePaymentModal = ({ product, isOpen, onClose, onSuccess, currentUser }) => {
-  // 🧪 Debug: Log product on mount
-  console.log('🔍 PrivatePaymentModal received product:', product);
-  console.log('🔍 Product seller:', product?.seller);
-  console.log('🔍 Product keys:', product ? Object.keys(product) : 'No product');
-  console.log('🔍 Product owner:', product?.owner);
-  console.log('🔍 Product creator:', product?.creator);
   const [currentStep, setCurrentStep] = useState('payment'); // payment -> complete (wallet connection moved to main nav)
+  
+  // 🧪 Debug: Log product only when it changes (not on every render)
+  useEffect(() => {
+    if (product) {
+      console.log('🔍 PrivatePaymentModal received product:', product);
+      console.log('🔍 Product seller:', product?.seller);
+      console.log('🔍 Product keys:', Object.keys(product));
+      console.log('🔍 Product owner:', product?.owner);
+      console.log('🔍 Product creator:', product?.creator);
+    }
+  }, [product?.address]); // Only log when product address changes (i.e., different product)
   const [walletManager, setWalletManager] = useState(null);
   const [railgunAddress, setRailgunAddress] = useState(null);
   const [railgunWalletID, setRailgunWalletID] = useState(null);
@@ -64,13 +74,31 @@ const PrivatePaymentModal = ({ product, isOpen, onClose, onSuccess, currentUser 
 
   // Listen for connection changes from localStorage
   useEffect(() => {
+    // Guard: prevent multiple concurrent executions
+    if (window._isHandlingConnectionChange) {
+      return;
+    }
+    
     const handleConnectionChange = async () => {
-      // Add a small delay to allow connection data to be stored
-      await new Promise(resolve => setTimeout(resolve, 100));
+      // Guard: prevent multiple concurrent executions
+      if (window._isHandlingConnectionChange) {
+        return;
+      }
       
-      // Force re-evaluation of connection status
-      const stored = JSON.parse(localStorage.getItem('railgun.wallet') || 'null');
-      console.log('🔍 Connection change handler - checking stored data:', stored);
+      // Guard: don't react to our own localStorage writes
+      if (window._isUpdatingRailgunStorage) {
+        return;
+      }
+      
+      window._isHandlingConnectionChange = true;
+      
+      try {
+        // Add a small delay to allow connection data to be stored
+        await new Promise(resolve => setTimeout(resolve, 100));
+        
+        // Force re-evaluation of connection status
+        const stored = JSON.parse(localStorage.getItem('railgun.wallet') || 'null');
+        console.log('🔍 Connection change handler - checking stored data:', stored);
       
       if (stored && stored.walletID && stored.railgunAddress && stored.userAddress) {
         const belongsToCurrentUser = stored.userAddress.toLowerCase() === currentUser.toLowerCase();
@@ -98,7 +126,8 @@ const PrivatePaymentModal = ({ product, isOpen, onClose, onSuccess, currentUser 
           setIsRGConnected(true);
           
           // ✅ Set global Railgun identity for balance checking
-          const { setRailgunIdentity } = await import('../../lib/railgunClient');
+          // Note: In V2 client, identity is handled automatically by connectRailgun
+          const { setRailgunIdentity } = await import('../../lib/railgun-legacy-shim');
           setRailgunIdentity({
             walletID: stored.walletID,
             railgunAddress: stored.railgunAddress
@@ -116,20 +145,59 @@ const PrivatePaymentModal = ({ product, isOpen, onClose, onSuccess, currentUser 
           setIsRGConnected(false);
           
           // ✅ Clear global Railgun identity
-          const { disconnectRailgun } = await import('../../lib/railgunV2SepoliaClient');
+          const { disconnectRailgun } = await import('../../lib/railgun-legacy-shim');
           disconnectRailgun();
         }
       } else {
         console.log('🔍 No valid stored connection found');
         
-        // Check if we're currently connecting - if so, don't disconnect yet
-        const { getIsConnecting } = await import('../../lib/railgunV2SepoliaClient');
-        const globalConnecting = getIsConnecting();
-        if (globalConnecting) {
-          console.log('🔍 Connection in progress - not disconnecting yet');
+        // CRITICAL: Don't clear connection if we just opened the modal
+        // Wait a bit longer for connection to complete (in case user is connecting)
+        // Only clear if we've checked multiple times and still no connection
+        const connectionWaitTime = 2000; // 2 seconds
+        const lastCheck = window._lastConnectionCheck || 0;
+        const checkCount = window._connectionCheckCount || 0;
+        const maxChecks = 4; // Maximum 4 checks (2 seconds total)
+        
+        // If we've already done max checks, stop checking and clear
+        if (checkCount >= maxChecks) {
+          // Don't reset check count - we've already determined no connection
+          // Only clear state if it's not already cleared (prevent infinite loops)
+          if (isActuallyConnected || railgunAddress) {
+            console.log('🔍 Max checks reached - clearing connection state');
+            setIsActuallyConnected(false);
+            setRailgunAddress(null);
+            setRailgunWalletID(null);
+            setBuyerRailgunAddress('');
+            setWalletManager(null);
+            setRailgun(null);
+            setIsRGConnected(false);
+          }
+          return; // Stop here - don't schedule more checks
+        }
+        
+        if (Date.now() - lastCheck < connectionWaitTime && checkCount < maxChecks) {
+          console.log('🔍 Connection might be in progress - waiting before clearing', `(${checkCount + 1}/${maxChecks})`);
+          window._lastConnectionCheck = Date.now();
+          window._connectionCheckCount = checkCount + 1;
+          
+          // Schedule only ONE more check, not recursively
+          if (!window._connectionCheckScheduled) {
+            window._connectionCheckScheduled = true;
+            setTimeout(() => {
+              window._connectionCheckScheduled = false;
+              handleConnectionChange().catch(console.error);
+            }, 500);
+          }
           return;
         }
         
+        // If we get here, we've waited long enough but haven't reached max checks
+        // This means enough time has passed since last check, so reset and clear
+        window._lastConnectionCheck = Date.now();
+        window._connectionCheckCount = maxChecks; // Set to max to prevent further checks
+        
+        // Only clear if we're sure there's no connection after waiting
         setIsActuallyConnected(false);
         setRailgunAddress(null);
         setRailgunWalletID(null);
@@ -140,24 +208,34 @@ const PrivatePaymentModal = ({ product, isOpen, onClose, onSuccess, currentUser 
         // ✅ Set isRGConnected to false when no connection found
         setIsRGConnected(false);
         
-        // ✅ Clear global Railgun identity
-        const { disconnectRailgun } = await import('../../lib/railgunClient');
-        disconnectRailgun();
+        // DON'T call disconnectRailgun() here - it clears localStorage
+        // If connection is in progress, we don't want to clear it
+        // Only clear state, not localStorage
+      }
+      } finally {
+        // Always release the guard
+        window._isHandlingConnectionChange = false;
       }
     };
 
     // Listen for custom events
-    window.addEventListener('railgunConnectionChanged', () => {
+    const connectionChangeHandler = () => {
       handleConnectionChange().catch(console.error);
-    });
+    };
     
-    // Also check on mount
+    window.addEventListener('railgunConnectionChanged', connectionChangeHandler);
+    
+    // Also check on mount (but reset check tracking first)
+    window._lastConnectionCheck = 0;
+    window._connectionCheckCount = 0;
+    window._connectionCheckScheduled = false;
     handleConnectionChange().catch(console.error);
-
+    
     return () => {
-      window.removeEventListener('railgunConnectionChanged', () => {
-        handleConnectionChange().catch(console.error);
-      });
+      window.removeEventListener('railgunConnectionChanged', connectionChangeHandler);
+      // Clear any pending checks and guards
+      window._connectionCheckScheduled = false;
+      window._isHandlingConnectionChange = false;
     };
   }, [currentUser]);
   
@@ -200,10 +278,21 @@ const PrivatePaymentModal = ({ product, isOpen, onClose, onSuccess, currentUser 
 
   // Debug railgun state changes and persist to localStorage
   useEffect(() => {
-    console.log('🔍 Railgun state changed:', railgun);
-    if (railgun) {
+    // Guard: prevent infinite loops by checking if value actually changed
+    const currentStored = localStorage.getItem('railgun.wallet');
+    const currentStoredParsed = currentStored ? JSON.parse(currentStored) : null;
+    
+    // Only update if the value actually changed
+    if (railgun && JSON.stringify(railgun) !== JSON.stringify(currentStoredParsed)) {
+      console.log('🔍 Railgun state changed:', railgun);
+      // Set a flag to prevent the connection change handler from reacting to this write
+      window._isUpdatingRailgunStorage = true;
       localStorage.setItem('railgun.wallet', JSON.stringify(railgun));
       console.log('💾 Railgun state saved to localStorage');
+      // Clear the flag after a short delay
+      setTimeout(() => {
+        window._isUpdatingRailgunStorage = false;
+      }, 100);
     }
   }, [railgun]);
 
@@ -224,7 +313,7 @@ const PrivatePaymentModal = ({ product, isOpen, onClose, onSuccess, currentUser 
     
     try {
       // Import the balance refresh function
-      const { refreshBalances } = await import('../../lib/railgunClient');
+      const { refreshBalances } = await import('../../lib/railgun-legacy-shim');
       
       // Use official Sepolia WETH address
       const tokenAddress = '0x7b79995e5f793A07Bc00c21412e50Ecae098E7f9';
@@ -235,7 +324,7 @@ const PrivatePaymentModal = ({ product, isOpen, onClose, onSuccess, currentUser 
       console.log('🔄 Balance refresh result:', refreshSuccess);
       
       // Get balances using the same approach as Private Funds Drawer
-      const { getAllBalances } = await import('../../lib/railgunClient');
+      const { getAllBalances } = await import('../../lib/railgun-legacy-shim');
       const balanceResult = await getAllBalances();
       
       if (!balanceResult.success || !balanceResult.data?.railgun) {
@@ -428,13 +517,18 @@ const PrivatePaymentModal = ({ product, isOpen, onClose, onSuccess, currentUser 
     }
   }, [currentStep, product, walletManager, buyerRailgunAddress]);
   
-  // Force validation when entering payment step
+  // Force validation when entering payment step (only once, not on every render)
+  const hasValidatedPaymentStep = React.useRef(false);
   useEffect(() => {
-    if (currentStep === 'payment') {
+    if (currentStep === 'payment' && !hasValidatedPaymentStep.current) {
       console.log("🎯 Payment step activated - forcing validation");
+      hasValidatedPaymentStep.current = true;
       setTimeout(() => {
         validatePrivatePayment();
       }, 100);
+    } else if (currentStep !== 'payment') {
+      // Reset flag when leaving payment step
+      hasValidatedPaymentStep.current = false;
     }
   }, [currentStep]);
 
@@ -454,7 +548,7 @@ const PrivatePaymentModal = ({ product, isOpen, onClose, onSuccess, currentUser 
       setIsActuallyConnected(false);
 
       // Import Railgun V2 client (replaces legacy railgunClient.js)
-      const { connectRailgun } = await import('../../lib/railgunV2SepoliaClient');
+      const { connectRailgun } = await import('../../lib/railgun-legacy-shim');
 
       // Get user address from MetaMask
       const userAddress = await window.ethereum.request({ method: 'eth_accounts' })
@@ -501,22 +595,15 @@ const PrivatePaymentModal = ({ product, isOpen, onClose, onSuccess, currentUser 
       console.log('🔧 Creating REAL RailgunWalletManager...');
       
       try {
-        // Import the real RailgunWalletManager
-        const { RailgunWalletManager } = await import('../../utils/railgunUtils');
+        // Use V2 client directly - no need for RailgunWalletManager
+        const { privateTransfer } = await import('../../lib/railgun-legacy-shim');
         
-        // Create real wallet manager instance
-        const realWalletManager = new RailgunWalletManager();
-        
-        // Initialize with the current provider
-        const provider = new ethers.BrowserProvider(window.ethereum);
-        await realWalletManager.initialize(provider);
-        
-        // Add the methods that RailgunPaymentFlow expects
-        realWalletManager.createPrivateTransfer = async (params) => {
-          console.log('🔧 REAL createPrivateTransfer called with:', params);
-          
-          // Use the real SDK privateTransfer function
-          const { privateTransfer } = await import('../../railgun/railgunWalletClient');
+        // Create a simple wallet manager wrapper that uses V2 client
+        const realWalletManager = {
+          createPrivateTransfer: async (params) => {
+            console.log('🔧 REAL createPrivateTransfer called with:', params);
+            
+            // Use the V2 client privateTransfer function
           
           // Extract the first output (we'll handle multiple outputs later)
           const firstOutput = params.outputs[0];
@@ -531,38 +618,40 @@ const PrivatePaymentModal = ({ product, isOpen, onClose, onSuccess, currentUser 
             memo: params.memo
           });
           
-          const result = await privateTransfer(
-            firstOutput.recipient,
-            params.tokenAddress,
-            firstOutput.amount,
-            params.memo || '0x'
-          );
+            const result = await privateTransfer({
+              toRailgunAddress: firstOutput.recipient,
+              amountWei: firstOutput.amount.toString(),
+              memo: params.memo
+            });
+            
+            console.log('✅ Real private transfer completed:', result);
+            
+            return {
+              success: true,
+              transactionHash: result,
+              txRefBytes32: params.txRefBytes32,
+              transfer: { transactionHash: result },
+              proof: {}
+            };
+          },
           
-          console.log('✅ Real private transfer completed:', result);
+          executePrivateTransfer: async (transfer) => {
+            console.log('🔧 REAL executePrivateTransfer called with:', transfer);
+            // Transfer is already executed by privateTransfer above
+            return {
+              success: true,
+              transactionHash: transfer.transactionHash,
+              message: 'Real private transfer executed'
+            };
+          },
           
-          return {
-            success: true,
-            transactionHash: result.txHash,
-            txRefBytes32: result.txRefBytes32 || params.txRefBytes32,
-            transfer: result.transfer,
-            proof: result.proof
-          };
-        };
-        
-        realWalletManager.executePrivateTransfer = async (transfer) => {
-          console.log('🔧 REAL executePrivateTransfer called with:', transfer);
-          
-          // For now, the transfer is already executed in createPrivateTransfer
-          // In a full implementation, this would handle the actual blockchain submission
-          return {
-            success: true,
-            transactionHash: transfer.transactionHash,
-            message: 'Real private transfer executed'
-          };
+          railgunWallet: {
+            getAddress: () => railgunAddress
+          }
         };
         
         setWalletManager(realWalletManager);
-        console.log('✅ REAL wallet manager created and initialized:', realWalletManager);
+        console.log('✅ Wallet manager created using V2 client:', realWalletManager);
         
       } catch (error) {
         console.error('❌ Failed to create real wallet manager:', error);
@@ -660,11 +749,14 @@ const PrivatePaymentModal = ({ product, isOpen, onClose, onSuccess, currentUser 
         let cleanRailgunAddress;
         
                  if (isSDK) {
-           // SDK mode: get real Railgun address from SDK
+           // SDK mode: get real Railgun address from state (already loaded by connectRailgun)
            try {
-             // Import the SDK client to get the real address
-             const { getRailgunAddress } = await import('../../railgun/railgunWalletClient');
-             railgunAddress = getRailgunAddress();
+             // Railgun address is already in state from connectRailgun
+             // If not, check localStorage
+             if (!railgunAddress) {
+               const stored = JSON.parse(localStorage.getItem('railgun.wallet') || 'null');
+               railgunAddress = stored?.railgunAddress || null;
+             }
              console.log("🔐 SDK Railgun address:", railgunAddress);
              
              // For SDK addresses, don't clean them (they're already in correct format)
@@ -778,18 +870,17 @@ const PrivatePaymentModal = ({ product, isOpen, onClose, onSuccess, currentUser 
         if (credentialsResult.success && credentialsResult.data) {
           console.log('✅ Seller credentials retrieved, deriving Railgun address...');
           
-          // Import Railgun SDK functions
-          const { createRailgunWallet } = await import('../../lib/railgunClient');
+          // Import V2 client function to get Railgun address from credentials
+          const { getRailgunAddressFromCredentials } = await import('../../lib/railgun-legacy-shim');
           
-          // Create seller's Railgun wallet to get their address
-          const sellerWallet = await createRailgunWallet(
+          // Derive seller's Railgun address from mnemonic and encryption key
+          const sellerRailgunAddress = await getRailgunAddressFromCredentials(
             credentialsResult.data.mnemonic,
-            credentialsResult.data.encryptionKey,
-            'sepolia' // Use current network
+            credentialsResult.data.encryptionKey
           );
           
-          console.log('✅ Seller Railgun address derived:', sellerWallet.railgunAddress);
-          return sellerWallet.railgunAddress;
+          console.log('✅ Seller Railgun address derived:', sellerRailgunAddress);
+          return sellerRailgunAddress;
       } else {
           console.log('⚠️ Seller has no credentials yet - they need to connect first');
           throw new Error('Seller has not connected their Railgun wallet yet');
@@ -822,7 +913,7 @@ const PrivatePaymentModal = ({ product, isOpen, onClose, onSuccess, currentUser 
       setPaymentLoading(true);
       
       // Import the new V2 unproven transfer functions
-      const { paySellerV2, checkWalletState } = await import('../../lib/railgunClient');
+      // const { paySellerV2, checkWalletState } = await import('../../lib/railgun-legacy-shim'); // Already defined above
       
       // Use official Sepolia WETH address
       const tokenAddress = '0x7b79995e5f793A07Bc00c21412e50Ecae098E7f9';
@@ -832,7 +923,7 @@ const PrivatePaymentModal = ({ product, isOpen, onClose, onSuccess, currentUser 
       console.log("🔧 Token address:", tokenAddress);
       
       // Check spendable balance using same source as Private Funds Drawer
-      const { getAllBalances } = await import('../../lib/railgunClient');
+      const { getAllBalances } = await import('../../lib/railgun-legacy-shim');
       const balanceResult = await getAllBalances();
       
       if (!balanceResult.success || !balanceResult.data?.railgun) {
@@ -859,10 +950,8 @@ const PrivatePaymentModal = ({ product, isOpen, onClose, onSuccess, currentUser 
         sellerRailgunAddress = await getSellerRailgunAddress(product.owner);
       console.log("🔍 Seller's Railgun address:", sellerRailgunAddress);
       } catch (error) {
-        console.log("⚠️ Failed to get seller Railgun address, using fallback for testing");
-        // For testing: use a hardcoded seller Railgun address
-        sellerRailgunAddress = "0zk1qyvsvggd2vgfapsnz3vnl0yfy4lh67kxqz5msh6cffe2vp9pk2elprv7j6fe3z53l74sfdp7njqzc7umlk4k8yqr8k992al9yk3z02df5m9h5np3la4vwmsnpv6";
-        console.log("🔍 Using fallback seller Railgun address:", sellerRailgunAddress);
+        console.error("❌ Failed to get seller Railgun address:", error);
+        throw new Error(`Unable to get seller's Railgun address. Seller must connect their Railgun wallet first. Error: ${error.message}`);
       }
       
       // Get the wallet ID string from the stored Railgun state
@@ -951,40 +1040,26 @@ const PrivatePaymentModal = ({ product, isOpen, onClose, onSuccess, currentUser 
     return { railgunAddress, buyerRailgunAddress, validation, product };
   };
 
-  // 🧪 Debug function to test seller address
-  const debugSellerAddress = async () => {
-    console.log('🔍 === DEBUGGING SELLER ADDRESS ===');
-    console.log('🔍 Product seller EOA:', product?.seller);
-    
-    try {
-      const sellerRailgunAddress = await getSellerRailgunAddress(product?.seller || product?.owner || product?.creator);
-      console.log('🔍 Seller Railgun address:', sellerRailgunAddress);
-      return sellerRailgunAddress;
-    } catch (error) {
-      console.error('❌ Failed to get seller Railgun address:', error);
-      return null;
-    }
-  };
-
-  // Make debug functions available globally
-  window.debugPrivatePaymentModal = debugCurrentState;
-  window.debugSellerAddress = debugSellerAddress;
-  window.getProductData = () => product;
+  // Debug functions (only available in development with REACT_APP_VERBOSE=true)
+  if (process.env.REACT_APP_VERBOSE === 'true' || process.env.NODE_ENV === 'development') {
+    window.debugPrivatePaymentModal = debugCurrentState;
+    window.getProductData = () => product;
+  }
 
   // Create walletManager when Railgun wallet is connected
   const createWalletManagerForConnection = async (walletID, railgunAddress) => {
     try {
       console.log('🔧 Creating walletManager for connected Railgun wallet:', { walletID, railgunAddress });
       
-      // ✅ Use the existing wallet from railgunClient.js instead of creating a new RailgunWalletManager
+      // ✅ Use the V2 client wallet directly instead of creating a new RailgunWalletManager
       // The wallet is already loaded and working in railgunClient.js
       const realWalletManager = {
         createPrivateTransfer: async (params) => {
           console.log('🔐 Creating private transfer with real Railgun SDK...');
           console.log('🔍 Params received:', params);
           
-          // Import the real privateTransfer function from railgunClient
-          const { privateTransfer } = await import('../../lib/railgunClient');
+          // Import the real privateTransfer function from legacy shim
+          const { privateTransfer } = await import('../../lib/railgun-legacy-shim');
           
           // Extract parameters from the params object
           // params has structure: { outputs: [{ recipient, amount }], tokenAddress, memo, txRefBytes32 }
@@ -1081,7 +1156,7 @@ const PrivatePaymentModal = ({ product, isOpen, onClose, onSuccess, currentUser 
             setIsRGConnected(true);
             
             // ✅ Set global Railgun identity for balance checking
-            const { setRailgunIdentity } = await import('../../lib/railgunClient');
+            const { setRailgunIdentity } = await import('../../lib/railgun-legacy-shim');
             setRailgunIdentity({
               walletID: stored.walletID,
               railgunAddress: stored.railgunAddress

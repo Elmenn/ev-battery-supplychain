@@ -27,7 +27,8 @@ export default function PrivateFundsDrawer({ open, onClose }) {
       const signer = await provider.getSigner();
       
       // Set the provider and signer in railgunClient
-      const { setSignerAndProvider, setRailgunIdentity } = await import('../../lib/railgunClient');
+      // TODO: Update to use new Railgun structure
+      const { setSignerAndProvider, setRailgunIdentity } = await import('../../lib/railgun-legacy-shim');
       setSignerAndProvider(provider, signer);
       console.log('🔧 Provider/signer set in railgunClient');
       
@@ -51,7 +52,7 @@ export default function PrivateFundsDrawer({ open, onClose }) {
       }
       
       // Now get all balances (EOA + Railgun)
-      const { getAllBalances } = await import('../../lib/railgunClient');
+      const { getAllBalances } = await import('../../lib/railgun-legacy-shim');
       console.log('🔍 Calling getAllBalances...');
       const b = await getAllBalances();
       // getAllBalances returns { success, data }
@@ -109,7 +110,9 @@ export default function PrivateFundsDrawer({ open, onClose }) {
       const signer = await provider.getSigner();
       
       // Set the provider/signer in railgunClient
-      const { setSignerAndProvider, wrapETHtoWETH } = await import('../../lib/railgunClient');
+      const { setSignerAndProvider } = await import('../../lib/railgun-legacy-shim');
+      // TODO: Implement wrapETHtoWETH in new structure
+      const wrapETHtoWETH = async () => { throw new Error('wrapETHtoWETH not yet implemented in new structure'); };
       setSignerAndProvider(provider, signer);
       
       console.log('🔧 Provider/signer set, calling wrapETHtoWETH...');
@@ -142,11 +145,12 @@ export default function PrivateFundsDrawer({ open, onClose }) {
         const signer = await provider.getSigner();
         
         // Set the provider/signer in railgunClient
-        const { setSignerAndProvider } = await import('../../lib/railgunClient');
+        const { setSignerAndProvider } = await import('../../lib/railgun-legacy-shim');
         setSignerAndProvider(provider, signer);
       }
       
-      const { estimateShieldWETH } = await import('../../lib/railgunClient');
+      // TODO: Implement estimateShieldWETH in new structure
+      const estimateShieldWETH = async () => { throw new Error('estimateShieldWETH not yet implemented in new structure'); };
       const result = await estimateShieldWETH(shieldAmt);
       
       if (result.success) {
@@ -177,11 +181,12 @@ export default function PrivateFundsDrawer({ open, onClose }) {
         const signer = await provider.getSigner();
         
         // Set the provider/signer in railgunClient
-        const { setSignerAndProvider } = await import('../../lib/railgunClient');
+        const { setSignerAndProvider } = await import('../../lib/railgun-legacy-shim');
         setSignerAndProvider(provider, signer);
       }
       
-      const { shieldWETH } = await import('../../lib/railgunClient');
+      // TODO: Implement shieldWETH in new structure
+      const shieldWETH = async () => { throw new Error('shieldWETH not yet implemented in new structure'); };
       const result = await shieldWETH(shieldAmt);
       
       if (result.success) {

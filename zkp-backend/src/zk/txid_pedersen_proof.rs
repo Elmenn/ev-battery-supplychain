@@ -9,48 +9,123 @@ use rand::RngCore;
 use hex::FromHex;
 
 /// Proves knowledge of a transaction ID preimage such that Pedersen(tx_id, r) == commitment
-pub fn prove_txid_commitment(tx_id: Scalar) -> (CompressedRistretto, Vec<u8>, bool) {
-    println!("\u{25B6}\u{FE0F} Running: Bulletproof-based ZKP for tx_id using Pedersen commitment");
+/// This version supports optional binding tag for linking commitments
+pub fn prove_txid_commitment_with_binding(
+    tx_id: Scalar,
+    binding_tag: Option<&[u8]>,
+) -> (CompressedRistretto, Vec<u8>, bool) {
+    if binding_tag.is_some() {
+        println!("\u{25B6}\u{FE0F} [ZKP] Running: Bulletproof-based ZKP for tx_id with binding tag");
+        println!("   [ZKP] Binding tag: {} bytes", binding_tag.unwrap().len());
+    } else {
+        println!("\u{25B6}\u{FE0F} [ZKP] Running: Bulletproof-based ZKP for tx_id using Pedersen commitment (no binding tag)");
+    }
 
+    println!("   [ZKP] Initializing generators...");
     let pc_gens = PedersenGens::default();
     let bp_gens = BulletproofGens::new(64, 1);
     let mut rng = OsRng;
 
+    println!("   [ZKP] Generating random blinding factor...");
     let mut bytes = [0u8; 64];
     rng.fill_bytes(&mut bytes);
     let blinding_r = Scalar::from_bytes_mod_order_wide(&bytes);
 
     // ✍️ Prover Phase
+    println!("   [ZKP] Starting prover phase...");
     let mut transcript = Transcript::new(b"TxIDPedersenZKP");
+    
+    // ✅ Add binding tag to transcript if provided (Feature 2: Linkable Commitment)
+    if let Some(binding) = binding_tag {
+        transcript.append_message(b"bind", binding);
+        println!("   [ZKP] ✅ Binding tag added to prover transcript: {} bytes", binding.len());
+    } else {
+        println!("   [ZKP] No binding tag in prover transcript");
+    }
+    
     let mut prover = Prover::new(&pc_gens, &mut transcript);
     let (_com_var, _) = prover.commit(tx_id, blinding_r);
+    println!("   [ZKP] Committed tx_id to prover");
+    
+    println!("   [ZKP] Generating proof...");
     let proof = prover.prove(&bp_gens).unwrap();
     let proof_bytes = proof.to_bytes();
     let commitment = pc_gens.commit(tx_id, blinding_r).compress();
+    println!("   [ZKP] ✅ Proof generated: {} bytes, commitment: {} bytes", proof_bytes.len(), commitment.as_bytes().len());
 
     // 🔍 Verifier Phase
+    println!("   [ZKP] Starting verifier phase...");
     let mut transcript = Transcript::new(b"TxIDPedersenZKP");
+    
+    // ✅ Add binding tag to verification transcript if provided
+    if let Some(binding) = binding_tag {
+        transcript.append_message(b"bind", binding);
+        println!("   [ZKP] ✅ Binding tag added to verifier transcript: {} bytes", binding.len());
+    } else {
+        println!("   [ZKP] No binding tag in verifier transcript");
+    }
+    
     let mut verifier = Verifier::new(&mut transcript);
     let _var = verifier.commit(commitment);
+    println!("   [ZKP] Committed to verifier");
+    
+    println!("   [ZKP] Verifying proof...");
     let verified = verifier.verify(&proof, &pc_gens, &bp_gens).is_ok();
 
-    println!("\u{2705} ZK Proof of tx_id preimage verified? {}", verified);
+    if verified {
+        println!("\u{2705} [ZKP] ✅ ZK Proof of tx_id preimage VERIFIED");
+    } else {
+        println!("\u{274C} [ZKP] ❌ ZK Proof of tx_id preimage VERIFICATION FAILED");
+    }
 
     (commitment, proof_bytes, verified)
 }
 
+/// Proves knowledge of a transaction ID preimage such that Pedersen(tx_id, r) == commitment
+/// Backward compatible version without binding tag
+pub fn prove_txid_commitment(tx_id: Scalar) -> (CompressedRistretto, Vec<u8>, bool) {
+    prove_txid_commitment_with_binding(tx_id, None)
+}
+
 /// Convenience wrapper: takes Ethereum tx hash as hex string and proves it
+/// Backward compatible version without binding tag
 pub fn prove_txid_commitment_from_hex(txid_hex: &str) -> (CompressedRistretto, Vec<u8>, bool) {
+    prove_txid_commitment_from_hex_with_binding(txid_hex, None)
+}
+
+/// Convenience wrapper: takes Ethereum tx hash as hex string and proves it with optional binding tag
+/// Feature 2: Linkable Commitment - binding tag links purchase and delivery TX commitments
+pub fn prove_txid_commitment_from_hex_with_binding(
+    txid_hex: &str,
+    binding_tag: Option<&[u8]>,
+) -> (CompressedRistretto, Vec<u8>, bool) {
+    println!("[ZKP] prove_txid_commitment_from_hex_with_binding called");
+    println!("   [ZKP] TX hash (hex): {}", txid_hex);
+    println!("   [ZKP] Binding tag: {}", if binding_tag.is_some() { "provided" } else { "not provided" });
+    
     let hex_str = txid_hex.strip_prefix("0x").unwrap_or(txid_hex);
-    let bytes = <[u8; 32]>::from_hex(hex_str).expect("Invalid tx hash");
+    println!("   [ZKP] Parsing hex string (length: {})...", hex_str.len());
+    
+    let bytes = match <[u8; 32]>::from_hex(hex_str) {
+        Ok(b) => {
+            println!("   [ZKP] ✅ TX hash parsed successfully: {} bytes", b.len());
+            b
+        },
+        Err(e) => {
+            println!("   [ZKP] ❌ Failed to parse TX hash: {:?}", e);
+            panic!("Invalid tx hash: {:?}", e);
+        },
+    };
+    
     let tx_scalar = Scalar::from_bytes_mod_order(bytes);
-    prove_txid_commitment(tx_scalar)
+    println!("   [ZKP] Converted to scalar, calling prove_txid_commitment_with_binding...");
+    prove_txid_commitment_with_binding(tx_scalar, binding_tag)
 }
 
 /// Proves knowledge of a 256-bit transaction ID preimage such that the commitments to all 4 limbs are valid
 /// Returns (Vec<CompressedRistretto>, proof bytes, verified)
 pub fn prove_txid_commitment_4limb(txid_bytes: [u8; 32]) -> (Vec<CompressedRistretto>, Vec<u8>, bool) {
-    use bulletproofs::r1cs::{ConstraintSystem, LinearCombination, Variable};
+    use bulletproofs::r1cs::ConstraintSystem;
     use curve25519_dalek_ng::scalar::Scalar;
     // Split into 4 limbs
     let limbs: [u64; 4] = [
@@ -94,22 +169,69 @@ pub fn prove_txid_commitment_4limb(txid_bytes: [u8; 32]) -> (Vec<CompressedRistr
 }
 
 /// Verifies the proof of a transaction ID preimage
+/// Backward compatible version without binding tag
 pub fn verify_txid_commitment(
     commitment: CompressedRistretto,
     proof_bytes: Vec<u8>
 ) -> bool {
+    verify_txid_commitment_with_binding(commitment, proof_bytes, None)
+}
+
+/// Verifies the proof of a transaction ID preimage with optional binding tag
+/// Feature 2: Linkable Commitment - binding tag must match the one used during proof generation
+pub fn verify_txid_commitment_with_binding(
+    commitment: CompressedRistretto,
+    proof_bytes: Vec<u8>,
+    binding_tag: Option<&[u8]>,
+) -> bool {
+    if binding_tag.is_some() {
+        println!("[ZKP] [VERIFY] Verifying TX hash commitment with binding tag ({} bytes)", binding_tag.unwrap().len());
+    } else {
+        println!("[ZKP] [VERIFY] Verifying TX hash commitment without binding tag (backward compatible)");
+    }
+    
+    println!("   [ZKP] [VERIFY] Initializing generators...");
     let pc_gens = PedersenGens::default();
     let bp_gens = BulletproofGens::new(64, 1);
     let mut transcript = Transcript::new(b"TxIDPedersenZKP");
 
+    // ✅ Add binding tag to verification transcript if provided
+    if let Some(binding) = binding_tag {
+        transcript.append_message(b"bind", binding);
+        println!("   [ZKP] [VERIFY] ✅ Binding tag added to verification transcript: {} bytes", binding.len());
+    } else {
+        println!("   [ZKP] [VERIFY] No binding tag in verification transcript");
+    }
+
+    println!("   [ZKP] [VERIFY] Creating verifier and committing...");
     let mut verifier = Verifier::new(&mut transcript);
     let _var = verifier.commit(commitment);
 
+    println!("   [ZKP] [VERIFY] Parsing proof bytes ({} bytes)...", proof_bytes.len());
     let proof = match R1CSProof::from_bytes(&proof_bytes) {
-        Ok(p) => p,
-        Err(_) => return false,
+        Ok(p) => {
+            println!("   [ZKP] [VERIFY] ✅ Proof parsed successfully");
+            p
+        },
+        Err(e) => {
+            println!("   [ZKP] [VERIFY] ❌ Failed to parse proof: {:?}", e);
+            return false;
+        },
     };
-    verifier.verify(&proof, &pc_gens, &bp_gens).is_ok()
+    
+    println!("   [ZKP] [VERIFY] Running verification...");
+    let result = verifier.verify(&proof, &pc_gens, &bp_gens);
+    
+    match result {
+        Ok(_) => {
+            println!("   [ZKP] [VERIFY] ✅ Verification SUCCESS");
+            true
+        },
+        Err(e) => {
+            println!("   [ZKP] [VERIFY] ❌ Verification FAILED: {:?}", e);
+            false
+        },
+    }
 }
 
 #[cfg(test)]

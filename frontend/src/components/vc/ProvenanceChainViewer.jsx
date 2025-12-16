@@ -91,7 +91,7 @@ const ProvenanceChainViewer = ({ vc, cid, currentProductState = null }) => {
     // Check VC data for status indicators
     const subjectDetails = vc.credentialSubject?.subjectDetails || {};
     const transporter = subjectDetails.transporter;
-    const deliveryStatus = vc.credentialSubject?.deliveryStatus;
+    // const deliveryStatus = vc.credentialSubject?.deliveryStatus; // Not currently used
     const holder = vc.holder?.id;
     const issuer = vc.issuer?.id;
     
@@ -261,7 +261,8 @@ const ProvenanceChainViewer = ({ vc, cid, currentProductState = null }) => {
     };
 
     loadChain();
-  }, [vc, cid, currentProductState]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [vc, cid, currentProductState]); // buildChain is stable, doesn't need to be in deps
 
   // Toggle node expansion
   const toggleNode = (nodeCid) => {

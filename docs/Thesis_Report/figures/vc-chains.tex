@@ -1,0 +1,45 @@
+\begin{tikzpicture}[
+  >=Latex,
+  stage/.style={draw,rounded corners=2mm,minimum height=10mm,align=center,text width=45mm,font=\footnotesize},
+  component/.style={draw,dashed,rounded corners=2mm,minimum height=9mm,align=center,text width=38mm,font=\footnotesize},
+  lab/.style={font=\tiny, fill=white, inner sep=2pt, rounded corners=1pt},
+  badge/.style={draw,fill=gray!10,rounded corners=2mm,inner sep=3pt,font=\tiny}
+]
+
+% Title/labels
+\node[font=\footnotesize\itshape, anchor=west] (L1) at (0,0.5) {Intra-product chain (transaction lifecycle):};
+\node[font=\footnotesize\itshape, anchor=west] (L2) at (0,-3.5) {Inter-product chain (supply chain provenance):};
+
+% Main horizontal chain (transaction lifecycle)
+\coordinate (B0) at (3.5,0.5);
+\coordinate (B1) at (7.5,0.5);
+\coordinate (B2) at (11.5,0.5);
+
+% Battery product stages
+\node[stage] (BatteryS0) at (B0) {Battery S0\\\footnotesize listing};
+\node[stage] (BatteryS1) at (B1) {Battery S1\\\footnotesize order confirmed};
+\node[stage] (BatteryS2) at (B2) {Battery S2\\\footnotesize delivered};
+
+% Transaction lifecycle arrows
+\draw[->,thick] (BatteryS0) -- node[lab,above] {\texttt{previousCredential = CID(Battery S0)}} (BatteryS1);
+\draw[->,thick] (BatteryS1) -- node[lab,above] {\texttt{previousCredential = CID(Battery S1)}} (BatteryS2);
+
+% On-chain head badge
+\node[badge] (HEAD) at ($(BatteryS2.north)+(0,0.75)$) {on-chain: \texttt{vcCid = CID(Battery S2)}};
+\draw[-] (HEAD.south) -- (BatteryS2.north);
+
+% Component products (supply chain provenance) - positioned below S0
+\node[component] (AnodeS2) at ($(BatteryS0.south)+(-3.0,-2.5)$) {Anode S2\\\footnotesize (delivered)};
+\node[component] (CathodeS2) at ($(BatteryS0.south)+(+3.0,-2.5)$) {Cathode S2\\\footnotesize (delivered)};
+
+% Component credentials arrows (from Battery S0 to component S2 VCs)
+\coordinate (midComp) at ($(BatteryS0.south)+(0,-0.9)$);
+\draw[->,dashed,thick] (BatteryS0.south) -- (midComp) -| node[lab,below,pos=0.3] {\texttt{componentCredentials[0] = CID(Anode S2)}} (AnodeS2.north);
+\draw[->,dashed,thick] (BatteryS0.south) -- (midComp) -| node[lab,below,pos=0.3] {\texttt{componentCredentials[1] = CID(Cathode S2)}} (CathodeS2.north);
+
+% Note about component stages
+\node[font=\tiny, anchor=north, text width=35mm, align=center, text=gray] at ($(AnodeS2.south)+(-3.0,-0.3)$) {(Anode has S0→S1→S2\\with its own \texttt{previousCredential})};
+\node[font=\tiny, anchor=north, text width=35mm, align=center, text=gray] at ($(CathodeS2.south)+(+3.0,-0.3)$) {(Cathode has S0→S1→S2\\with its own \texttt{previousCredential})};
+
+\end{tikzpicture}
+

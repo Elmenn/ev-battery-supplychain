@@ -220,7 +220,8 @@ contract("Funds Accounting", (accounts) => {
             
             // Confirm order
             const vcCID = "ipfs://QmTest";
-            await escrow.confirmOrder(vcCID, { from: seller });
+            const zeroCommitment = "0x0000000000000000000000000000000000000000000000000000000000000000";
+            await escrow.confirmOrderWithCommitment(vcCID, zeroCommitment, { from: seller });
             
             // Set transporter
             const fee = web3.utils.toWei("0.1", "ether");

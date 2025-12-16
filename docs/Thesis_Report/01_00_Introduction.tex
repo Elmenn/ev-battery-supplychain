@@ -1,0 +1,310 @@
+\chapter{Introduction}
+
+\label{chapter:introduction}
+
+\begin{comment}
+
+GENERAL COMMENTS ON WRITING A THESIS: 
+
+* Use this template for writing your thesis. Keep the general look and structure, otherwise, alter the template if you need to.
+
+* Become an expert in both theory and practice of your thesis topic, i.e., know the math, the theory, and the applications.
+
+* Every (relevant) statement you make in the thesis needs to be verifiable by citing an adequate source or giving proof. Adequate sources are typically peer-reviewed sceintific papers and books.
+
+* Discuss your steps with your supervisor. If something is unclear: Ask us or tell us. We are interested in the topic, that's why we agreed to supervise you.
+
+Time planning:
+
+* Make a project plan for your thesis with deadlines for yourself. Discuss the plan with your supervisor.
+
+* Do not underestimate the time you need for implementating code, evaluating your research, and writing the thesis. These tasks tend to need more time than expected.
+
+* Inform your supervisor about your status from time to time. 
+
+* Show us code you implemented as well as the demonstrators you have built.
+
+* Share paragraphs or chapters that you have written so we can proof-read them.
+
+* Feel free to approach us proactively.
+
+* Find someone to proof-read your thesis, who is not familiar with your work. This way, you might notice if you, e.g., need to explain something better or differently.
+
+* There is no need to print your thesis. We gladly accept electronic submissions.
+
+
+
+
+
+COMMENTS ON THE CHAPTER INTRODUCTION
+
+* Give an introduction to your thesis' topic. Start broadly, narrow down, eventually focus on your specific topic. For further information, please see\cite[pp.179ff]{recker2021}.
+
+* Describe the situation today, what problems are solved and which are not?
+
+* Describe the problem at hand: Why is this important? Why is it a problem? Why hasn't this been solved already? Make this a separate subsection: "Problem Statement".
+
+* Outline your EXACT contribution: What EXACTLY are you going to solve? Make this a separate subsection: "Contribution".
+
+* Have a dedicated subsection "Research Questions" describing the research questions that you are going to answer in your thesis. Formulate them clearly, so you can evaluate your outcome later on.
+
+* Give an overview of your thesis structure in this chapter.
+
+* Some of the aspects mentioned above should be clear early on. However, feel free to rewrite your introduction chapter as one of the final steps in your thesis. Thus, you can guide the reader, emphasize certain aspects, maybe reframe information to get across the relevance of your research.
+
+* 5-10 pages
+
+\end{comment}
+
+
+
+Modern electric vehicle (EV) battery supply chains are increasingly complex. 
+
+They involve multiple tiers, span global geographies, and generate large amounts of data. 
+
+Traceability means being able to track a battery and its materials from extraction through processing, assembly, use, and eventual recycling or disposal. This capability has become critical for ensuring safety, sustainability, and regulatory compliance \cite{dunn_circularity_2021,noauthor_lithium-ion_nodate}. 
+
+Achieving transparency introduces significant challenges, especially protecting sensitive business information such as pricing, transaction identifiers, and supplier relationships. 
+
+If these details are disclosed on a public blockchain, companies may lose their competitive advantage and face reduced industry adoption \cite{saberi_blockchain_2019}. 
+
+A lack of openness and verifiability can lead to systems that do not meet the expectations of regulators or downstream stakeholders. These groups increasingly require trustworthy and auditable supply chain data \cite{iea2022global}.
+
+This thesis examines the balance between verifiable traceability and business confidentiality in the EV battery supply chain. 
+
+It builds on prior research on verifiable credentials (VCs) for supply chain traceability \cite{t_blockchain-based_2023} and smart-contract-based marketplace solutions \cite{casino_systematic_2019}. 
+
+We present and implement an architecture that maintains end-to-end provenance while protecting sensitive data such as prices and transaction identifiers. 
+
+In our solution, supply chain events are represented as a sequence of verifiable credentials. 
+
+Only concise anchors, such as cryptographic commitments and content identifiers, are recorded on-chain. Numeric values, including prices and key transaction identifiers, are hidden using Pedersen commitments. 
+
+This cryptographic technique allows a value to be committed to without revealing it. At the same time, it enables certain properties to be proven \cite{pedersen_non-interactive_1992}. 
+
+Zero-knowledge proofs (ZKPs), specifically Bulletproofs, let external parties verify claims about hidden values without revealing the actual data \cite{bunz_bulletproofs_2017}. 
+
+For an accessible explanation of these cryptographic techniques, see chapter~\ref{chapter:background_and_related_work}. 
+
+The prototype developed in this work currently keeps payment records public. However, integrating privacy-preserving payment systems such as Railgun is discussed as future work.
+
+\newpage
+
+\section{Motivation}
+
+\label{sec:motivation}
+
+The introduction of battery passports and new regulatory frameworks for electric vehicles is creating pressure for richer, independently verifiable data. This includes information about battery origin, composition, carbon footprint, and processing history at each stage of the battery lifecycle \cite{gbaBatteryPassport2022,euBatteryRegulation2023}. 
+
+To meet these demands at industrial scale, solutions must support interoperable data models, tamper-evident records, and the ability for independent parties to verify provenance \cite{betti2021digital}. 
+
+Technologies such as verifiable credentials and blockchains can provide these features \cite{barman2024dlt,t_blockchain-based_2023}. 
+
+Previous work has shown that verifiable credentials can model even complex transformations, such as batching, splitting, and assembly. It has also demonstrated how smart contracts can facilitate escrow-based trades in decentralized marketplaces \cite{barman2024dlt,casino_systematic_2019}.
+
+
+
+However, directly linking operational events and verifiable credentials to on-chain transactions creates the risk of exposing commercially sensitive metadata. For example, recording product listings, deliveries, and payments on-chain with prices or transaction identifiers in plaintext allows third parties to reconstruct business relationships. They could also infer negotiated prices and monitor transaction timing and volume \cite{xu2019architecture}. Even with off-chain payloads, simple indexing by transaction hashes or contract events can still reveal sensitive linkages \cite{barman2024dlt,casino_systematic_2019}.
+
+
+
+A practical and robust system should achieve the following:
+
+
+
+\begin{itemize}
+
+  \item The system must maintain verifiable traceability across all transformations, from raw materials to cells, modules, and packs \cite{gbaBatteryPassport2022}.
+
+
+
+  \item Sensitive price and transaction-identification data must be protected from public visibility \cite{casino_systematic_2019}.
+
+
+
+  \item The on-chain state must remain compact and efficient for deployment on public blockchains \cite{noauthor_understanding_nodate}.
+
+
+
+
+
+  \item Auditors and other stakeholders must be able to independently verify provenance and price-related constraints \cite{barman2024dlt,t_blockchain-based_2023}.
+
+
+
+\end{itemize}
+
+
+
+This thesis proposes and evaluates a system that combines credential-based traceability with cryptographic commitments and zero-knowledge proofs \cite{pedersen_non-interactive_1992,bunz_bulletproofs_2017}. 
+
+Verifiable credentials provide a structured and signed data model for all battery lifecycle events, while smart contracts coordinate escrow functions and anchor credentials on-chain. Pedersen commitments and Bulletproofs allow selective disclosure of price and transaction-identification information. These values are cryptographically  bound to specific products and contexts using carefully designed binding tags \cite{pedersen_non-interactive_1992,bunz_bulletproofs_2017}.
+
+\newpage
+
+\section{Problem Statement}
+
+\label{sec:problem-statement}
+
+This thesis addresses whether an EV battery supply chain can maintain verifiable, credential-based traceability of products and transformations using a public blockchain. At the same time, it asks whether sensitive price information and transaction identifiers can be kept confidential, while ensuring that on-chain state remains compact and auditor-friendly \cite{barman2024dlt}.
+
+
+
+
+
+A solution to this problem must support standard supply-chain operations, such as splitting, merging, and assembly, while meeting the following requirements:
+
+
+
+\begin{itemize}
+
+  \item Downstream actors and auditors must be able to reconstruct the provenance of a product by following a chain of verifiable credentials. These credentials are connected from S0 to S2 by content-addressed identifiers (anchors) \cite{barman2024dlt}.
+
+
+
+  \item Exact prices must be hidden in all public artefacts, including contract storage, events, and verifiable credentials, through the use of Pedersen commitments.
+
+
+
+
+
+  \item Raw transaction hashes used in delivery settlements must remain concealed. However, auditors should be able to verify their existence and correctness using commitments that are contextually bound through binding tags.
+
+
+
+  \item Selective disclosure must be enabled through zero-knowledge proofs, such as range proofs for price bounds, so that underlying values are not revealed.
+
+
+
+  \item The on-chain footprint should be limited to content identifiers (CIDs) and commitments, rather than full credential payloads, to ensure economic viability for deployment.
+
+
+
+
+
+\end{itemize}
+
+
+
+The scope of this thesis is deliberately focused. It does not attempt to hide payment amounts or counterparties on-chain. Instead, the focus is on protecting price fields and transaction-identification data within the traceability and audit layer. This is achieved through commitments and proofs. Fully private transfer mechanisms, such as private settlement systems, are considered as potential future extensions.
+
+\newpage
+
+\section{Research Questions}
+\label{sec:research-questions}
+
+The research is guided by the following questions:
+
+\begin{description}
+  \item[RQ1:] \emph{Can a schema and chaining model based on verifiable credentials provide end-to-end traceability across typical EV battery supply chain transformations, such as splitting, merging, and assembly, without modeling products as on-chain assets?}
+
+  \item[RQ2:] \emph{To what extent can a design based on Pedersen commitments and Bulletproofs hide prices and transaction identifiers in public artefacts while still allowing verifiers to check required constraints and bindings under a realistic adversary model?}
+
+  \item[RQ3:] \emph{What are the gas, storage, and performance costs of introducing commitments and Bulletproof-based proofs into an escrow-based marketplace compared to a naive baseline that stores full credential payloads on-chain or uses plaintext prices and transaction hashes?}
+
+  \item[RQ4:] \emph{Can auditors and other stakeholders, using only public chain data, IPFS, and the proof backend, reconstruct product histories and verify both provenance and price-related constraints in a way that is robust against misbinding and tampering?}
+\end{description}
+
+RQ1 builds on prior work on DLT-based verifiable receipt credentials for batteries \cite{barman2024dlt}. These questions are translated into objectives and requirements in \autoref{sec:concept-problem} and are revisited in \autoref{subsec:eval-rq-answers}.
+
+
+\section{Contribution}
+
+\label{sec:contribution}
+
+
+This thesis builds upon two prior lines of work. The first is a traceability model based on verifiable credentials that chains credentials across lifecycle stages and components \cite{janssen2024vc}. 
+The second is an escrow-based marketplace backbone with buyer, seller, and transporter flows \cite{safo2024escrow}.
+
+These foundations, particularly credential chaining as demonstrated in prior work  and the marketplace lifecycle, are reused here \cite{barman2024dlt}. This thesis replaces plaintext commercial data with cryptographic commitments and zero-knowledge proofs, integrates the verifiable credential chain directly with the marketplace state machine, and evaluates privacy, cost, and auditability.
+
+
+
+The main contributions of this thesis are as follows:
+
+
+
+\paragraph{C1: Credential-centric architecture with hidden prices and transaction identifiers.}
+
+This work defines and implements a credential-centric architecture for EV battery traceability, integrated with an escrow-based marketplace. Each product is represented by a concise chain of verifiable credentials that records its lifecycle from listing to delivery and captures relationships to upstream components. Credentials are signed using EIP-712 structured-data signatures and are linked via content-addressed identifiers \footnote{\url{https://eips.ethereum.org/EIPS/eip-712}}. Smart contracts maintain only the head content identifiers and commitments, emitting events for lifecycle transitions. The credential-chain model, content-addressed storage, and marketplace backbone are adopted from previous work \cite{barman2024dlt}. 
+
+The new contributions in this thesis include extending the verifiable credential schema and on-chain interface with explicit fields for Pedersen commitments to prices and transaction identifiers. 
+
+This thesis also introduces binding tags that associate each commitment with a specific product, role context, lifecycle stage, and credential context. As a result, no plaintext prices or transaction hashes are present in contract storage, events, or verifiable credentials. Only anchors (CIDs) and commitments are made public.
+
+
+
+
+
+\paragraph{C2: Bulletproof-based privacy layer and ZKP backend.}
+
+This thesis implements an off-chain privacy layer that enables selective disclosure over committed values using Bulletproof-based zero-knowledge proofs. A Rust backend is developed to construct and verify range proofs over Pedersen commitments on the Ristretto255 curve for price bounds. It also checks transaction-hash commitments against binding tags derived from on-chain and credential context. The backend provides HTTP endpoints for the frontend and auditor tools to generate and verify proofs. 
+
+Smart contracts interact only with commitments and content identifiers. Verifiable credentials embed both commitments and proof artefacts to enable offline verification. This work combines Bulletproofs, binding tags, transaction-hash commitments, and an integrated proof service \cite{bunz_bulletproofs_2017}.
+
+
+
+
+
+\paragraph{C3: Evaluation of privacy, cost, and auditability.}
+
+The system is evaluated against the objectives in  \autoref{sec:concept-problem},  with assessments covering:
+
+\begin{itemize}
+
+  \item \emph{Privacy properties:} confirming the absence of plaintext prices and transaction hashes in public artefacts, and validating that binding tags and negative tests prevent replay and substitution attacks.
+
+  \item \emph{Gas and storage:} comparing the anchor-only on-chain footprint with a naive full-verifiable-credential-on-chain baseline.
+
+  \item \emph{Proof performance:} measuring Bulletproof construction and verification times for realistic parameters.
+
+  \item \emph{Auditability and robustness:} meaning that an auditor can reconstruct product histories using only chain data and IPFS, and can verify commitments and proofs. Security validation includes tests for misbinding, incorrect values, and tampering \cite{barman2024dlt}.
+
+
+
+\end{itemize}
+
+These contributions demonstrate that credential-based traceability can be combined with hidden commercial values, minimal on-chain state, and public auditability. The architecture integrates verifiable credential chaining with an escrow marketplace.
+
+
+
+
+
+\newpage
+
+
+
+\section{Outline}
+
+\label{sec:outline}
+
+The remainder of this thesis is structured as follows:
+
+
+
+\begin{itemize}
+
+  \item \textbf{Chapter~\ref{chapter:background_and_related_work}} introduces background on supply chain traceability, blockchain primitives, verifiable credentials, off-chain storage, zero-knowledge proofs, and privacy-preserving transfer systems. It also discusses related work on credential-based provenance and decentralized marketplaces, and concludes by identifying the gap that motivates our design.
+
+
+
+  \item \textbf{Chapter~\ref{chapter:concept_and_design}} presents the concept and design of our system. It formulates the problem and objectives, introduces actors and roles, and derives functional and non-functional requirements. The chapter also describes the overall architecture, data and credential model, commitment and binding-tag design, and security considerations. Finally, it outlines how the architecture can be extended with fully private transfer systems as future work.
+
+
+
+  \item \textbf{Chapter~\ref{chapter:implementation}} details the implementation. It explains the technology stack, describes the on-chain traceability layer (factory and escrow contracts, lifecycle state machine, events), the off-chain privacy layer (verifiable credential structure, commitments, zero-knowledge proof backend), and the end-to-end workflows for sellers, buyers, and auditors.
+
+
+
+  \item \textbf{Chapter~\ref{chapter:evaluation}} evaluates the implementation against the objectives from Section 3.1. It presents results on privacy (hidden prices and transaction-hash commitments), gas and storage costs, proof performance, and auditor verification and security validation. It also discusses trade-offs and limitations.
+
+
+
+  \item \textbf{Chapter~\ref{chapter:conclusion}} concludes the thesis. It summarizes the main findings, answers the research questions, reflects on limitations, and outlines directions for future work, including deeper integration with privacy-preserving transfer systems and broader extensions of the credential model.
+
+\end{itemize}
+
+
+
+
+

@@ -1,5 +1,5 @@
 import React from "react";
-import { AlertBadge } from "../ui/AlertBadge";
+// import { AlertBadge } from "../ui/AlertBadge"; // Not currently used
 
 const ZKPVerificationBox = ({ proof }) => {
   if (!proof) return null;

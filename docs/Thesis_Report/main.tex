@@ -1,0 +1,127 @@
+\documentclass[a4paper,12pt,openany]{book}
+\usepackage{geometry}
+\usepackage[export]{adjustbox}
+\usepackage{xcolor}
+\usepackage{amsmath}
+\usepackage{booktabs}
+\usepackage{listings}
+
+\definecolor{tubRed}{RGB}{197,14,31}
+
+
+\usepackage{titlesec}
+\titleformat{\chapter}[block]
+  {\normalfont\huge\bfseries} % Format of the section title text
+  {\thechapter} % What appears as the label (just the number)
+  {1em} % Spacing between the label and title text
+  {} % Code before the title (empty = no "Chapter")
+
+\geometry{left=2.5cm, right=2.5cm, bottom=2.5cm,top=2.5cm}
+\usepackage{graphicx}
+\usepackage{grffile}
+\graphicspath{{figures/}}
+\usepackage[hidelinks]{hyperref}
+\usepackage{textcomp}
+\usepackage{natbib}
+\usepackage[font=it]{caption}
+\usepackage{setspace}
+\usepackage{multirow}
+\usepackage[toc,page]{appendix}
+\usepackage{color, colortbl}
+\usepackage{array}
+\usepackage{tabularx}
+\usepackage{float}
+\usepackage{placeins}
+\usepackage{tikz}
+\usetikzlibrary{positioning,arrows.meta,calc}
+\usepackage{titling}
+\usepackage{tocbibind}
+\usepackage{comment}
+\usepackage{booktabs}
+% font
+\usepackage{mathpazo}
+% proper line-breaks
+\usepackage[ngerman,english]{babel}
+\usepackage[T1]{fontenc}
+\usepackage{xurl} 
+
+% margin control (abstracts)
+\usepackage{changepage}
+ 
+% turn off vertical justification (paragraphs are stretched if the text does not fill the entire page before the next heading)
+\raggedbottom
+
+
+\usepackage{lipsum}
+
+\lstset{
+  basicstyle=\ttfamily\small,
+  breaklines=true,
+  literate={~}{{\ }}1
+}
+
+% Define Solidity language for listings
+\lstdefinelanguage{Solidity}{
+  keywords=[1]{pragma, contract, interface, library, is, using, for, while, do, break, continue, return, if, else, new, function, event, modifier, struct, enum, mapping, address, uint, int, bool, string, bytes, bytes32, view, pure, payable, external, public, internal, private, constant, immutable, memory, storage, calldata, returns, emit, require, revert, assert, assembly, import, abstract, override, virtual},
+  keywords=[2]{msg, block, tx, this, super, now, abi},
+  sensitive=true,
+  comment=[l]{//},
+  morecomment=[s]{/*}{*/},
+  morestring=[b]",
+  morestring=[b]'
+}
+
+% Define JSON language for listings
+\lstdefinelanguage{JSON}{
+  keywords={true, false, null},
+  keywordstyle=\color{blue}\bfseries,
+  sensitive=true,
+  comment=[l]{//},
+  morecomment=[s]{/*}{*/},
+  morestring=[b]",
+  stringstyle=\color{red},
+  basicstyle=\ttfamily\small,
+  breaklines=true,
+  showstringspaces=false
+}
+
+
+\begin{document}
+% General definitions
+
+%Document Structure
+\input{00_00_TitlePage}
+\setstretch{1.1}
+
+\pagenumbering{Roman} 
+\input{00_01_Declaration}
+\input{00_02_Abstract}
+\input{00_03_Zusammenfassung}
+
+\tableofcontents
+
+\newpage{}\clearpage
+\pagenumbering{arabic}
+
+\input{01_00_Introduction}
+\input{02_00_Background_Related_Work}
+\input{03_00_Methodology}
+\input{04_00_Concept and Design}
+\input{05_00_Implementation}
+\input{06_00_Evaluation}
+\input{07_00_Conclusion}
+
+
+\newpage
+\bibliographystyle{unsrt}
+\setstretch{1.3}
+\bibliography{References}
+
+\pagenumbering{roman}
+\listoffigures
+\listoftables
+\appendix
+\appendixpage
+\input{99_00_Appendix}
+
+\end{document}

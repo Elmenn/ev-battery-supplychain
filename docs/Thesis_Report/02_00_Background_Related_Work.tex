@@ -1,0 +1,171 @@
+\chapter{Background and Related Work}
+\label{chapter:background_and_related_work}
+
+\begin{comment}
+BACKGROUND
+* Fundamental knowledge needed to understand the thesis (3–20 pages). Prefer books and papers.
+RELATED WORK
+* Discuss scientific contributions closely related to the topic (5–12 pages). Reuse high-quality references from prior theses; avoid ephemeral online sources. Summarize pros/cons and what we adopt.
+\end{comment}
+
+\section{Background}
+This section introduces the core concepts used in later chapters: supply-chain traceability, blockchain primitives, verifiable credentials, off-chain storage, and privacy-preserving techniques that support our design and implementation. Where possible, we reuse the same references and numbering as in the two earlier theses we build upon. % cite
+
+\subsection{Supply Chain}
+\label{sec:sc}
+Modern supply chains are networks of organizations that convert raw materials into finished products and deliver them to end users. Deep multi-tier structures, geographic dispersion, and heterogeneous information systems drive complexity. \emph{Traceability} is the ability to follow the history, application, or location of an item through this network; it requires consistent data models across actors, trustworthy evidence of events, and integrity when information crosses organizational boundaries. % cite
+
+\subsubsection{Supply Chain Definition}
+A supply chain consists of interlinked processes and entities enabling material, information, and financial flows from sources of raw materials to consumers. Actors include suppliers, manufacturers, distributors, logistics providers, and retailers. This thesis focuses on traceability across transformations such as batching, splitting, and assembly, characteristic for EV battery components. % cite
+
+\subsubsection{Supply Chain Management}
+Supply Chain Management coordinates planning and execution across facilities and firms to optimize service levels, costs, and risk. From a data perspective, SCM depends on timely, accurate, and non-repudiable records to reconcile activities across partners. Regulatory audits and sustainability reporting in the EV battery context increase the need for robust provenance. % cite
+
+\subsubsection{EV Battery Passport Context}
+Battery passports require standardized product information (origin, composition, carbon footprint, processing history) to be verifiable across chain-of-custody. Meeting these requirements demands interoperable schemas, tamper-evident records, and selective disclosure so that confidential details are not exposed to competitors or the public. % cite (EU battery regulation per prior theses)
+
+\subsection{Blockchain}
+\label{sec:blockchain}
+Blockchains provide a replicated, append-only ledger maintained by a peer-to-peer network. Their value for supply chains derives from integrity, auditability, and resistance to unilateral modification. In this thesis, blockchains serve as an \emph{anchor and coordination layer} for key events and proofs rather than a bulk data store. % cite
+
+\subsubsection{Distributed Ledger Overview}
+A distributed ledger replicates state across nodes and reaches agreement through consensus. Append-only logs and cryptographic hashing make tampering detectable and enable independent verification of event ordering and inclusion. % cite
+
+\subsubsection{Consensus Mechanisms}
+Consensus (e.g., proof-of-stake) governs how the network selects and validates new blocks. Guarantees about safety and liveness influence finality timing and affect application latency and timeout logic in contracts. % cite
+
+\subsubsection{Smart Contracts}
+Smart contracts are deterministic programs deployed to the ledger. They encode rules for asset movement, authorization, and dispute handling. In supply-chain settings they implement escrow, deposits, delivery confirmation, and penalties, reducing reliance on central intermediaries. % cite
+
+\subsubsection{Ethereum}
+Ethereum offers a general-purpose virtual machine for smart contracts, mature tooling, and broad wallet/infrastructure support—practical for prototyping verifiable supply-chain flows. % cite
+
+\subsubsection{Gas Costs}
+Gas metering charges for computation, storage, and log emission. Cost-aware interfaces use minimal state, careful event design, and \emph{anchoring by content hash} to keep on-chain footprints small. % cite
+
+\subsubsection{Minimal Proxy Pattern (EIP-1167)}
+When deploying many similar contracts (e.g., one escrow per product), full deployment is gas-prohibitive (~2M gas per contract). The \emph{minimal proxy pattern} (EIP-1167) enables efficient cloning by deploying a tiny 55-byte proxy that delegates all calls to a shared implementation contract. Clone deployment costs ~50k gas, enabling economical per-instance contracts while preserving immutable logic per clone. The factory pattern uses this standard to deploy escrow contracts efficiently, reducing deployment costs by approximately 95\% compared to full contract deployment. % cite (EIP-1167)
+
+\subsection{Verifiable Credentials}
+\label{sec:vcs}
+Verifiable Credentials (VCs) are structured, signed statements about a subject. They allow issuers and holders to present cryptographic evidence about production steps, custody, and conformance without granting third parties write access to the ledger. In our setting, VCs represent product/batch state at milestones and are linked into a lineage.
+
+\subsubsection{Data Model}
+A VC contains: (i) metadata (types, issuance time), (ii) a credential subject with domain-specific attributes, and (iii) a proof section. Verification checks that the payload has not been altered and that signatures match claimed signers. The model supports extension via controlled vocabularies for EV-battery attributes. % cite (W3C VC refs reused from prior theses)
+
+\subsubsection{Dual-Signature Handshake}
+A dual-signature handshake requires both the party asserting the claim (e.g., seller) and the counterparty acknowledging receipt (e.g., buyer) to sign the same payload. This reduces unilateral assertions and strengthens non-repudiation for custody/delivery events. Verification ensures expected roles signed expected content. % cite (prior VC-chain thesis)
+
+\subsubsection{Chaining for Traceability}
+End-to-end provenance is achieved by linking each VC to its predecessor and, where applicable, to component VCs used in manufacturing. We maintain two separate chaining dimensions:
+
+\textbf{(A) Transaction lifecycle chain:} Each product's progression through stages (listing → purchase → delivery) is linked via \texttt{previousCredential}, forming a linear chain S0→S1→S2 within a single product. This chain captures the transaction history for an individual product.
+
+\textbf{(B) Supply chain provenance:} Assembled products reference their component products via \texttt{componentCredentials[]}, forming a tree/DAG across products that represents manufacturing relationships (e.g., a Battery product references Anode and Cathode components). This chain captures how products are assembled from upstream components.
+
+Both chains use \emph{content-addressed references} (CIDs) rather than duplicating upstream payloads. The separation is intentional: transaction history is independent from component relationships, enabling flexible audit trails. Chaining supports audits across assembly, splitting, and merging. % cite (prior VC-chain thesis)
+
+\subsubsection{EIP-712 Structured Data Signatures}
+Typed-data signatures provide stable hashing and explicit domain separation for structured payloads. Let \(\mathrm{digest}=\mathrm{keccak256}(\texttt{"\textbackslash x19\textbackslash x01"} \parallel \mathrm{domainSeparator} \parallel \mathrm{structHash})\); signers attest to \(\mathrm{digest}\). This improves interoperability with wallets and reduces ambiguity about what was signed; verifiers recompute the digest from the presented VC to validate signatures deterministically. % cite (same signing/EIP-712 refs as prior theses)
+
+\subsection{Off-Chain Storage}
+\label{sec:offchain}
+Storing full credential payloads on-chain is costly and unnecessary. Off-chain storage with content-addressed references provides immutability-by-hash and efficient retrieval while the ledger anchors integrity.
+
+\subsubsection{IPFS}
+The InterPlanetary File System stores objects by the cryptographic hash of their content (CID). Updating content yields a new CID, enabling immutable referencing and exact re-fetching of payloads linked from credentials or events. Pinning services (e.g., Pinata) ensure VC availability by maintaining copies on IPFS nodes, providing redundancy and persistence even if original uploaders go offline. % cite (IPFS refs from prior theses)
+
+\subsubsection{Anchoring}
+Anchoring records the hash of a VC (or index entry) on-chain, allowing a verifier to prove that a document existed at or before a given time. % cite
+
+\subsection{Zero-Knowledge Proofs}
+\label{sec:zkp}
+Zero-knowledge proofs (ZKPs) let a prover convince a verifier that a statement is true without revealing secret inputs. In our setting, the secret input can be a transaction identifier or payment details, and the public statement is that \emph{a valid settlement consistent with the credentialed event exists}. % cite (standard ZKP texts/papers)
+
+\paragraph{Formal model.}
+Let \(\mathcal{R}\subseteq \{0,1\}^*\times\{0,1\}^*\) be an NP relation with statement \(x\) and witness \(w\). A ZKP system \(\Pi\) provides \emph{completeness} (honest proofs for \((x,w)\in\mathcal{R}\) are accepted), \emph{soundness} (false statements are rejected except with negligible probability), and \emph{zero-knowledge} (no information about \(w\) is leaked beyond the truth of \(x\)). % cite
+
+\paragraph{Credential binding.}
+A proof about “some transaction” is insufficient. We bind proofs to the \emph{exact} credential to prevent replay or substitution:
+\[
+t \;=\; H(\textsf{bind} \parallel h_{\mathrm{vc}} \parallel \textsf{context})\,,
+\]
+where \(h_{\mathrm{vc}}\) is the credential’s content hash and \(\textsf{context}\) encodes the verification domain (e.g., schema version). The circuit takes \(t\) as a public input and enforces that the witness pertains to \(t\). Verifiers recompute \(t\) from the presented credential and reject mismatches, achieving domain separation.
+
+\paragraph{Commitments and selective disclosure.}
+To hide numeric fields (e.g., amounts), we commit to them using a binding and hiding commitment \(C = g^m h^r\) (Pedersen-style; or arithmetic-constraint equivalent inside the circuit). We use the Ristretto255 curve, a prime-order group derived from edwards25519 that eliminates cofactor-related security issues. Compressed Ristretto points are 32 bytes, providing compact commitments suitable for on-chain storage as \texttt{bytes32} values.
+
+The blinding factor \(r\) can be (i) random (stronger privacy, requires key exchange between parties) or (ii) deterministic (derived from public addresses, simpler protocol). Both preserve the hiding property under the discrete logarithm assumption. Our implementation uses deterministic blinding \(r = H(\text{escrowAddr} \,\|\, \text{owner})\) to eliminate key exchange while maintaining commitment security. The prover then establishes zero-knowledge predicates (e.g., \(m \leq M_{\max}\)) or range proofs without revealing \(m\). % cite
+
+\paragraph{Adversary model and leakage channels.}
+ZKPs prevent direct disclosure, but public ledgers leak residual signals:
+\begin{itemize}
+  \item \textbf{Timing/ordering:} Correlation between credential issuance and on-chain activity.
+  \item \textbf{Value flows:} Amount and fee patterns can deanonymize actors even if identifiers are hidden.
+  \item \textbf{Graph structure:} Address/contract interaction graphs reveal counterparties.
+\end{itemize}
+Hence a ZKP-only design (price commitments) still exposes on-chain payment amounts, which may reveal information about transaction values. Future work could address this via privacy-preserving transfer systems (see \autoref{sec:private-transfers}), but our current implementation focuses on price data confidentiality within VCs rather than payment amount privacy. % cite (linkage-analysis)
+
+\paragraph{Verification path.}
+A verifier: (i) hashes the credential payload to obtain \(h_{\mathrm{vc}}\); (ii) recomputes \(t\); (iii) checks the ZK proof against public inputs \((h, t, \ldots)\); (iv) validates any registry root or policy constants; (v) records acceptance. No secrets are revealed.
+
+\paragraph{Implementation notes.}
+To keep on-chain costs low, we verify proofs off-chain and anchor acceptance facts or minimal attestations. Where on-chain verification is required, we use succinct systems with efficient verifiers and small public input sets, since public inputs drive gas consumption. % cite
+
+\paragraph{Range proofs and Bulletproofs.}
+To prove that a committed value \(v\) lies within a valid range (e.g., \(v \in [0, 2^n)\)) without revealing \(v\), we use \emph{range proofs}, a specific class of ZKP primitives. \emph{Bulletproofs}~\cite{bunz2018bulletproofs} are a range proof system that provides non-interactive proofs (NIZK) with logarithmic proof size and \emph{no trusted setup}—unlike SNARKs, Bulletproofs require no trusted setup ceremony, reducing trust assumptions.
+
+Trade-offs include: (i) proof size is larger than SNARKs (typically ~672 bytes for 64-bit ranges vs. ~200 bytes for Groth16), but (ii) verification is efficient (~10--50ms in practice) and (iii) the absence of trusted setup is crucial for our threat model where participants cannot rely on ceremony organizers. Bulletproofs work directly with Pedersen commitments over elliptic curves (we use Ristretto255), making them compatible with our commitment scheme.
+
+In our system, Bulletproofs prove that committed prices are in valid ranges, enabling verifiers to accept price validity without learning exact values.
+
+\subsection{Privacy-Preserving Transfers}
+\label{sec:private-transfers}
+A privacy-preserving transfer system executes payments such that amounts and counterparties are not linkable on the public ledger, while still allowing applications to \emph{attest} that settlement occurred. This closes leakage channels left by a ZKP-only design.
+
+\paragraph{High-level model.}
+Funds move into a \emph{shielded domain}. Users hold private notes/commitments representing balances. Transfers consume old notes and create new ones under zero-knowledge, updating a public accumulator (e.g., Merkle root) without revealing amounts or recipient identities. A \emph{nullifier} derived from each spent note prevents double spending without linking old and new notes. % cite
+
+\paragraph{State objects and invariants.}
+Let \(C_i\) commit to notes \((m_i, r_i)\) with amounts \(m_i\) and randomness \(r_i\). The system maintains a Merkle tree with root \(R\) committing to \(\{C_i\}\). A transfer proves knowledge of:
+\begin{enumerate}
+  \item membership of input commitments under \(R\),
+  \item openings \((m_i, r_i)\) of each input commitment,
+  \item correctly formed output commitments \((m'_j, r'_j)\),
+  \item balance conservation \(\sum_i m_i = \sum_j m'_j + \textsf{fee}\),
+  \item unique nullifiers \(N_i\) for all consumed notes.
+\end{enumerate}
+Public outputs are \((R_{\text{new}}, \{C'_j\}, \{N_i\})\); observers learn neither amounts nor links between inputs and outputs. % cite
+
+\paragraph{Settlement attestation for credentials.}
+Applications link settlement to credentials using either:
+\begin{itemize}
+  \item \textbf{External attestation.} An attester verifies a private transfer off-chain and issues a signed statement \(\sigma\) that “settlement consistent with policy \(\mathcal{P}\) occurred” for credential hash \(h_{\mathrm{vc}}\). Verification checks \(\sigma\) and the attester key.
+  \item \textbf{Bound proof.} The holder presents a ZK proof whose public inputs include \(t = H(\textsf{bind} \parallel h_{\mathrm{vc}} \parallel \textsf{context})\) and the current root \(R\); the witness contains membership paths and values. The circuit enforces \(\mathcal{P}\) without revealing \((m,\text{counterparty})\).
+\end{itemize}
+
+\paragraph{Railgun: model and integration.}
+A system such as Railgun instantiates the above pattern with shielded balances, private transfers, and nullifiers published on-chain. Integration in our flow adds \emph{shield} and \emph{unshield} steps around private transfers. The credential layer references settlement via either external attestation \(\sigma\) or a bound proof tied to \(h_{\mathrm{vc}}\) (as above), allowing verifiers to accept or reject without learning payment details. % cite (use the same or analogous privacy-transfer references you plan to include)
+
+\paragraph{Threat model and residual risks.}
+Shielded systems mitigate timing, value-flow, and graph leakage on public ledgers. Residual risks include network-layer metadata, application side channels (unique fee patterns), and client mistakes (e.g., randomness reuse). Mitigations include batching, standardized fees, hardened key and note management, and avoiding distinctive denominations. % cite
+
+\paragraph{Integration considerations.}
+A privacy-preserving layer affects UX and cost: (i) lifecycle adds shield/unshield; (ii) latency includes proof generation and, if verified on-chain, finality delay; (iii) gas/fees depend on proof system and public inputs. Despite overheads, confidentiality gains are material in industrial settings that cannot expose prices or counterparties publicly. Our evaluation compares the ZKP-only and privacy-preserving variants along these axes. % cite
+
+\section{Related Work}
+\label{sec:related_work}
+We analyze contributions relevant to our approach, emphasizing two theses from our group that we extend and selected publications on verifiable provenance and interoperability. We identify reusable elements and limitations that inform our design choices.
+
+\subsection{VC-Based Supply-Chain Traceability}
+Prior work demonstrated a credential model that links each product credential to its predecessor and to component credentials. A dual-signature handshake reduces unilateral claims. Payloads are stored off-chain with content-addressed references; on-chain anchors and verification logic provide integrity and auditability. This established that a credential-driven approach can express complex transformations without modeling products as on-chain assets. We adopt the chaining and handshake conventions and adapt field names to the EV battery context. % cite (first thesis)
+
+\subsection{Decentralized Marketplace with Escrow}
+A complementary thesis implemented a decentralized marketplace where escrow contracts orchestrate deposits, distributor selection, timeouts, delivery confirmation, and automatic fund release, with refunds and penalties to deter misbehavior. We reuse these patterns as the operational backbone and integrate them with our credential layer so that evidence of custody and settlement is verifiable end-to-end. % cite (second thesis)
+
+\subsection{Other Credential-Oriented Provenance Approaches}
+Selected publications enhance verifiable provenance via schema conventions, embedded provenance evidence, or interoperability rules across heterogeneous systems. Benefits include clearer verification procedures and cross-platform portability; typical limitations include credential size growth, reliance on trustworthy issuers, or incomplete treatment of privacy leakage on public ledgers. These motivate our emphasis on content-addressed linking, typed-data signatures, and privacy-preserving payment mechanisms. % cite
+
+\section{Summary and Identified Gap}
+\label{sec:gap}
+The background shows that verifiable credentials and smart-contract automation provide auditable, end-to-end traceability across complex transformations, while off-chain storage and on-chain anchoring keep costs practical. Related work offers mature patterns for credential chaining and escrow-based coordination. The remaining gap is the controlled disclosure of payment-related information (specifically price data) on public ledgers. The rest of this thesis addresses that gap by integrating selective-disclosure proofs (ZKP commitments via Bulletproofs) into the credential and escrow flows, enabling price confidentiality while preserving auditability.

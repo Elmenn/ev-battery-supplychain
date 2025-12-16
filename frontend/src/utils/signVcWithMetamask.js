@@ -16,8 +16,16 @@ function preparePayloadForSigning(vc) {
   if (clone.credentialSubject?.vcHash) {
     delete clone.credentialSubject.vcHash;
   }
+  // Remove transaction-related fields from signing payload (they're not part of EIP-712 types)
   if (clone.credentialSubject?.transactionId !== undefined) {
     delete clone.credentialSubject.transactionId;
+  }
+  if (clone.credentialSubject?.txHashCommitment !== undefined) {
+    delete clone.credentialSubject.txHashCommitment;
+  }
+  // Phase 1: Exclude purchase TX hash commitment from signing (same as delivery TX hash commitment)
+  if (clone.credentialSubject?.purchaseTxHashCommitment !== undefined) {
+    delete clone.credentialSubject.purchaseTxHashCommitment;
   }
 
   if (clone.credentialSubject?.price && typeof clone.credentialSubject.price !== "string") {

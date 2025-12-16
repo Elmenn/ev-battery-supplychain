@@ -1,0 +1,402 @@
+\chapter{Concept and Design}%
+\label{chapter:concept_and_design}
+
+
+\section{Problem and Objectives}
+\label{sec:concept-problem}
+
+This section defines the context, objectives, assumptions, and scope that inform the design decisions in this thesis. 
+
+\paragraph{Problem Context.}
+The challenge addressed here is the tension between the need for transparency in electric vehicle (EV) battery supply chains and the imperative to protect sensitive business information. 
+On one hand, end-to-end transparency over material flows, process steps, and regulatory attributes is required to satisfy safety, sustainability, and compliance demands. 
+On the other hand, such transparency risks exposing confidential data, such as prices and margins, if all events are managed on-chain. 
+Purely on-chain approaches offer maximal transparency but directly disclose commercially sensitive information. 
+Traditional off-chain systems rely on opaque databases with limited auditability and verifiability.
+
+
+The system developed in this thesis is designed to resolve this tension by combining verifiable provenance with privacy-preserving pricing. 
+The architecture leverages Verifiable Credentials (VCs), Pedersen commitments, and Zero-Knowledge Proofs (ZKPs) to provide publicly verifiable evidence of supply-chain integrity. At the same time, actual price values remain hidden from the public ledger and any third-party observers.
+
+
+\paragraph{Objectives.}
+The primary objectives of this work are fourfold. 
+
+First, the system must provide verifiable provenance by enabling end-to-end traceability across both intra-product transaction lifecycles and inter-product component relationships. This is achieved by representing each product and its components with a chain of verifiable credentials that can be traversed and audited externally. 
+
+Second, it must ensure hidden price disclosure. Product prices are never revealed in plaintext on-chain or in publicly accessible credentials. Instead, Pedersen commitments and ZKPs are used to prove price validity, such as verifying that prices lie within acceptable ranges and are consistent with on-chain anchors. 
+
+Third, the architecture is designed for minimal on-chain state by recording only lightweight anchors, such as commitments and content identifiers, on the blockchain. More substantial data, including verifiable credential payloads, zero-knowledge proofs, and digital signatures, are stored off-chain. This approach reduces gas costs and improves scalability. 
+
+Fourth, the system must support public auditability, allowing independent auditors to reconstruct the full state and provenance using only on-chain events and verifiable credentials hosted on IPFS, without requiring cooperation from supply chain participants.
+
+
+
+These objectives collectively ensure that the system delivers strong guarantees of integrity and traceability, while minimizing the exposure of sensitive business information.
+
+\paragraph{Assumptions and Scope.}
+The scope of this thesis is defined by several key assumptions. The system is deployed on a public EVM-compatible blockchain, such as Ethereum or the Sepolia testnet, using a standard smart contract execution model with reliable event emission. Verifiable Credentials are stored off-chain on IPFS or compatible distributed storage systems, and only their content identifiers (CIDs) are referenced on-chain. Commitments are constructed with deterministic blinding, eliminating the need for separate key exchanges and enabling both parties to recompute commitments from public information.
+
+Zero-knowledge proof generation and verification are performed by a backend service. Future work may explore client-side verification with WebAssembly, but this is beyond the present scope. Content identifiers are stored as strings on-chain to maximize interoperability with existing IPFS tooling, at the cost of a moderate increase in gas usage compared to more compact encodings. The adversary model assumes a network adversary capable of observing all on-chain data and IPFS traffic, as well as potentially malicious participants and honest-but-curious indexers. The system further assumes the security and finality guarantees provided by the underlying Ethereum Layer~1 or Sepolia testnet.
+
+
+Implementation details for achieving these objectives are provided in §\ref{sec:impl-tech-stack}.
+
+\section{Requirements}
+\label{sec:concept-requirements}
+
+This section delineates the functional and non-functional requirements that inform the design and implementation of the proposed system.
+
+\paragraph{Functional Requirements.}
+From a functional perspective, the system must support a staged lifecycle for each product. This lifecycle moves from the initial listing stage (S0), through order confirmation (S1), and concludes with delivery (S2). Each stage is represented by a signed verifiable credential that is anchored to the specific product in question. The workflow encompasses a purchase, confirmation, and delivery sequence. 
+
+Buyers purchase products by sending an amount of ETH that matches the previously committed price. Sellers must be able to confirm or reject orders within a defined time window, and buyers must confirm delivery by revealing their commitment opening at the appropriate stage.
+
+The system also incorporates a mechanism for transporter bidding. Transporters must be able to register delivery bids and propose corresponding fees, while sellers should have the ability to select a transporter within a specified bidding window. Auditor verification is another essential function: auditors must be able to independently verify verifiable credentials, commitments, and zero-knowledge proof artifacts using only on-chain events and data hosted on IPFS, without requiring direct interaction with any of the original transaction participants. Furthermore, the architecture must support credential chaining for both intra-product stage progression, through the \texttt{previousCredential} field, and for inter-product provenance using references to component credentials. This enables the representation of complex supply chain relationships in a verifiable manner.
+
+
+\paragraph{Non-Functional Requirements.}
+In addition to these core functions, several non-functional requirements must be fulfilled. Confidentiality is paramount; the system must ensure that prices are concealed using cryptographic commitments and zero-knowledge proofs, such that only commitments, tags, and proofs are visible in public artifacts, and plaintext prices are never exposed in on-chain state or public credentials. Gas efficiency is also a priority, with on-chain storage kept to a minimum by recording only anchors, such as commitments and content identifiers, and relying on event logs for state reconstruction rather than maintaining large storage arrays. The system should exhibit strong modularity, with clear separation between zero-knowledge proof generation and verification, verifiable credential handling, and decentralized application interaction. Smart contract deployment should leverage a factory pattern to avoid duplication and streamline upgrades. Indexability is another key consideration: the complete system state must be reconstructable from events and content-addressed verifiable credentials, thereby facilitating efficient indexing and caching by external services. Finally, user experience must remain clear and accessible. The frontend should abstract away cryptographic complexity from end-users by providing role-based views, clear progress indicators, and understandable error messages.
+
+
+
+The realization of these requirements is detailed in §\ref{sec:onchain-traceability} (state/events) and §\ref{sec:offchain-privacy}.
+
+
+\section{Actors \& Roles}
+\label{sec:concept-actors}
+
+This section defines the principal participants in the system and their conceptual responsibilities, establishing a clear understanding of the actors involved before implementation details are presented.
+
+\paragraph{Actor Definitions.}
+Five primary actors interact with the system: the seller, buyer, transporter, auditor, and factory.
+ 
+
+The seller is responsible for creating products through the marketplace factory, setting the initial public price commitment, confirming incoming orders within specified deadlines, selecting transporters during the bidding window, and signing verifiable credentials as the issuer at each stage of the product lifecycle. 
+
+The buyer’s role involves purchasing products by locking the committed price on-chain, holding the final Stage~S2 verifiable credential, confirming delivery by revealing the appropriate commitment openings when required, and co-signing the final verifiable credential as the holder. 
+
+The transporter participates by registering delivery bids, including proposed fees, carrying out the physical delivery, receiving escrowed funds upon successful completion, and facing potential penalties or forfeiture of rewards if deadlines are not met. 
+
+The auditor operates exclusively in a read-only capacity, verifying verifiable credentials independently by reading on-chain anchors, retrieving credential content identifiers from distributed storage, verifying signatures and zero-knowledge proofs, and traversing provenance chains. The auditor does not have the ability to modify state. 
+
+Finally, the factory is responsible for creating new escrow instances for products, controlling the creation of new products, and managing the selection of implementation logic for future escrow contracts.
+
+\paragraph{Responsibilities.}
+The interactions between these actors and the system’s artefacts can be understood along three main dimensions. First, regarding signature responsibilities, sellers sign verifiable credentials as issuers for all lifecycle stages, while buyers sign only the final Stage~S2 credential as holders. Transporters and auditors do not sign credentials in the current design. Second, in terms of state visibility, sellers and buyers read their respective product states, including commitments, bids, and lifecycle status. Transporters monitor bidding and delivery status, while auditors have access to all public state, credentials, and events. Third, with respect to anchoring data, sellers are responsible for setting the initial price commitment and updating the verifiable credential content identifier at the S0 and S1 stages. At the S2 stage, both seller and buyer participate in updating the credential identifier to reflect the final delivery credential. Other roles do not anchor data on-chain.
+
+\paragraph{Trust Model.}
+Trust relationships in the system are defined by clear boundaries. 
+Sellers must trust buyers to reveal commitments correctly upon delivery when openings are required. This trust is enforced by the contract, which checks for consistency with the stored commitment.
+Buyers, in turn, must trust sellers to confirm orders and select transporters within the specified timeouts. In cases where this does not occur, the contract is designed to enforce refunds or penalties automatically through timeout transitions. Auditors do not rely on the honesty of participants, but instead place trust in cryptographic primitives and on-chain anchors. They independently verify the integrity of commitments, proofs, and signatures. All parties depend on content-addressed storage to detect any tampering with verifiable credentials, given that any alteration results in a different content identifier. Additionally, there is an underlying assumption that the zero-knowledge backend correctly implements the published verification circuits and that these are accessible through public interfaces.
+
+
+The specific application programming interfaces and access control mechanisms that operationalize these roles are described in Section~\ref{sec:end-to-end-workflows}.
+
+\section{Architecture (Conceptual)}
+\label{sec:concept-architecture}
+
+This section presents the conceptual, layered architecture of the system, defining the trust boundaries and responsibilities at each level without delving into implementation-specific details.
+
+\paragraph{Layered View.}
+The system is structured into five distinct layers, each with a clear role in the overall architecture. At the top is the user layer, where human actors, including sellers, buyers, transporters, and auditors interact with the system. These users access the system through a web interface, and all blockchain transactions are approved using their own wallet software, ensuring that private key material remains under user control.
+
+Beneath the user layer is the decentralized application (dApp) layer. This web-based application orchestrates the various user workflows, delivering role-based views tailored to each actor’s responsibilities. The dApp abstracts away the complexities of zero-knowledge proof generation, verifiable credential signing, and interactions with content-addressable storage, thereby simplifying the user experience and reducing opportunities for user error.
+
+The service layer is composed of two main components. The first is a zero-knowledge proof backend, which is responsible for generating and verifying Bulletproof range proofs for cryptographic commitments. The second is a verifiable credential service that manages canonicalization, the construction of signature payloads, verification of signatures, and the selection of appropriate storage gateways for credential persistence.
+
+The distributed storage layer underpins the system’s data persistence strategy. Here, a content-addressable storage network, such as the InterPlanetary File System (IPFS), is used to store verifiable credential documents. These documents are addressed by content identifiers, and the system may employ multiple storage gateways and pinning strategies to ensure data availability and resilience. Notably, smart contracts within the system never store verifiable credential payloads directly, but only reference them via these content identifiers.
+
+At the base of the architecture is the blockchain layer, which provides the foundational platform for the system’s factory and escrow contracts. This layer is responsible for storing minimal anchors, such as commitments and content identifier pointers, and for emitting events that capture all relevant state transitions. By recording only essential data on-chain, the system achieves both integrity and efficiency.
+
+\paragraph{Trust Boundaries.}
+Trust boundaries are carefully defined at each layer. In the frontend, the web interface could potentially display incorrect information if compromised, but it cannot forge signatures that require user-held private keys, nor can it arbitrarily modify on-chain state, as all such modifications require valid, user-signed transactions. The zero-knowledge proof backend must correctly implement both proof generation and verification; any errors or malicious behavior can be detected by independent verification of proofs against public inputs and the published verification key. The verifiable credential service is similarly constrained: it must perform proper canonicalization and construct signature payloads correctly, as any deviation would result in invalid signatures that can be detected by re-executing the canonicalization process. The distributed storage layer relies on content addressing: any modification to a verifiable credential document changes its content identifier. On-chain references to content identifiers thus act as integrity anchors for the underlying data. Finally, the blockchain itself guarantees immutability and finality for all commitments, content identifiers, and events, ensuring that once records are confirmed, they cannot be retroactively altered by any participant.
+
+
+\begin{figure}[H]
+  \centering
+  \includegraphics[width=0.9\linewidth]{concept-architecture}
+  \caption{High-level architecture: conceptual layers and trust boundaries}
+  \label{fig:concept-architecture}
+\end{figure}
+
+A high-level representation of these conceptual layers, along with their trust boundaries, is provided in Figure 3.1. 
+
+The concrete details of runtime wiring, network ports, and deployment strategies that implement this architecture are described in Section~\ref{sec:impl-tech-stack}.
+
+
+\section{Data and Credential Model}
+\label{sec:concept-vc-model}
+
+This section describes the conceptual design of verifiable credential (VC) stages, the mechanisms for credential chaining, and the use of on-chain pointers to ensure traceability and integrity within the system.
+
+\paragraph{Stages \& Head Pointer.}
+Products within the system progress through a sequence of three verifiable credential stages. The first stage, \textbf{S0 (Listing):}, is initiated when a seller creates a product. At this point, the seller computes a price commitment, obtains a zero-knowledge proof establishing that the price falls within a valid range, and constructs the initial verifiable credential. This credential contains both the commitment and its proof, and is signed by the seller as the issuer.
+
+Upon purchase, the system transitions to the \textbf{S1 (Order Confirmed):} stage. After a buyer commits to purchasing the product, the seller confirms the order, resulting in the creation of a new verifiable credential. This credential captures the order confirmation details, includes a hidden commitment to the purchase transaction hash (using a Pedersen commitment), and links explicitly to the S0 credential via the previousCredential field. At this point, the buyer is designated as the holder, and the seller signs the credential as issuer.
+
+The final stage, \textbf{S2 (Delivered):}, occurs once the product has been delivered. Here, the buyer reveals the previously committed price and confirms receipt of the product. A final verifiable credential is constructed, which documents the revealed value, the corresponding commitment and its proof, a commitment to the delivery transaction hash, and explicit references to all prior stages. Both the seller (as issuer) and the buyer (as holder) sign this credential. The on-chain content identifier pointer (vcCid) is updated at this stage to reference the S2 credential.
+
+
+The on-chain \texttt{vcCid}, stored as a string, always points to the current head of the verifiable credential chain for each product. All historical credentials are retained on IPFS, allowing auditors to traverse the full credential history using the previousCredential links embedded in each VC. This approach preserves complete traceability through the use of content-addressed identifiers.
+
+\paragraph{Two Chaining Dimensions.}
+Credential chaining is implemented along two complementary dimensions. The first dimension, referred to as the \textbf{(A) Intra-product stage chain} represents the transaction lifecycle of each product as a linear chain of credentials. The S1 credential links to its predecessor S0, and S2 links to S1, thus capturing the progression from listing to purchase to delivery for a single product. The second dimension, known as \textbf{(B) inter-product provenance}, captures supply chain relationships between products. For example, when components are assembled into a new product, the VC at the S0 stage of the assembled product references the S2 content identifiers of its upstream components. This results in a directed acyclic graph of provenance links, tracing assembled products back to their raw materials.
+
+The intentional separation of these two chaining mechanisms ensures that the temporal evolution of a single product (its transaction lifecycle) is maintained independently of its structural relationships within the broader supply chain (its provenance graph). In other words, a product’s internal history is modeled as a simple linear chain, while its context within the supply chain is represented through references to other products’ credentials.
+
+\paragraph{Design Rationale.}
+Several design principles underpin this model. Content-addressing through content identifiers guarantees the integrity of all credentials, since any tampering with a credential alters its identifier. This also enables efficient caching and retrieval via IPFS gateways, while preserving the verifiability of the supply chain. Storing only the head credential identifier on-chain results in significant gas savings, as historical credentials remain immutable and accessible on IPFS; auditors can reconstruct the complete history off-chain by following the content-addressed links. Finally, separating the transaction lifecycle from the provenance graph avoids conflating temporal and structural information, thereby simplifying both modeling and verification.
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=\linewidth]{VC-Chains.pdf}
+\caption{Two-lane VC chaining concept: intra-product stage chain via \texttt{previousCredential} and inter-product provenance via \texttt{componentCredentials[\,]}}
+\label{fig:concept-vc-chains}
+\end{figure}
+
+A high-level illustration of these chaining concepts is provided in Figure 3.2. The specific JSON fields used and their integration with the verifiable credential library are detailed in Section §\ref{subsec:vc-chaining}.
+
+\section{Cryptographic Primitives \& Binding}
+\label{sec:concept-crypto}
+
+This section describes the cryptographic foundations underlying the system, including the use of Pedersen commitments, deterministic blinding, binding tags, and Bulletproof range proofs.
+
+\paragraph{Pedersen Commitment (Definition).}
+At the core of the protocol is the Pedersen commitment scheme, which is used to hide sensitive values such as product prices and transaction identifiers. A Pedersen commitment is computed as 
+\[
+C = vG + bH
+\]
+where $v$ is the value being committed to (here, the product price), $b$ is a blinding factor, and $(G, H)$ are fixed generators of an elliptic-curve group.
+
+This scheme possesses several crucial properties. First, it is hiding: the commitment $C$ reveals no information about the underlying value $v$ under the discrete logarithm assumption. 
+Second, it is binding: it is computationally infeasible to find two distinct pairs of values, $(v, b)$ and $(v', b')$ that produce the same commitment $C$, ensuring that once a value is committed, it cannot be altered undetectably.
+Third, Pedersen commitments are additively homomorphic: $\mathsf{Com}(v_1, b_1) + \mathsf{Com}(v_2, b_2) = \mathsf{Com}(v_1 + v_2, b_1 + b_2)$. While the current prototype does not exploit this last property, it may be useful for future extensions such as aggregated pricing.
+
+\paragraph{Deterministic Blinding (Design Choice).}
+A key design decision in this system is the use of deterministic rather than random blinding factors. The blinding factor $b$ is computed as the hash of the escrow contract address and the seller’s address, specifically 
+\[
+b = \mathsf{keccak256}(\mathtt{escrowAddr} \parallel \mathtt{owner})
+\]
+where $\mathtt{escrowAddr}$ is the product escrow contract address and $\mathtt{owner}$ is the seller's address.
+
+This approach enables both the seller and buyer to recompute the blinding factor $b$ using only public information once the escrow address is available, thus simplifying the protocol and obviating the need for a separate key exchange or off-chain secret. While this means that a third party could also compute the blinding factor, the commitment remains hiding even if $b$  is known, and the protocol retains its confidentiality guarantees. If stronger unlinkability across products is required in the future, a per-product random salt could be introduced into the derivation at the cost of additional coordination.
+
+
+\paragraph{Binding Tag (Definition).}
+To ensure that zero-knowledge proofs are bound to specific credential contexts and to prevent replay and swap attacks, the protocol employs binding tags. A binding tag is computed as a cryptographic hash over a set of contextual parameters, such as
+\[
+t = H(\text{"zkp-bind-v1"} \parallel \textit{chainId} \parallel \textit{escrowAddr} \parallel \textit{productId} \parallel \textit{stage} \parallel \textit{schemaVersion} \parallel \textit{previousVcCid}),
+\]
+where \(H\) is a cryptographic hash function (instantiated as \texttt{keccak256}). 
+The previous credential identifier is included when present and omitted for the initial stage. 
+This binding tag ensures that a proof generated for one verifiable credential cannot be reused for another, even if both reference the same commitment. It also prevents a proof from being moved between credentials with identical commitments, as the tag incorporates credential-specific metadata and previous-credential links. The public inputs to zero-knowledge verification are the commitment and the binding tag \((C, t)\), which guarantees that proofs are cryptographically bound to their intended context.
+
+\paragraph{Bulletproof Range Proof.}
+Bulletproof range proofs are used to prove that committed prices lie within valid ranges (e.g.\ $v \in [0, 2^{64})$) without revealing the underlying value. Bulletproofs operate over Pedersen commitments, providing short, non-interactive zero-knowledge range proofs with logarithmic proof size and no requirement for a trusted setup.
+
+In this design, a Bulletproof $\pi_{BP}$ is generated over both the commitment $C$ and binding tag $t$, and the resulting proof is embedded into the verifiable credential as part of the price-related fields. During verification, an auditor or external verifier checks that the proof  $\pi_{BP}$ is valid for the given $(C, t)$ and that the committed value falls within the agreed range.
+
+\paragraph{Transaction-Hash Commitments}
+
+A further design extension applies the commitment mechanism to transaction hashes. Directly recording transaction hashes on the blockchain would reveal effective prices through payment amounts. To avoid this, the system also commits to transaction identifiers using Pedersen commitments. 
+
+After a purchase or delivery transaction, the system computes a commitment to the transaction hash and embeds both the commitment and its zero-knowledge proof into the verifiable credential. 
+
+For these transaction-hash commitments, a separate binding tag is derived as
+\[
+t_{\mathrm{tx}} = \mathsf{keccak256}(
+  \textsf{"tx-hash-bind-v1"},
+  \textit{chainId},
+  \textit{escrowAddr},
+  \textit{productId},
+  \textit{buyerAddress}
+),
+\]
+where the protocol label \texttt{"tx-hash-bind-v1"} distinguishes transaction-hash proofs from price proofs. 
+This binding tag $t_{\mathrm{tx}}$ is consistently used for both purchase and delivery transaction commitments, ensuring that they are cryptographically linked to the correct product and buyer context.
+
+This approach achieves several important objectives. Transaction hashes remain hidden while still allowing verification of transaction existence and success. The shared binding tag allows auditors to verify that purchase and delivery transactions are part of the same logical session. Additionally, commitments can be exposed via lifecycle events, enabling auditors to match credential-embedded commitments against on-chain anchors.
+
+A schematic illustration of binding and context derivation is provided in Figure 3.3. 
+
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.9\linewidth]{Binding schematic}
+
+\caption{Binding schematic: VC context and binding-tag derivation}
+\label{fig:concept-binding}
+\end{figure}
+
+The specific encoding choices, storage formats, and event structures used to implement these bindings are described in Section~\ref{subsec:impl-price-commitments}.
+
+\section{Protocol Flows }
+\label{sec:concept-flows}
+
+This section presents the high-level protocol flows for the principal actors in the system: the seller, the buyer, and the auditor. The discussion abstracts from implementation-specific details, focusing on conceptual steps and trust-preserving mechanisms. 
+Detailed message sequences and concrete endpoints are provided in Chapter~\ref{chapter:implementation}.
+
+\paragraph{Seller S0 Flow (Conceptual).}
+The seller’s workflow begins at Stage 0, during product listing. The seller first prepares a product description and proposes a price using the decentralized application interface. Rather than exposing the price directly, a privacy-preserving price commitment is generated, and a corresponding zero-knowledge range proof is constructed, binding the committed price to the product and seller context. These cryptographic artifacts are embedded into a Stage 0 verifiable credential, which documents the product and its initial state while keeping the numeric price confidential. The seller then signs this credential as the issuer, after which the signed credential is stored off-chain. The resulting content identifier serves as a stable reference to the product listing. On-chain, the marketplace contract records the new product in a listed state by anchoring the credential via its content identifier and the price commitment, without revealing either the price or the full credential contents. The precise data structures, commitment encodings, and contract calls implementing this flow are described in Section~\ref{sec:end-to-end-workflows}.
+
+\paragraph{Buyer to S2 Flow (Conceptual).}
+The buyer’s protocol flow extends from purchase initiation to delivery confirmation. Once a buyer initiates and completes a purchase on-chain, the system derives a commitment to the purchase transaction in a manner that links it to the same product and buyer context as the original price commitment. As the order is confirmed and delivery proceeds, intermediate verifiable credentials (Stage 1) may be issued to reflect the evolving state of the trade, maintaining cryptographic continuity between product, price, and transaction context. Upon delivery, a final Stage 2 credential is constructed, chaining to previous credentials and embedding the price commitment, transaction-hash commitments, and all relevant zero-knowledge proofs. This credential captures the ultimate outcome of the trade. The seller signs the final credential as issuer, and the buyer co-signs as holder. The signed Stage 2 credential is then stored off-chain, with its content identifier anchored on-chain as the final reference for the product’s lifecycle. In scenarios requiring public settlement of the price, the price commitment may be revealed on-chain to allow the contract to verify and finalise payment. In flows designed for complete confidentiality, the price commitment remains unopened. The detailed sequence of contract calls, application interactions, and backend checks for this flow is described in Section~\ref{subsec:workflow-buyer}.
+
+\paragraph{Auditor Flow (Conceptual).}
+The auditor’s workflow is designed to enable verification using only public and off-chain data. An auditor begins by retrieving the relevant product identifier or on-chain record, then collects the associated anchors, including the price commitment, lifecycle events, and the latest credential content identifier, from the blockchain. Using these content identifiers, the auditor fetches the corresponding verifiable credentials from IPFS or another compatible storage system and verifies the digital signatures of the issuer and holder. 
+The auditor then checks that the commitments and zero-knowledge proofs embedded in the credentials are consistent with the on-chain anchors, and that the binding tags correctly tie price and transaction-hash commitments to the expected product and trade context.
+By traversing the credential chain from Stage 0 through Stage 2, as well as following any component links, the auditor reconstructs the product’s complete provenance and lifecycle, confirming the occurrence of all required events and the validity of confidential values, all without learning the actual prices or transaction hashes. 
+The concrete verification API, proof formats, and error handling for this workflow are discussed in Section~\ref{subsec:workflow-auditor} and further evaluated in Chapter~\ref{chapter:evaluation}.
+
+A high-level illustration of these protocol flows, including seller listing, buyer delivery confirmation, and auditor verification, is provided in Figure \ref{fig:impl-auditor-flow}. 
+
+
+\section{Smart-Contract Abstractions (Concept)}
+\label{sec:concept-contracts}
+
+This section explains the conceptual design of the smart contracts: the factory/escrow split, lifecycle phases, and the on-chain anchors that connect contracts to off-chain verifiable credentials, without going into concrete interfaces or implementation details.
+
+\paragraph{Factory/Escrow Split.}
+
+
+The smart-contract architecture is based on a factory pattern, in which a central factory contract is responsible for creating a dedicated escrow instance for each product. This per-product escrow model achieves several objectives. First, it ensures isolation, as each product has its own independent escrow contract with a distinct lifecycle, which allows trades to progress separately and simplifies both verification and reasoning about individual product states. Second, the escrows are designed to be lightweight, making it economically practical to deploy a new instance for every product rather than relying on a single global contract. Third, the factory contract retains control over which implementation logic is used when creating new escrows, enabling controlled upgrades for future products while preserving the integrity of already-deployed instances.
+
+
+Each escrow contract operates as a conceptual finite-state machine that manages the product through a series of defined phases. The lifecycle begins in the listed phase, where the product is created, a price commitment is established, and the system awaits a buyer. Once a buyer has locked the committed price in escrow, the contract transitions to the purchased phase, and the system waits for seller confirmation within a bounded confirmation window. 
+
+Upon confirmation, the system enters the order-confirmed phase, during which an intermediate Stage~1 credential is issued and the system waits for transporter selection within a specified bidding window. In the bound phase, a transporter is selected, the delivery fee is escrowed, and the contract awaits delivery confirmation. When the trade is completed, the system enters the delivered phase, with a final Stage~2 credential issued and funds released according to the agreed conditions. If any deadlines are missed, timeout transitions result in an expired phase, triggering refunds or penalties and terminating the product lifecycle in a stable, terminal state.
+
+This structured progression ensures that trades advance in a controlled manner, prevents inconsistent state combinations, and provides clear points for updating credentials and anchors.
+
+\paragraph{Anchors.}
+On-chain, each escrow instance stores only minimal cryptographic anchors for its product. Specifically, it records a price commitment, which serves as the public anchor for the committed price while concealing the numeric value, and a reference to the head of the verifiable credential chain, which points to the latest credential representing the product’s lifecycle stage. Additional commitments to purchase and delivery transaction hashes are not stored as persistent state but are instead exposed through lifecycle events. Order-confirmation and delivery-finalisation events carry these committed transaction hashes as verifiable anchors. This event-driven approach enables auditors to match commitments embedded in credentials with on-chain evidence, without the need to store transaction identifiers directly on-chain.
+
+
+All heavy data, such as verifiable credential JSON payloads, zero-knowledge proof bytes, and EIP-712 signatures, remain off-chain in content-addressable storage. The on-chain anchors, therefore, provide stable, reliable points of verification, ensuring consistency between the on-chain state and off-chain documents.
+
+\paragraph{Event Philosophy.}
+A foundational principle of this architecture is that every significant transition in the escrow lifecycle emits an event containing sufficient context for off-chain indexing and auditing. These events capture the product identity, relevant actors, phase changes, and any updated anchors, including credential references or commitments. 
+This event logging enables external indexers and auditors to reconstruct complete product histories using only the emitted events and content-addressable lookups. It removes the need for privileged access to internal contract state.
+
+Table 3.1 summarizes the mapping between each role and its main responsibilities regarding system artefacts, including who signs verifiable credentials, who reads state, and who anchors data on-chain.
+
+
+\begin{table}[H]
+\centering
+\small
+\caption{Roles vs.\ artefacts: who signs, reads, and anchors (conceptual mapping).}
+\label{tab:concept-roles-artifacts}
+\begin{tabularx}{\textwidth}{>{\raggedright\arraybackslash}X >{\raggedright\arraybackslash}X >{\raggedright\arraybackslash}X >{\raggedright\arraybackslash}X}
+\toprule
+\textbf{Role} & \textbf{Signs VCs} & \textbf{Reads State} & \textbf{Anchors Data} \\
+\midrule
+Seller & Issuer (Stages S0--S2) & Own products and associated commitments & Triggers creation of price commitments and updates credential references as the lifecycle progresses \\
+Buyer & Holder (Stage S2) & Purchased products and associated commitments & May trigger updates to credential references at delivery and settlement \\
+Transporter & None & Bid and delivery status & None \\
+Auditor & None & All public state, credentials, and events & None (read-only) \\
+Factory & None & N/A & Creates new escrow instances for products \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+Further details on concrete contract interfaces and event structures are provided in Sections~\ref{sec:impl-roles-lifecycle}--\ref{subsec:invariants}.
+
+
+\section{Security \& Privacy Properties}
+\label{sec:concept-security}
+
+This section delineates the security and privacy guarantees afforded by the proposed system, highlighting the mechanisms that protect sensitive information, enforce non-repudiation, and ensure auditability and integrity.
+\paragraph{Confidentiality.}
+Confidentiality is a central feature of the design. The system guarantees value hiding by ensuring that product price $v$ is never revealed in public state. Only the cryptographic commitment $C$ and its associated zero-knowledge proof $\pi_{BP}$ are exposed. Under the discrete logarithm assumption, $C$ reveals no information about $v$.
+Within verifiable credentials, price fields are represented exclusively by commitments and range proofs, rather than plaintext values. These proofs disclose only that a price lies within a predefined interval, without revealing the precise amount. Similarly, transaction hashes are committed using Pedersen commitments, so that raw transaction identifiers do not appear in verifiable credentials or on-chain state. Only commitments and proofs are accessible, allowing for verification of transaction existence without exposing specific transaction details. However, a limitation of the current design is that on-chain ETH amounts remain publicly visible. Achieving full payment privacy would require integrating specialized privacy systems such as Railgun or Aztec, which is considered future work and discussed in Section~\ref{sec:concept-tradeoffs}.
+
+\paragraph{Binding \& Non-Repudiation.}
+
+Binding and non-repudiation are also carefully addressed. 
+The system employs \textbf{EIP-712 signatures}, which are computed over canonicalized verifiable credential payloads in accordance with the typed-data standard. As a result, signers cannot plausibly repudiate these signatures, since they are cryptographically linked to their private keys. Binding tags further secure the protocol by associating each proof with a specific contract, product, stage, and credential context, thus preventing replay or swapping of proofs across different credentials or contracts. On-chain anchors, represented by the public price commitment \texttt{publicPriceCommitment} and the verifiable credential content identifier \texttt{vcCid}, serve as immutable references.
+
+Any attempt to alter off-chain credentials or proofs without updating the on-chain anchors would be immediately detectable by auditors.
+
+\paragraph{Integrity \& Auditability.}
+The system also guarantees integrity and auditability. Content-addressed identifiers ensure that any modification of a verifiable credential changes its identifier, and the combination of on-chain pointers and content addressing guarantees that the head credential for a product cannot be silently replaced. The system emits structured events for all significant state transitions, enabling the reconstruction of a product's complete lifecycle and provenance from logs. Auditors can cross-check these logs against verifiable credentials and commitments to verify consistency. The design also incorporates availability measures: the use of multi-pinning strategies and public IPFS gateways enhances the accessibility of verifiable credential data. Even if some gateways fail, content can still be retrieved from other nodes by its identifier.
+
+Table 3.2 summarizes the core security and privacy properties of the system, along with the corresponding mechanisms that enforce them. 
+
+\begin{table}[H]
+\centering
+\small
+\caption{Security properties and corresponding mechanisms (conceptual view).}
+\label{tab:concept-security-mapping}
+\begin{tabularx}{\textwidth}{>{\raggedright\arraybackslash}X >{\raggedright\arraybackslash}X}
+\toprule
+\textbf{Security Property} & \textbf{Mechanism} \\
+\midrule
+Price confidentiality & Pedersen commitments (hiding property) + Bulletproofs range proofs \\
+Commitment binding & On-chain anchor + binding tag $t$ in ZKP public inputs \\
+Non-repudiation & EIP-712 signatures over canonical VC payloads \\
+VC integrity & Content-addressed CIDs + on-chain head pointer \\
+Proof authenticity & Binding tag $t$ prevents replay and swap attacks \\
+State auditability & Event trail + reconstructable history from logs \\
+Availability & Multi-pinning on IPFS + public verification endpoints \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+For detailed descriptions of concrete security guards, error conditions, and event coverage, refer to Section §\ref{subsec:invariants} and the security-focused analysis in Section §\ref{sec:eval-security}.
+
+\section{Design Trade-offs}
+\label{sec:concept-tradeoffs}
+
+This section outlines several key design decisions made in the system, discussing the rationale for each choice and the trade-offs involved.
+
+\paragraph{Deterministic vs.\ Random Blinding.}
+
+The system adopts deterministic blinding,
+\[
+b = \mathsf{keccak256}(\mathtt{escrowAddr} \parallel \mathtt{owner}),
+\]
+in which the blinding factor is computed as the hash of the escrow contract address and the owner’s address.
+This approach enables both the seller and buyer to independently recompute the same commitment $C$ from public information, simplifying the protocol and eliminating the need for additional key exchanges or hidden randomness. It also enhances the transparency and debuggability of commitment consistency across components. The principal trade-off of this approach is that the blinding factor is reproducible by any observer with knowledge of the relevant addresses. While the Pedersen commitment remains hiding even if the blinding factor is known, this design means commitments for the same value and context will be identical, potentially leaking limited structural information. If a higher degree of unlinkability is required, a per-product random salt could be incorporated, though this would introduce additional coordination overhead.
+
+\paragraph{Off-Chain vs.\ On-Chain ZKP Verification.}
+Zero-knowledge proof (ZKP) verification is performed off-chain by a dedicated backend service. This decision is motivated by the desire to avoid the high gas costs and technical complexity associated with on-chain Bulletproof verification. 
+The backend service can be optimized, upgraded, and audited independently of the on-chain contracts. Its verification logic can be made publicly accessible for review.
+The trade-off is that the current prototype relies on this external service for proof verification. Although auditors can independently verify proofs using public inputs, the smart contracts themselves only check commitments and revealed values, and do not perform ZKP verification. Future work may explore on-chain verification or the use of succinct SNARK-based proofs, although at the cost of increased gas expenditure.
+
+
+\paragraph{String CIDs vs.\ Binary Encodings.}
+Content identifiers (CIDs) are stored on-chain as strings in the current design. This choice prioritizes human readability and compatibility with existing IPFS tooling and gateways, thereby reducing the risks of mis-encoding and simplifying debugging and interoperability. The main trade-off is that string-encoded CIDs consume more gas than binary or multihash-optimized formats. Given that there is only a single head pointer CID per product, the extra gas cost is considered acceptable in exchange for clarity and ease of integration.
+
+
+\paragraph{Public Payment Now vs.\ Private Adapter Later.}
+The prototype currently supports public payment flows, with price data protected by commitments and zero-knowledge proofs. This decision enables the delivery of a functional and auditable system more rapidly, while still addressing the core requirement of keeping price information confidential in public data. The trade-off is that on-chain payment amounts remain visible; achieving full payment privacy would require integration with specialized privacy protocols such as Railgun, Aztec, or shielded pools. This is recognized as a limitation and an explicit target for future work, as discussed in Section~\ref{subsec:eval-limitations} and in the conclusion(Chapter~\ref{chapter:conclusion}).
+
+
+\section{Compliance \& Audit Considerations}
+\label{sec:concept-compliance}
+
+This section outlines how auditors can verify compliance and reconstruct the full transactional and provenance history of products within the system, leveraging cryptographic anchors, verifiable credentials, and zero-knowledge proofs.
+
+
+\paragraph{Auditor Recipe (Conceptual).}
+First, the auditor checks that the price commitment embedded in the verifiable credential matches the public price commitment recorded on-chain for the product. 
+Next, the auditor verifies the validity of the accompanying Bulletproofs proof by checking that it is consistent with the public inputs, including the commitment and the binding tag. The proof must also show that the committed price falls within the agreed range.
+The auditor also verifies that any transaction-hash commitments included in the verifiable credential correspond to the values emitted in relevant lifecycle events, such as PurchaseConfirmedWithCommitment and DeliveryConfirmedWithCommitment, and that the associated zero-knowledge proofs validate the existence of legitimate transactions without exposing the actual transaction hashes. Signature authenticity is checked by ensuring that all EIP-712 signatures, from both issuer and holder, in the proof array are valid over the canonicalized verifiable credential payload. Finally, the auditor assesses the integrity of the credential chain by confirming that previousCredential links form a consistent intra-product sequence from listing to delivery, and that all component credential references are resolvable to valid upstream credentials.
+
+
+These checks are sufficient because the system combines on-chain anchors, content-addressed verifiable credentials, and zero-knowledge proofs into a complete, tamper-evident audit trail.
+The auditor is not required to trust any participant in the process; instead, compliance verification relies on cryptographic guarantees and the immutability of the blockchain. Importantly, confidentiality is preserved throughout: the auditor does not learn the actual price value but only that it lies within a valid, committed range and is consistent with the on-chain anchor.
+
+
+\paragraph{End-to-End Reconstruction.}
+To achieve end-to-end reconstruction, the auditor enumerates all relevant product escrows and reads their associated public price commitments and verifiable credential identifiers. Using these references, the auditor fetches each credential from distributed storage such as IPFS, verifies signatures, and checks the consistency of commitments and proofs. By traversing previousCredential links, the auditor reconstructs the full transaction lifecycle for each product, while recursive traversal of component credentials enables the mapping of inter-product provenance from assembled products back to raw materials.
+
+
+\paragraph{Compliance Properties.}
+The system guarantees several essential compliance properties. Immutability is ensured, as content identifiers and on-chain commitments cannot be changed after creation or confirmation without detection, thereby providing stable and reliable historical records. Non-repudiation is achieved through the use of EIP-712 signatures, which cryptographically prove authorship and acceptance of credentials. Finally, the system enables privacy-preserving auditability: auditors can verify the validity of commitments and proofs, thereby providing compliance evidence without exposing sensitive business data such as actual prices.
+
+
+Concrete verification code, API endpoints, and implementation details supporting these audit mechanisms are provided in Section~\ref{subsec:workflow-auditor}.
+
+\FloatBarrier

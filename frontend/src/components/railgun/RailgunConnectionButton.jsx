@@ -1,12 +1,14 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { Button } from '../ui/button';
 import toast from 'react-hot-toast';
-import { connectRailgun, disconnectRailgun, restoreRailgunConnection } from '../../lib/railgunV2SepoliaClient';
+// TODO: Update to use new Railgun structure
+import { connectRailgun, disconnectRailgun, restoreRailgunConnection } from '../../lib/railgun-legacy-shim';
 
 const RailgunConnectionButton = ({ currentUser }) => {
   const [isConnecting, setIsConnecting] = useState(false);
   const [isConnected, setIsConnected] = useState(false);
   const [railgunAddress, setRailgunAddress] = useState(null);
+  // eslint-disable-next-line no-unused-vars
   const [railgunWalletID, setRailgunWalletID] = useState(null);
 
   const handleDisconnect = useCallback(async () => {
@@ -38,7 +40,14 @@ const RailgunConnectionButton = ({ currentUser }) => {
           console.log('🔍 Found Railgun connection for different user - clearing');
           console.log('   - Stored user:', stored.userAddress);
           console.log('   - Current user:', currentUser);
-          handleDisconnect();
+          // CRITICAL: Only disconnect if we're sure it's a different user
+          // Don't disconnect if we're still connecting (race condition)
+          const timeSinceConnection = stored.timestamp ? Date.now() - stored.timestamp : Infinity;
+          if (timeSinceConnection > 5000) { // Only clear if connection is older than 5 seconds
+            handleDisconnect();
+          } else {
+            console.log('⚠️ Connection is recent - might be in progress, not clearing yet');
+          }
         }
       } else {
         setIsConnected(false);
@@ -138,10 +147,12 @@ const RailgunConnectionButton = ({ currentUser }) => {
       console.log('🔐 Connecting to Railgun for user:', currentUser);
       
       // Connect with current user's address
+      // Use environment variable or reliable default (rpc.sepolia.org)
+      const rpcUrl = process.env.REACT_APP_RPC_URL || 'https://rpc.sepolia.org';
       const result = await connectRailgun({
         backendBaseURL: 'http://localhost:3001',
         userAddress: currentUser,
-        rpcUrl: 'https://ethereum-sepolia.publicnode.com'
+        rpcUrl: rpcUrl
       });
       
       if (result && result.walletID && result.railgunAddress) {

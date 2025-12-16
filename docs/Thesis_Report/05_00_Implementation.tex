@@ -1,0 +1,393 @@
+\chapter{Implementation} \label{chapter:implementation} \begin{comment} * In almost every case, a prototype needs to be implemented. Describe the implementation (languages / tools used, hardware / software requirements, etc.). * Approach this chapter as if you need to explain someone else, how they should implement your system. * Describe the setup of the prototype, configuration, hardware and software prerequisites, etc. * 6-12 pages For implementation tasks: * It is usually a good idea to manage your code and thesis in form of a private git repository. TU Berlin offers a GitLab server you can use for this. Another good option is GitHub. This way, your supervisor can easily track your progress and you have a powerful versioning and backup environment. * Always write a comprehensive guide for installation, configuration, and usage of your work. Include the exact versions of third party services, libraries, or frameworks that you used. * Ideally, you create a Docker image for your implementation. This way, it is easy to test and deploy. This prevents your work becoming impossible to be compiled/run in the future due to changed dependencies. * Much appreciated is a screen recording of the developed work, showing all functionality. 
+\end{comment}
+
+\section{Technology Stack}
+\label{sec:impl-tech-stack}
+The implementation of the prototype system leverages a diverse set of programming languages, frameworks, and libraries to achieve modularity, security, and ease of integration across its various components.
+
+\subsubsection{JavaScript / TypeScript}
+JavaScript and TypeScript serve as the primary languages for both frontend and backend development. The widespread adoption of JavaScript facilitates rapid iteration and ensures access to a mature ecosystem of tooling and libraries, which streamlines integration across the system. TypeScript is selectively used in the frontend to introduce static type safety, reducing the likelihood of type-related errors and improving maintainability.
+
+\subsubsection{React}
+The frontend is constructed using React, which provides a component-based architecture suitable for building a single-page application (SPA). React's declarative state management and reusable components enable the efficient development of role-specific interfaces for sellers, buyers, and transporters, and simplify interactions with smart contracts.
+
+\subsubsection{Express and Axios/Fetch}
+Communication between the frontend, backend, and external services is managed using Express and HTTP client libraries such as Axios and the Fetch API. 
+Express provides a lightweight framework for a small backend API that exposes endpoints for verifiable credential verification and retrieval.
+Axios and Fetch are used to handle HTTP requests from the frontend to both the backend and IPFS gateways.
+Cross-Origin Resource Sharing (CORS) is configured to support local development.
+
+\subsubsection{Solidity and OpenZeppelin}
+The core smart contracts are implemented in Solidity (version 0.8.x), which defines the logic for the \texttt{ProductEscrow\_Initializer} and \texttt{ProductFactory} contracts. 
+OpenZeppelin libraries are used to enhance contract security and efficiency. The Clones library enables the use of EIP-1167 minimal proxies for lightweight per-product escrows, while \texttt{Ownable} and \texttt{ReentrancyGuard} provide access control and reentrancy protection, respectively.
+
+\subsubsection{Truffle, Web3.js, and Ganache}
+For development and testing, the project uses Truffle for compiling, migrating, and testing smart contracts, and Web3.js for driving contract interactions within tests.
+Ganache is used to simulate a deterministic local Ethereum network, supporting both development and continuous integration (CI) workflows. Additionally, the system can be configured to deploy and demonstrate its functionality on the public Sepolia testnet.
+
+\subsubsection{MetaMask}
+MetaMask functions as the primary wallet for transaction signing, supporting user-initiated interactions in both development and testnet environments. MetaMask is compatible with EIP-1559 and can be configured for custom RPC endpoints, supporting both Ganache and Sepolia.
+
+\subsubsection{IPFS and Pinata}
+Off-chain data storage is managed using IPFS (InterPlanetary File System), with verifiable credentials pinned via Pinata to ensure data persistence and availability. Smart contracts store only the latest content identifier (CID) for each product, enabling auditors to retrieve credential payloads by content hash without incurring on-chain storage costs.
+
+\subsubsection{ZKP Backend (Rust, Bulletproofs)}
+Zero-knowledge proof generation and verification are handled by a dedicated Rust backend service that uses the Bulletproofs library. This backend produces and verifies range proofs over Pedersen commitments, supporting deterministic blinding and binding tags to ensure that proofs are securely tied to specific credentials and domains.
+
+This technology stack was selected to balance security, scalability, and usability while facilitating integration across the system’s smart contracts, backend services, and user interfaces.
+
+
+\section{On-Chain Traceability Layer}
+\label{sec:onchain-traceability}
+
+The on-chain traceability layer is realized as a set of Ethereum smart contracts. These contracts are designed to capture essential lifecycle events and anchors for each product, while minimizing the exposure of sensitive information.
+The architecture employs a factory contract that deploys a dedicated escrow instance for every product. Each escrow contract maintains only the minimal necessary workflow state and cryptographic anchors, such as price commitments and pointers to verifiable credentials. This approach ensures both privacy and auditability.
+
+\subsection{Roles and Lifecycle}
+\label{sec:impl-roles-lifecycle}
+
+The implementation of the on-chain traceability layer builds directly upon the conceptual actors and lifecycle phases introduced in Sections~\ref{sec:concept-actors} and~\ref{sec:concept-contracts}.
+Rather than redefining these roles, this section focuses on their concrete mapping to contract state and the functions that drive lifecycle transitions.
+
+On-chain, four addresses interact directly with the escrow contracts: the seller, buyer, transporter, and an auditor (or any external observer in that role). The conceptual responsibilities of these actors—such as signing verifiable credentials or anchoring data—are established in Chapter 3. Here, the focus is on the lifecycle transitions each actor can trigger and the privacy-relevant anchors that are updated as a result.
+
+Each product escrow contract implements a finite-state machine that mirrors the phases described in Section~\ref{sec:concept-contracts}, with the states: \emph{Listed}, \emph{Purchased}, \emph{OrderConfirmed}, \emph{Bound},
+\emph{Delivered}, and \emph{Expired} (which handles timeout cases). These phases are engineered to keep on-chain state compact while preserving all necessary information for audit and verification.
+Table~\ref{tab:impl-lifecycle}
+provides a detailed summary of the lifecycle phases in a product escrow contract. For each phase, the table specifies the actor responsible for triggering the transition, the contract functions that are called, and the anchors or state variables that are updated. This mapping facilitates a clear understanding of how workflow events translate to contract actions and on-chain state changes.
+
+
+\begin{table}[H]
+\centering
+\small
+\caption{Lifecycle phases of a product escrow and privacy-relevant anchors.}
+\label{tab:impl-lifecycle}
+\begin{tabularx}{\textwidth}{
+  >{\raggedright\arraybackslash}p{2.4cm}  % Phase
+  >{\raggedright\arraybackslash}p{5.6cm}  % Triggering actor / action
+  >{\raggedright\arraybackslash}X         % Anchors and state
+}
+\toprule
+\textbf{Phase} & \textbf{Triggering actor / action} & \textbf{Anchors and state updated} \\
+\midrule
+
+Listed &
+\textbf{Seller:}\newline
+\texttt{createProduct(...)}\newline
+\texttt{setPublicPriceWithCommitment} &
+Store seller address, product metadata, and price commitment $C$;
+initialise the VC head with the listing credential (S0). \\[0.4em]
+
+Purchased &
+\textbf{Buyer:}\newline
+\texttt{purchasePublic()} &
+Record buyer address and purchase timestamp; lock ETH in escrow.
+No value fields are emitted in events; $C$ and the current VC head
+remain unchanged. \\[0.4em]
+
+Order confirmed &
+\textbf{Seller:}\newline
+\texttt{confirmOrderWithCommitment(...)} &
+Advance phase to \emph{Order confirmed}; update the VC head to the
+order-confirmation credential (S1) and emit an event documenting the
+new head. If a purchase transaction-hash commitment is provided, emit
+an event that exposes it as an on-chain anchor. The price commitment
+$C$ is unchanged. \\[0.4em]
+
+Bound &
+\textbf{Seller:}\newline
+\texttt{setTransporter(...)} &
+Record selected transporter and (if configured) delivery fee; move to
+\emph{Bound}. No new cryptographic anchors are introduced; existing
+commitments and the VC head continue to apply. \\[0.4em]
+
+Delivered &
+\textbf{Buyer:}\newline
+delivery-confirmation functions &
+Finalise delivery, settle funds, and update the VC head to the final
+delivery credential (S2). Emit an event that binds the committed
+delivery transaction hash to the product and final VC head. \\[0.4em]
+
+Expired &
+\textbf{Any party:}\newline
+timeout functions &
+Enforce timeouts and refund or penalise participants according to the
+rules. Set phase to \emph{Expired} and emit events documenting the
+reason for expiry. \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+This design ensures that each stage of the product lifecycle is transparently and securely recorded on-chain, with only the minimal information required for external verification or audit. The use of dedicated events for each transition further supports efficient off-chain indexing and monitoring by auditors and indexers.
+
+
+
+
+
+
+\subsection{Privacy-Relevant Anchors and Events}
+\label{subsec:anchors-events}
+
+The escrow contract is designed to store only a minimal set of values essential for traceability and privacy preservation. Rather than recording product prices or transaction identifiers in plaintext, the contract uses cryptographic commitments and verifiable credential (VC) pointers as anchors. This approach allows auditors to reconstruct product histories for compliance and verification, while ensuring that commercially sensitive information remains hidden from the public blockchain.
+
+The primary privacy anchor maintained on-chain is the Pedersen commitment to the product price. During the listing phase, the seller invokes the \texttt{setPublicPriceWith\-Commitment} function to publish a commitment of the form  \(C = \mathsf{Com}(v;b)\) to the hidden price \(v\). This commitment is stored in the contract’s \texttt{publicPriceCommitment} state variable (as a \texttt{bytes32} value), and a dedicated event is emitted to expose it to off-chain indexers and auditors. The underlying value \(v\) and the blinding factor \(b\) are never made public; they are used exclusively off-chain for generating and verifying Bulletproofs range proofs, and for the final price reveal in flows that require it.
+
+A second critical anchor is the pointer to the verifiable credential chain. For each product, the contract maintains a single string-valued variable, \texttt{vcCid}, which holds the content identifier (CID) of the current head VC stored on IPFS. When the seller or buyer advances the credential—such as moving from listing to order confirmation, or from order confirmation to final delivery—they upload the updated VC to IPFS and update \texttt{vcCid} through a dedicated function. Each update triggers a \texttt{VcUpdated} event, allowing auditors and indexers to monitor changes in the VC chain over time without needing direct interaction with system participants.
+
+Additional privacy anchors are introduced during key lifecycle phases to ensure verifiable linkage between credentials and transactions. In the order confirmation phase, when the seller confirms an order using \texttt{confirmOrderWithCommitment}, they may provide a commitment to the purchase transaction hash. If present, this triggers a \texttt{PurchaseConfirmedWithCommitment} event, which includes the product identifier, the committed purchase transaction hash, the buyer address, and the current VC CID. This event enables auditors to verify, in conjunction with the VC and its associated zero-knowledge proof, that a specific committed transaction hash corresponds to the recorded purchase, all without revealing the actual hash or any on-chain transaction amount.
+
+A similar mechanism operates during the delivery phase. Upon successful delivery and the construction of the final VC, the buyer calls \texttt{updateVcCidAfterDelivery} with the new VC CID and a commitment to the delivery transaction hash. The contract updates \texttt{vcCid} and emits a \texttt{DeliveryConfirmedWithCommitment} event containing the product identifier, committed transaction hash, buyer address, and new VC CID. This event allows auditors to verify, using the VC and its zero-knowledge proof, that a committed transaction hash corresponds to the delivery, again without disclosing sensitive transaction details.
+
+
+
+The event surface is deliberately restricted to minimize value-related disclosures. Events such as purchases, transfers, and penalties no longer include ETH amounts or explicit prices. Instead, they expose only identifiers, roles, timestamps, and the cryptographic anchors described above. This design prevents third parties from inferring prices or payment flows by examining logs, while still providing sufficient structure for auditors and external indexers to reconstruct the full lifecycle of a product escrow.
+
+Not all privacy anchors are stored on-chain. After a successful purchase, the frontend commits to the purchase transaction hash off-chain, using the zero-knowledge backend, and embeds the resulting commitment and proof in the next-stage VC as \texttt{purchaseTxHashCommitment}. Alongside the on-chain price commitment (\texttt{publicPriceCommitment}), the VC head (\texttt{vcCid}), and the delivery \texttt{txHashCommitment} (exposed via \texttt{Delivery\-ConfirmedWithCommitment}), this VC-level field completes the set of anchors underpinning the system’s privacy architecture.
+
+Subsequent sections detail how auditors can combine these on-chain and off-chain anchors to verify both price and transaction consistency in zero knowledge.
+
+
+
+\subsection{Invariants for Privacy and Traceability}
+\label{subsec:invariants}
+
+The escrow contract enforces a set of critical invariants that underpin both privacy and traceability within the system. These invariants govern the evolution of cryptographic anchors and workflow state, and are checked on every function call that changes the contract’s state.
+
+The first invariant is \emph{commitment immutability}. Once the price commitment is set for a product using the \texttt{setPublicPriceWithCommitment} function, it is recorded in the state variable \texttt{publicPriceCommitment} and cannot be changed thereafter. This is enforced by setting a boolean flag, \texttt{commitmentFrozen}, to \texttt{true} after the first successful commitment. Any subsequent attempt to modify the commitment is rejected by the contract. This mechanism ensures that all zero-knowledge proofs and verifiable credentials associated with a given product reference a single, immutable price anchor, which is essential for audit integrity and consistency.
+
+The second invariant is the monotonicity of the verifiable credential pointer. The state variable \texttt{vcCid} always references the most recent credential in the product’s chain. The contract offers only update operations that overwrite the current \texttt{vcCid} with a new content identifier and emit an associated \texttt{VcUpdated} or \texttt{DeliveryConfirmed\-WithCommitment} event. There is no functionality to revert to an earlier credential, so the pointer can only advance forward along the credential chain. This property enables auditors to reconstruct the chronological evolution of a product—from initial listing through to final delivery—without ambiguity.
+
+A third invariant is \emph{transaction commitment integrity}. The delivery transaction anchor, exposed on-chain, is set via the commitment embedded in the \texttt{DeliveryConfirmed\-WithCommitment} event. This event is triggered exclusively by the \texttt{updateVcCidAfterDelivery}  function, and only when the buyer provides a non-zero \texttt{txHashCommitment}. As a result, any committed transaction hash found in the event log is guaranteed to have been authorized by the buyer during the \emph{Delivered} phase and to be consistent with the final verifiable credential head.
+
+The contract’s workflow is also governed by a \emph{phase discipline} invariant. All state-mutating functions verify the current phase and enforce transitions according to a fixed state graph:  \texttt{Listed} \(\rightarrow\) \texttt{Purchased} \(\rightarrow\) \texttt{OrderConfirmed} \(\rightarrow\) \texttt{Bound} \(\rightarrow\) \texttt{Delivered}, with optional transitions to \texttt{Expired} in the case of timeouts. Any attempt to invoke a function out of sequence results in a transaction revert and a custom error. This ensures, for example, that delivery confirmation cannot occur before purchase, and transporter selection cannot take place before order confirmation.
+
+To guarantee progress and avoid indefinite fund lockup, the contract enforces three time-based invariants. The constants \texttt{SELLER\_WINDOW}, \texttt{BID\_WINDOW}, and \texttt{DELIVERY\_WINDOW} define maximum allowable durations for the \texttt{Purchased}, \texttt{OrderConfirmed}, and \texttt{Bound} phases, respectively. Once any deadline passes, any participant may call a timeout function to move the escrow to the \texttt{Expired} state, automatically triggering refunds or penalties as specified by business logic. 
+This ensures that every on-chain lifecycle ultimately terminates in either \texttt{Delivered} or \texttt{Expired}, providing closure for all trades.
+
+Finally, robust \emph{access control} is enforced to ensure that only authorized roles can modify privacy-critical state. 
+Seller-only functions include those for price anchoring and order confirmation. Buyer-only functions cover public purchase, delivery confirmation, and updating the credential pointer after delivery, and transporter-specific functions are limited to bid registration and withdrawal.
+In addition, a global pause mechanism at the factory level provides emergency control over contract activity. These access controls guarantee that critical anchors—such as \texttt{publicPriceCommitment}, \texttt{vcCid}, and \texttt{txHashCommitment} can only be updated by the parties with legitimate authority, further supporting both traceability and privacy.
+
+
+\subsection{Delivery Finalisation and Transaction Verification Hook}
+\label{subsec:delivery-hook}
+
+The finalisation of delivery is a critical juncture in the system’s workflow. It is the moment when all privacy and traceability anchors—specifically, the price commitment, the verifiable credential (VC) head, and transaction commitments—are brought into alignment. To support this process, the contract provides a dedicated function:
+\begin{center}
+\texttt{updateVcCidAfterDelivery(string cid, bytes32 txHashCommitment)}.
+\end{center}
+
+This function is strictly callable by the buyer and only after the escrow has entered the \texttt{Delivered} phase. By this stage, the underlying delivery transaction has already been executed, and the participants have collaboratively constructed the final verifiable credential off-chain. That credential includes both purchase and delivery transaction-hash commitments, along with their associated zero-knowledge proofs. The \texttt{cid} parameter supplied to the function is the IPFS content identifier of the final VC, while \texttt{txHashCommitment} is the cryptographic commitment to the delivery transaction hash, extracted from the same VC.
+
+When \texttt{updateVcCidAfterDelivery} succeeds, the contract overwrites \texttt{vcCid} with the provided \texttt{cid}, thereby aligning the on-chain pointer with the final VC head. If \texttt{txHashCommitment} is non-zero, the function also emits a \texttt{DeliveryConfirmedWithCommitment} event containing the product identifier, the buyer address, the new VC CID, and the committed transaction hash. Importantly, this event does not disclose the actual transaction hash or any payment amount; it exposes only the cryptographic commitment, which serves as a verifiable anchor for auditors.
+
+In the broader protocol, the pair of functions and events—\texttt{confirmOrderWithCommitment} with \texttt{PurchaseConfirmedWithCommitment} for the purchase phase, and \texttt{updateVcCidAfterDelivery} with \texttt{DeliveryConfirmedWithCommitment} for the delivery phase—constitute the on-chain hooks for transaction verification. An auditor monitoring the event logs can observe these committed transaction hashes, retrieve the corresponding VC using the latest \texttt{vcCid}, and verify that the credential embeds the same commitments and valid zero-knowledge proofs. This process enables the auditor to confirm the existence and correct linkage of both purchase and delivery transactions to the product, without learning the underlying transaction hashes or the specific values transferred.
+
+
+\section{Off-Chain Privacy Layer (VCs, ZKPs, Hidden IDs)}
+\label{sec:offchain-privacy}
+
+The off-chain privacy layer is a core component of the system’s architecture, responsible for safeguarding sensitive business information while maintaining comprehensive, end-to-end traceability. This layer integrates verifiable credentials (VCs), zero-knowledge proofs (ZKPs), and cryptographic commitments to encode confidential data-including prices, transaction hashes, and detailed supply chain attributes outside the blockchain. These data points are distributed via the InterPlanetary File System (IPFS), and each product’s escrow contract references the current state exclusively through a single content identifier. This approach supports verifiability and privacy simultaneously.
+
+\subsection{Verifiable Credentials and Chaining}
+\label{subsec:vc-chaining}
+
+For each product, the system generates a concise sequence of verifiable credentials that mirror the on-chain lifecycle. The process begins with Stage~S0, which corresponds to the \emph{listing credential} issued by the seller upon product creation. This credential includes fundamental product metadata, a Pedersen commitment to the price, and an initial zero-knowledge range proof.
+
+Upon successful purchase, Stage S1 represents the \emph{order-confirmation credential}. It records the buyer’s purchase and embeds a commitment to the purchase transaction hash. The final stage, S2, is the \emph{delivery credential}, which the system issues after successful completion of delivery. This credential extends the prior information and introduces a commitment to the delivery transaction hash, thus representing the ultimate state for auditor verification.
+
+Credentials are structured along two principal dimensions. The first dimension, the \emph{intra-product} chain, tracks the evolution of a single product over time. Each credential after S0 contains a \texttt{previousCredential} field, which refers to the content identifier of its predecessor. By following this chain from the current head credential back to the initial S0 listing, the complete lifecycle of a product can be reconstructed, irrespective of its later use in the broader supply chain. The second dimension is the \emph{inter-product} provenance graph. In this structure, each credential may include a \texttt{componentCredentials[]} array, which lists the content identifiers of upstream component credentials (such as the credentials for anode and cathode batches in a battery pack). Recursively traversing these references results in a tree or directed acyclic graph (DAG) that models the multi-tier provenance of the final product.
+
+
+In addition to lifecycle and provenance data, VCs encapsulate the cryptographic artifacts required for privacy and verification. The \texttt{credentialSubject.price.zkp} object contains the Pedersen commitment \(C\) to the price, the associated Bulletproofs range proof, and the binding tag that links the proof to its on-chain context. For transaction-hash privacy, the credential structure incorporates two dedicated objects: \texttt{purchaseTxHashCommitment} for the purchase phase and \texttt{txHashCommitment} for the delivery phase. Each object holds a commitment to the respective transaction hash, the relevant zero-knowledge proof, and the binding tag that ensures both commitments are tied to the correct product and buyer context.
+
+For illustration, Listing~\ref{lst:vc-structure} provides an example of the VC structure, emphasizing fields relevant to privacy and credential chaining.
+
+
+\begin{lstlisting}[language=json,caption={Trimmed VC structure with ZKP and chaining fields.},label={lst:vc-structure}]
+{
+  "@context": ["https://www.w3.org/2018/credentials/v1"],
+  "type": ["VerifiableCredential"],
+  "id": "urn:uuid:...",
+  "issuer": { "id": "did:ethr:...", "name": "Seller" },
+  "holder": { "id": "did:ethr:...", "name": "Buyer" },
+
+  "credentialSubject": {
+    "productName": "Battery Pack",
+    "batch": "BP-001",
+    "price": {
+      "zkp": {
+        "commitment": "0xC...",
+        "proof": "0x...",
+        "bindingTag": "0xT..."
+      }
+    },
+    "purchaseTxHashCommitment": {
+      "commitment": "0xC_p...",
+      "proof": "0xP_p...",
+      "bindingTag": "0xT_tx..."
+    },
+    "txHashCommitment": {
+      "commitment": "0xC_d...",
+      "proof": "0xP_d...",
+      "bindingTag": "0xT_tx..."
+    },
+    "previousCredential": "bafy...S1",
+    "componentCredentials": ["bafy...anode", "bafy...cathode"]
+  },
+
+  "proof": [
+    {
+      "type": "EIP712Signature2024",
+      "verificationMethod": "did:ethr:...#controller",
+      "proofPurpose": "assertionMethod",
+      "proofValue": "0x..."
+    }
+  ]
+}
+\end{lstlisting}
+
+All verifiable credential data remains off-chain throughout the product’s lifecycle. The escrow contract maintains only a string-valued pointer, \texttt{vcCid}, which always references the current head of the intra-product credential chain. As new credentials are issued—such as upon order confirmation or delivery finalisation—participants upload the updated credential to IPFS and update \texttt{vcCid} on-chain. From the perspective of the blockchain, the system thereby exposes only compact anchors: the price commitment, the current VC head, and, if present, a committed delivery transaction hash. Full credential content, cryptographic proofs, and provenance relationships are exclusively retrieved and verified off-chain by auditors.
+
+
+\subsection{Price Commitments and Binding}
+\label{subsec:impl-price-commitments}
+
+The implementation of price privacy follows the commitment and binding techniques introduced in Chapter~\ref{chapter:concept_and_design}, with a focus here on the practical mechanisms used in the prototype. For each product, the seller commits to the public price \(v\) using a Pedersen commitment
+\[
+C = \mathsf{Com}(v; b) = vG + bH.
+\]
+Only the resulting commitment \(C\) is published on-chain.
+The commitment is generated off-chain by the zero-knowledge proof (ZKP) backend and then stored on-chain via the \texttt{setPublicPriceWithCommitment} function. Once set, the \texttt{publicPriceCommitment} is frozen for the product’s entire lifecycle, ensuring immutability.
+
+To avoid any key exchange between seller and buyer, the blinding factor \(b\) is derived deterministically on the frontend. It is computed as a hash over publicly available context, specifically the escrow contract address, the seller’s address, and a fixed protocol label. 
+This method is implemented in a helper module, \texttt{commitmentUtils.js}, which uses Solidity-compatible data packing and hashing. This ensures that the same blinding factor can be regenerated by the frontend and the Rust-based ZKP backend whenever required. Both seller and buyer can independently recompute \(C\) from the same price \(v\), which simplifies proof generation and verification.
+
+To prevent the reuse or swapping of proofs between products, each price proof is cryptographically bound to its specific context using a binding tag. During proof generation, the frontend constructs this tag by hashing together key contextual parameters
+\[
+t_{\mathrm{price}} = \mathsf{keccak256}(\textsf{protocolVersion} \,\|\, \textit{chainId} \,\|\, \textit{escrowAddr} \,\|\, \textit{productId} \,\|\, \textit{stage} \,\|\, \textit{schemaVersion} \,\|\, \textit{previousVcCid}),
+\]
+The binding tag \(t_{\mathrm{price}}\) is passed to the ZKP backend along with the price \(v\) and blinding factor \(b\). The backend incorporates this tag into the Bulletproofs transcript, ensuring that the resulting proof is valid only for the specified context.
+
+Both the commitment \(C\) and the binding tag \(t_{\mathrm{price}}\) are embedded in the verifiable credential, specifically under the \texttt{credentialSubject.price.zkp} field, alongside the proof and any auxiliary parameters. For verification, an auditor recomputes the binding tag from the on-chain and credential context, checks that it matches the value stored in the credential, and verifies the proof using the backend. This guarantees that price commitments and their proofs not only hide the actual value but are also cryptographically linked to a specific product and verifiable credential instance.
+
+
+\subsection{Transaction Hash Commitments}
+\label{subsec:impl-txhash-commitments}
+
+While the price commitment mechanism ensures that the committed price remains hidden, transaction hashes recorded publicly (for example, via Etherscan) would still reveal effective prices through the \texttt{msg.value} field if referenced directly.
+To address this privacy concern, transaction-hash commitments are introduced at the verifiable credential (VC) layer. This strategy allows auditors to verify the existence and linkage of specific purchase and delivery transactions to a product without exposing the raw transaction hashes or payment amounts.
+
+After a successful \texttt{purchasePublic()} call, the frontend waits for the transaction to be mined and retrieves the purchase transaction hash from the transaction receipt. Instead of embedding this hash directly into the VC, the frontend invokes the ZKP backend’s \texttt{POST /zkp/commit-tx-hash} endpoint, supplying the transaction hash and an appropriate binding tag (as detailed in Section~\ref{subsec:impl-linkable-commitments}). The backend responds with a cryptographic commitment, a zero-knowledge proof, and relevant protocol metadata. The frontend temporarily retains this response in browser memory and incorporates it into the order-confirmation credential (Stage S1) under the field \texttt{credentialSubject.purchaseTxHashCommitment}. This phase does not require any modification to the smart contracts themselves; the commitment and proof are confined to the VC, and the on-chain state continues to reference only the \texttt{publicPriceCommitment} and \texttt{vcCid} as anchors.
+
+A similar process is followed during the delivery phase. Once the delivery transaction is confirmed on-chain, the frontend again calls \texttt{/zkp/commit-tx-hash} with the delivery transaction hash and the same binding tag. The resulting commitment and proof are then added to the final delivery credential (Stage S2) under \texttt{credential\-Subject.txHashCommitment}. As a result, the VC contains two transaction-hash commitment objects—one for the purchase and one for the delivery—each with its own commitment and proof, but both sharing a common binding tag that ensures they are tied to the same product and buyer context.
+
+
+Crucially, we removed the raw \texttt{transactionId} field from the VC schema.
+All transaction references are now expressed exclusively through these commitment structures. When combined with the on-chain \texttt{DeliveryConfirmedWithCommitment} event, which discloses only the committed delivery hash, this design enables auditors to verify the existence, association, and correct sequencing of purchase and delivery transactions. This verification is accomplished without exposing the underlying hashes or any corresponding payment amounts.
+
+
+\subsection{Linkable Commitments via Binding Tags}
+\label{subsec:impl-linkable-commitments}
+
+Price and transaction-hash commitments are only useful for auditing if they can be reliably related to a concrete product and buyer. To achieve this without revealing identifiers, we use binding tags that fix the context of each proof. For transaction-hash commitments, the binding tag is derived as
+\[
+t_{\mathrm{tx}} = \mathsf{keccak256}(
+  \textsf{"tx-hash-bind-v1"},
+  \textit{chainId},
+  \textit{escrowAddr},
+  \textit{productId},
+  \textit{buyerAddress}
+),
+\]
+where \texttt{"tx-hash-bind-v1"} serves as a fixed protocol label, and the remaining fields are drawn from the current on-chain context. This function is implemented in the frontend using Solidity-compatible hashing over the concatenated values, ensuring consistency with backend and contract-side computations.
+
+
+The same binding tag \(t_{\mathrm{tx}}\) is used for both transaction-hash commitments associated with a given product. When the purchase transaction is mined, the frontend computes \(t_{\mathrm{tx}}\) and calls the ZKP backend to obtain a commitment and proof for the purchase transaction hash. The resulting object is stored in the VC as \texttt{credential\-Subject.purchaseTxHashCommitment}, with \texttt{bindingTag} set to \(t_{\mathrm{tx}}\). After delivery, the frontend repeats the procedure for the delivery transaction hash, again using the same tag \(t_{\mathrm{tx}}\), and stores the result in \texttt{credentialSubject.txHashCommitment}. As a result, both commitments share a common binding tag and are thus cryptographically linked to the same product and buyer, even though the raw transaction hashes remain hidden.
+
+This design achieves two important objectives. First, it prevents replay and substitution attacks on transaction-hash proofs. Any attempt to reuse a proof in a different context would fail the binding tag check, ensuring that each proof is only valid for its intended product and buyer. Second, it enables auditors to verify that both the purchase and delivery transaction commitments pertain to the same logical session. By comparing the bindingTag fields in \texttt{purchaseTxHashCommitment.bindingTag} and \texttt{txHashCommitment.bindingTag} inside the VC, the auditor can confirm that both match the binding tag derived from the on-chain context. If this check passes and both zero-knowledge proofs validate, the auditor is assured that two valid transactions—purchase and delivery—are linked to the same escrow contract, product identifier, and buyer address, all without revealing the underlying transaction hashes or transferred amounts.
+
+
+\subsection{ZKP Backend for Transaction-Hash Commitments}
+\label{subsec:impl-zkp-backend-tx}
+
+We extended the Rust-based ZKP backend with dedicated support for transaction-hash commitments. The backend exposes a REST endpoint \texttt{POST /zkp/commit-tx-hash}, which the frontend calls after a purchase or delivery transaction has been confirmed. The request payload contains the transaction hash and the binding tag (in hexadecimal). The service computes a commitment to the transaction hash, generates a corresponding zero-knowledge proof, and returns a structured response with the commitment, the proof bytes, and protocol metadata (including protocol identifier, version, and encoding). The frontend embeds this object directly into the VC under \texttt{purchaseTxHashCommitment} or \texttt{txHashCommitment}, without interpreting the proof itself.
+
+Verification of transaction-hash commitments is handled by an enhanced \\ \texttt{POST /zkp/verify} endpoint. When auditing or verifying a credential, the frontend or an auditor submits the commitment, the proof, and the binding tag derived from the current context. 
+\newline 
+The backend invokes an internal verification function, \texttt{verify\_txid\_commitment\_with\-\_binding}, which reconstructs the proof transcript using the supplied binding tag and checks the validity of the proof against the commitment. If the binding tag provided during verification does not match the one used during proof creation, the verification fails. This mechanism enforces the contextual binding described in Section~\ref{subsec:impl-linkable-commitments}, ensuring that each proof is cryptographically tied to its specific product and buyer context.
+
+\section{End-to-End Privacy-Preserving Workflows}
+\label{sec:end-to-end-workflows}
+
+Having described the system’s core building blocks—on-chain anchors, verifiable credentials, zero-knowledge proofs, and transaction-hash commitments—this section details how these components interact within the complete workflows for sellers, buyers, and auditors.
+The focus here is on cryptographic and contract-level interactions, with user interface details omitted for clarity. Each of the following subsections is accompanied by a sequence diagram (see Figures~\ref{fig:impl-seller-listing}--\ref{fig:impl-auditor-flow}) that illustrates the message exchanges between the frontend, smart contracts, IPFS, and the ZKP backend.
+
+
+\subsection{Seller Listing Flow}
+\label{subsec:workflow-seller}
+
+The seller listing flow establishes the initial price commitment and sets the head of the verifiable credential (VC) chain for a new product. In this workflow, the seller selects a public price for the product using the frontend, with no price value being transmitted to the blockchain at this stage. The frontend computes a deterministic blinding factor based on the escrow contract address, the seller’s address, and a protocol label. Using these values, it calls the ZKP backend to generate a Pedersen commitment to the price and an associated range proof, both of which are bound to a price binding tag.
+
+Next, the seller deploys a new escrow instance using the factory contract and invokes the \texttt{setPublicPriceWithCommitment} function. This operation stores the commitment in the contract’s state, marks it as immutable, and emits an event to record the update. The frontend then constructs the listing credential (Stage S0) as a verifiable credential containing product metadata, the price commitment, the price proof, and the binding tag under the \texttt{credentialSubject.price.zkp} field. The seller signs this credential using EIP-712, and the frontend uploads it to IPFS to obtain a content identifier (CID). Finally, the seller, or the frontend acting on their behalf, updates the on-chain pointer by calling the VC update function with the S0 CID, ensuring that \texttt{vcCid} points to the listing credential. At the end of this flow, the blockchain exposes only two privacy-relevant anchors for the product: the price commitment \(C\) and the VC head \texttt{vcCid}. The plaintext price and all proof material are retained off-chain within the S0 VC. The sequence diagram in Figure~\ref{fig:impl-seller-listing} illustrates this process.
+
+
+\begin{figure}[ht]
+  \centering
+  \includegraphics[width=\linewidth]{figures/seller-listing-flow.pdf}% rename to your actual filename
+  \caption{Seller listing flow with price commitment and Stage~S0 verifiable credential.}
+  \label{fig:impl-seller-listing}
+\end{figure}
+
+\FloatBarrier
+
+
+
+
+\subsection{Buyer Purchase and Delivery Flow}
+\label{subsec:workflow-buyer}
+The buyer’s flow extends the listing state into the order confirmation and delivery states, preserving both price and transaction privacy throughout. 
+The process begins when the buyer calls \texttt{purchasePublic()} on the escrow contract, escrowing the required ETH and moving the phase from \texttt{Listed} to \texttt{Purchased}. 
+No price or value is revealed in any emitted event. Once the transaction is mined, the frontend records the purchase transaction hash and computes the transaction binding tag \(t_{\mathrm{tx}}\) from the current on-chain context parameters. It then calls the ZKP backend’s \texttt{POST /zkp/commit-tx-hash} endpoint to obtain a commitment and proof for this hash, storing the result as \\ \texttt{purchaseTxHashCommitment} for inclusion in subsequent verifiable credential instances (Stage~S1 and Stage~S2 VC).
+
+After the seller confirms the order with \texttt{confirmOrderWithCommitment}, the frontend passes the purchase transaction hash commitment to the contract, which triggers a \texttt{PurchaseConfirmedWithCommitment} event. The seller then updates \texttt{vcCid} to point to the order-confirmation credential (Stage S1), and the product progresses through logistics until the transporter is selected and the escrow reaches the \texttt{Bound} phase.
+
+
+Once delivery is confirmed, the frontend repeats the transaction commitment step for the delivery transaction hash, again using the same binding tag \(t_{\mathrm{tx}}\). The resulting object is stored as \texttt{txHashCommitment}. The participants then construct the final delivery credential (Stage S2) off-chain, embedding the price commitment and proof, both transaction-hash commitments (each with its proof and binding tag), and the appropriate chaining fields (\texttt{previousCredential}, \texttt{componentCredentials[]}). 
+Both the seller and buyer co-sign the final credential, which is uploaded to IPFS. The buyer then calls the delivery finalisation functions on the escrow contract, including the price reveal via \texttt{revealAndConfirmDelivery} and \texttt{updateVcCidAfterDelivery} with the final CID and committed delivery hash.
+
+
+
+The contract validates the price reveal against the stored commitment or, in a future ZKP-only variant, validates a proof instead. It then settles the funds, updates the VC head, and emits a \texttt{DeliveryConfirmedWithCommitment} event with the delivery transaction-hash commitment. 
+
+At this point, the on-chain state and the VC chain are aligned; the escrow has reached the \texttt{Delivered} phase, the price remains hidden, and both purchase and delivery transactions are referenced solely through cryptographic commitments and zero-knowledge proofs. The full sequence is depicted in Figure~\ref{fig:impl-buyer-flow}.
+
+\begin{figure}[ht]
+  \centering
+  \includegraphics[width=\linewidth]{figures/buyer-purchase-delivery-flow.pdf}% rename
+  \caption{Buyer purchase and delivery flow with transaction-hash commitments and final VC update.}
+  \label{fig:impl-buyer-flow}
+\end{figure}
+
+\newpage
+\subsection{Auditor Verification Flow}
+\label{subsec:workflow-auditor}
+
+An external auditor can verify the correctness of a product’s lifecycle without direct interaction with system participants or access to plaintext prices and transaction hashes. 
+
+
+The auditor begins by reading the price commitment and VC head from the escrow contract via \texttt{publicPriceCommitment()} and \texttt{vcCid()}, and retrieves the lifecycle events (\texttt{PhaseChanged}, \texttt{VcUpdated}, \texttt{PurchaseConfirmed\-WithCommitment}, \texttt{DeliveryConfirmed\-WithCommitment}) from the log. Using the VC CID, the auditor retrieves the final credential from IPFS and verifies the included EIP-712 issuer and holder signatures via the backend.
+
+The auditor then extracts the price ZKP object and the transaction-commitment objects: \texttt{credentialSubject.price.zkp}, \texttt{credentialSubject.purchaseTxHashCommitment}, and \texttt{credentialSubject.txHashCommitment}, including their commitments, proofs, and binding tags. The auditor first ensures that the price commitment in the credential matches the on-chain anchor (\(C_{\mathrm{vc}} = \texttt{publicPriceCommitment()}\)), then verifies that the purchase and delivery transaction-hash commitments in the credential match those emitted in the \texttt{PurchaseConfirmedWithCommitment} and \texttt{DeliveryConfirmedWithCommitment} events. The auditor recomputes the price binding tag and transaction binding tag from the on-chain context and verifies that these match the tags stored in the credential. To confirm that the referenced transactions exist, the auditor checks for the relevant events on-chain and verifies that the transactions are linked to the product without exposing the actual hashes.
+
+Finally, the auditor calls the ZKP backend’s verification endpoints with the commitments, proofs, and binding tags. If all checks pass, the auditor is assured that the price lies within the intended range and that the purchase and delivery transactions exist and are properly linked. The on-chain anchors and off-chain credential content are consistent, all without access to any confidential values.
+The sequence diagram in Figure~\ref{fig:impl-auditor-flow} visualizes this verification workflow and the flow of commitments, proofs, and anchors throughout the process.
+
+
+
+\begin{figure}[ht]
+  \centering
+  \includegraphics[width=\linewidth]{figures/auditor-verification-flow.pdf}
+  \caption{Auditor verification flow using on-chain anchors, verifiable credentials, and Bulletproofs proofs.}
+  \label{fig:impl-auditor-flow}
+\end{figure}

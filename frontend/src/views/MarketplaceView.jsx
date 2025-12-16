@@ -139,6 +139,7 @@ const MarketplaceView = ({ myAddress, provider, backendUrl }) => {
                 priceBlinding,
                 publicPriceWei, // ✅ Store public price for accurate purchase values
                 owner: owner.toLowerCase(),
+                seller: owner.toLowerCase(), // ✅ Add seller field (same as owner for consistency)
                 buyer: buyer.toLowerCase(),
                 purchased,
                 transporter,

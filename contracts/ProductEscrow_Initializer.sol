@@ -33,6 +33,7 @@ error IncorrectFee();
 error NotATransporter();
 error OwnerCannotPurchase();
 error NotPurchased();
+error NotDelivered();
 error TooEarlyToDelete();
 error RevealInvalid();
 error DeliveryTimeout();
@@ -196,20 +197,20 @@ contract ProductEscrow_Initializer is ReentrancyGuard {
     }
 
     event OrderConfirmed(address indexed buyer, address indexed seller, uint256 indexed productId, bytes32 priceCommitment, string vcCID, uint256 timestamp);
-    event TransporterCreated(address indexed transporter, uint256 indexed productId, uint fee, uint256 timestamp);
-    event TransporterSecurityDeposit(address indexed transporter, uint256 indexed productId, uint price, uint256 timestamp);
+    event PurchaseConfirmedWithCommitment(uint256 indexed productId, bytes32 indexed purchaseTxHashCommitment, address indexed buyer, string vcCID, uint256 timestamp);
+    event TransporterCreated(address indexed transporter, uint256 indexed productId, uint256 timestamp);
+    event TransporterSecurityDeposit(address indexed transporter, uint256 indexed productId, uint256 timestamp);
     event DeliveryConfirmed(address indexed buyer, address indexed transporter, address indexed seller, uint256 productId, bytes32 priceCommitment, string vcCID, uint256 timestamp);
-    event CancelDelivery(address indexed seller, address indexed transporter, uint256 indexed productId, uint buyerRefund, uint256 timestamp);
-    event ProductDeleted(uint256 indexed productId, string productName, address indexed seller, uint256 timestamp);
+    event DeliveryConfirmedWithCommitment(uint256 indexed productId, bytes32 indexed txHashCommitment, address indexed buyer, string vcCID, uint256 timestamp);
     event VcUpdated(uint256 indexed productId, string cid, address indexed seller, uint256 timestamp);
-    event ValueRevealed(uint256 indexed productId, uint revealedValue, bytes32 commitment, bool valid, uint256 timestamp);
-    event FundsTransferred(address indexed to, uint256 indexed productId, uint amount, uint256 timestamp);
-    event PenaltyApplied(address indexed to, uint256 indexed productId, uint amount, string reason, uint256 timestamp);
+    event ValueRevealed(uint256 indexed productId, bytes32 commitment, bool valid, uint256 timestamp);
+    event FundsTransferred(address indexed to, uint256 indexed productId, uint256 timestamp);
+    event PenaltyApplied(address indexed to, uint256 indexed productId, string reason, uint256 timestamp);
     event DeliveryTimeoutEvent(address indexed caller, uint256 indexed productId, uint time, uint256 timestamp);
     event SellerTimeout(address indexed caller, uint256 indexed productId, uint time, uint256 timestamp);
-    event PhaseChanged(uint256 indexed productId, Phase indexed from, Phase indexed to, address actor, uint256 timestamp, uint256 value, bytes32 ref);
-    event BidWithdrawn(address indexed transporter, uint256 indexed productId, uint amount, uint256 timestamp);
-    event TransporterSelected(uint256 indexed productId, address indexed transporter, uint256 fee, uint256 timestamp);
+    event PhaseChanged(uint256 indexed productId, Phase indexed from, Phase indexed to, address actor, uint256 timestamp, bytes32 ref);
+    event BidWithdrawn(address indexed transporter, uint256 indexed productId, uint256 timestamp);
+    event TransporterSelected(uint256 indexed productId, address indexed transporter, uint256 timestamp);
     
     // Comprehensive product state change event for frontend indexing
     event PublicEnabledSet(uint256 indexed id, bool enabled);
@@ -233,7 +234,7 @@ contract ProductEscrow_Initializer is ReentrancyGuard {
     // --- Public Purchase Events ---
     event PublicPriceSet(uint256 priceWei);
     event PublicPriceCommitmentSet(uint256 indexed id, bytes32 commitment);
-    event PurchasedPublic(address indexed buyer, uint256 amount);
+    event PurchasedPublic(address indexed buyer);
     event PurchasedPrivate(address indexed buyer, bytes32 memoHash, bytes32 railgunTxRef);
 
     // Initialize function instead of constructor
@@ -274,7 +275,7 @@ contract ProductEscrow_Initializer is ReentrancyGuard {
         emit ProductStateChanged(id, owner, buyer, phase, block.timestamp, priceCommitment, purchased, delivered);
         
         // Emit PhaseChanged event for initialization
-        emit PhaseChanged(id, Phase.Listed, Phase.Listed, msg.sender, block.timestamp, 0, bytes32(0));
+        emit PhaseChanged(id, Phase.Listed, Phase.Listed, msg.sender, block.timestamp, bytes32(0));
     }
 
     // Seller sets a public price (add)
@@ -315,7 +316,15 @@ contract ProductEscrow_Initializer is ReentrancyGuard {
     }
     
     // Simple order confirmation function (from working version)
-    function confirmOrder(string memory vcCID) public nonReentrant whenNotStopped {
+    function confirmOrder(string memory vcCID) public onlySeller nonReentrant whenNotStopped {
+        confirmOrderWithCommitment(vcCID, bytes32(0));
+    }
+
+    /// @notice Confirm order with optional purchase TX hash commitment for transaction verification
+    /// @dev This allows the seller to include purchase TX hash commitment when confirming order
+    /// @param vcCID The VC CID to store on-chain
+    /// @param purchaseTxHashCommitment Optional purchase TX hash commitment for transaction verification (bytes32(0) if not provided)
+    function confirmOrderWithCommitment(string memory vcCID, bytes32 purchaseTxHashCommitment) public onlySeller nonReentrant whenNotStopped {
         if (phase != Phase.Purchased) revert WrongPhase();
         if (!purchased) revert NotPurchased();
         
@@ -325,6 +334,11 @@ contract ProductEscrow_Initializer is ReentrancyGuard {
         vcCid = vcCID;
         emit VcUpdated(id, vcCID, owner, block.timestamp);
         emit OrderConfirmed(buyer, owner, id, priceCommitment, vcCID, block.timestamp);
+        
+        // Emit commitment event for purchase transaction verification (Feature 1)
+        if (purchaseTxHashCommitment != bytes32(0)) {
+            emit PurchaseConfirmedWithCommitment(id, purchaseTxHashCommitment, buyer, vcCID, block.timestamp);
+        }
     }
 
     function updateVcCid(string memory cid) public nonReentrant {
@@ -334,6 +348,23 @@ contract ProductEscrow_Initializer is ReentrancyGuard {
     function _updateVcCid(string memory cid) internal onlySeller {
         vcCid = cid;
         emit VcUpdated(id, cid, owner, block.timestamp);
+    }
+
+    /// @notice Allow buyer to update VC CID after delivery confirmation (for TX hash commitment)
+    /// @dev This allows the buyer to update the CID after revealAndConfirmDelivery to include TX hash commitment
+    /// @param cid The new VC CID to store on-chain
+    /// @param txHashCommitment Optional TX hash commitment for transaction verification (bytes32(0) if not provided)
+    function updateVcCidAfterDelivery(string memory cid, bytes32 txHashCommitment) public nonReentrant {
+        if (msg.sender != buyer) revert NotBuyer();
+        if (!delivered) revert NotDelivered(); // Must be delivered first
+        if (phase != Phase.Delivered) revert WrongPhase(); // Extra safety check
+        vcCid = cid;
+        emit VcUpdated(id, cid, buyer, block.timestamp);
+        
+        // Emit commitment event for transaction verification (Feature 1)
+        if (txHashCommitment != bytes32(0)) {
+            emit DeliveryConfirmedWithCommitment(id, txHashCommitment, buyer, cid, block.timestamp);
+        }
     }
 
     function depositPurchasePrivate(bytes32 _commitment, bytes32 _valueCommitment, bytes calldata _valueRangeProof) public payable nonReentrant {
@@ -354,7 +385,7 @@ contract ProductEscrow_Initializer is ReentrancyGuard {
         Phase oldPhase = phase;
         phase = Phase.Purchased;
         
-        emit PhaseChanged(id, oldPhase, phase, msg.sender, block.timestamp, msg.value, bytes32(0));
+        emit PhaseChanged(id, oldPhase, phase, msg.sender, block.timestamp, bytes32(0));
         // ✅ Remove OrderConfirmed - that's for seller confirmation, not purchase
         
         // Emit comprehensive state change event
@@ -379,17 +410,12 @@ contract ProductEscrow_Initializer is ReentrancyGuard {
         Phase oldPhase = phase;
         phase = Phase.Purchased;
 
-        emit PurchasedPublic(buyer, msg.value);
-        emit PhaseChanged(id, oldPhase, phase, msg.sender, block.timestamp, msg.value, bytes32(0));
+        emit PurchasedPublic(buyer);
+        emit PhaseChanged(id, oldPhase, phase, msg.sender, block.timestamp, bytes32(0));
         // ✅ Remove OrderConfirmed - that's for seller confirmation, not purchase
         
         // Emit comprehensive state change event
         emit ProductStateChanged(id, owner, buyer, phase, block.timestamp, priceCommitment, purchased, delivered);
-    }
-    
-    // Frontend compatibility function - alias for depositPurchase
-    function publicPurchase() public payable nonReentrant {
-        depositPurchase();
     }
 
     function _depositPurchase(bytes32 _commitment, bytes32 _valueCommitment, bytes calldata _valueRangeProof) internal {
@@ -401,9 +427,11 @@ contract ProductEscrow_Initializer is ReentrancyGuard {
         buyer = payable(msg.sender);
         purchaseTimestamp = uint64(block.timestamp);
         // productPrice stays the same (don't overwrite the original price)
+        // Set purchaseMode based on whether ETH was sent
+        purchaseMode = (msg.value > 0) ? PurchaseMode.Public : PurchaseMode.Private;
         Phase oldPhase = phase;
         phase = Phase.Purchased;
-        emit PhaseChanged(id, oldPhase, phase, msg.sender, block.timestamp, msg.value, _commitment);
+        emit PhaseChanged(id, oldPhase, phase, msg.sender, block.timestamp, _commitment);
         priceCommitment = _commitment;
         valueCommitment = _valueCommitment;
         valueRangeProof = _valueRangeProof;
@@ -412,26 +440,6 @@ contract ProductEscrow_Initializer is ReentrancyGuard {
         
         // Emit comprehensive state change event
         emit ProductStateChanged(id, owner, buyer, phase, block.timestamp, priceCommitment, purchased, delivered);
-    }
-
-    function withdrawProductPrice() public nonReentrant {
-        _withdrawProductPrice();
-    }
-
-    function _withdrawProductPrice() internal onlyBuyer transporterSet {
-        if (!purchased) revert NotPurchased();
-        owner = buyer;
-        // No phase change here, just ownership transfer
-    }
-
-    function cancelDelivery() public nonReentrant {
-        _cancelDelivery();
-    }
-
-    function _cancelDelivery() internal onlySeller transporterSet {
-        if (!purchased) revert NotPurchased();
-        emit CancelDelivery(owner, transporter, id, 0, block.timestamp);
-        // No phase change here
     }
 
     function setTransporter(address payable _transporter) external payable onlySeller nonReentrant {
@@ -447,8 +455,8 @@ contract ProductEscrow_Initializer is ReentrancyGuard {
         
         Phase oldPhase = phase;
         phase = Phase.Bound;
-        emit PhaseChanged(id, oldPhase, phase, msg.sender, block.timestamp, msg.value, bytes32(0));
-        emit TransporterSelected(id, _transporter, msg.value, block.timestamp);
+        emit PhaseChanged(id, oldPhase, phase, msg.sender, block.timestamp, bytes32(0));
+        emit TransporterSelected(id, _transporter, block.timestamp);
     }
 
     function createTransporter(uint _feeInWei) public nonReentrant {
@@ -467,7 +475,7 @@ contract ProductEscrow_Initializer is ReentrancyGuard {
             transporterCount++;
         }
         
-        emit TransporterCreated(msg.sender, id, _feeInWei, block.timestamp);
+        emit TransporterCreated(msg.sender, id, block.timestamp);
         // No phase change here
     }
 
@@ -478,7 +486,7 @@ contract ProductEscrow_Initializer is ReentrancyGuard {
     function _securityDeposit() internal {
         if (!isTransporter[msg.sender]) revert NotRegistered();
         securityDeposits[msg.sender] += msg.value;
-        emit TransporterSecurityDeposit(msg.sender, id, msg.value, block.timestamp);
+        emit TransporterSecurityDeposit(msg.sender, id, block.timestamp);
         // No phase change here
     }
 
@@ -500,30 +508,6 @@ contract ProductEscrow_Initializer is ReentrancyGuard {
         return (addresses, fees);
     }
 
-    function checkAndDeleteProduct() public nonReentrant {
-        _checkAndDeleteProduct();
-    }
-
-    function _checkAndDeleteProduct() internal {
-        if (!purchased) revert NotPurchased();
-        if (block.timestamp < purchaseTimestamp + 2 days) revert TooEarlyToDelete();
-        emit ProductDeleted(id, name, owner, block.timestamp);
-        deleteProduct();
-        // No phase change here, product is deleted
-    }
-
-    function deleteProduct() internal {
-        delete name;
-        delete priceCommitment;
-        delete owner;
-        delete purchased;
-        delete buyer;
-        delete transporter;
-        delete deliveryFee;
-        delete purchaseTimestamp;
-        delete transporterCount;
-    }
-
     function verifyRevealedValue(uint revealedValue, bytes32 blinding) public nonReentrant returns (bool) {
         return _verifyRevealedValue(revealedValue, blinding);
     }
@@ -531,7 +515,7 @@ contract ProductEscrow_Initializer is ReentrancyGuard {
     function _verifyRevealedValue(uint revealedValue, bytes32 blinding) internal returns (bool) {
         bytes32 computed = keccak256(abi.encodePacked(revealedValue, blinding));
         bool valid = (computed == priceCommitment);
-        emit ValueRevealed(id, revealedValue, priceCommitment, valid, block.timestamp);
+        emit ValueRevealed(id, priceCommitment, valid, block.timestamp);
         return valid;
         // No phase change here
     }
@@ -590,7 +574,7 @@ contract ProductEscrow_Initializer is ReentrancyGuard {
                 emit PaidPrivately(id, memoHash, railgunTx, block.timestamp);
             }
             // value=0, ref=memo (optional convention)
-            emit PhaseChanged(id, oldPhase, phase, msg.sender, block.timestamp, 0, memoHash);
+            emit PhaseChanged(id, oldPhase, phase, msg.sender, block.timestamp, memoHash);
 
         } else if (purchaseMode == PurchaseMode.Public) {
             uint256 sellerAmount = productPrice; // ✅ Use escrowed amount, not posted price
@@ -613,14 +597,13 @@ contract ProductEscrow_Initializer is ReentrancyGuard {
                 if (!sentTransporter) revert TransferFailed(transporter, transporterAmount);
             }
 
-            emit PhaseChanged(id, oldPhase, phase, msg.sender, block.timestamp, sellerAmount, bytes32(0));
+            emit PhaseChanged(id, oldPhase, phase, msg.sender, block.timestamp, bytes32(0));
 
         } else {
             revert InvalidPurchaseMode(); // add a small custom error
         }
 
-        // transfer product ownership & update VC
-        owner = buyer;
+        // update VC anchor with latest CID
         vcCid = vcCID;
         emit VcUpdated(id, vcCID, owner, block.timestamp);
         emit DeliveryConfirmed(buyer, transporter, owner, id, priceCommitment, vcCID, block.timestamp);
@@ -648,18 +631,18 @@ contract ProductEscrow_Initializer is ReentrancyGuard {
                 productPrice = 0; // ✅ Zero before transfer
                 (bool sentBuyer, ) = buyer.call{value: refundToBuyer}("");
                 if (!sentBuyer) revert BuyerRefundFailed();
-                emit FundsTransferred(buyer, id, refundToBuyer, block.timestamp);
+                emit FundsTransferred(buyer, id, block.timestamp);
                 
                 if (penalty > 0) {
                     (bool sentPenalty, ) = buyer.call{value: penalty}("");
                     if (!sentPenalty) revert TransferFailed(buyer, penalty);
-                    emit PenaltyApplied(transporter, id, penalty, "Late delivery", block.timestamp);
+                    emit PenaltyApplied(transporter, id, "Late delivery", block.timestamp);
                 }
             }
         }
         // Private mode: no ETH to refund
         
-        emit PhaseChanged(id, oldPhase, phase, msg.sender, block.timestamp, 0, bytes32(0));
+        emit PhaseChanged(id, oldPhase, phase, msg.sender, block.timestamp, bytes32(0));
         emit DeliveryTimeoutEvent(msg.sender, id, block.timestamp, block.timestamp);
     }
 
@@ -680,12 +663,12 @@ contract ProductEscrow_Initializer is ReentrancyGuard {
                 productPrice = 0; // ✅ Zero before transfer
                 (bool sentBuyer, ) = buyer.call{value: refundAmount}("");
                 if (!sentBuyer) revert BuyerRefundFailed();
-                emit FundsTransferred(buyer, id, refundAmount, block.timestamp);
+                emit FundsTransferred(buyer, id, block.timestamp);
             }
         }
         // Private mode: no ETH to refund
         
-        emit PhaseChanged(id, oldPhase, phase, msg.sender, block.timestamp, 0, bytes32(0));
+        emit PhaseChanged(id, oldPhase, phase, msg.sender, block.timestamp, bytes32(0));
         emit SellerTimeout(msg.sender, id, block.timestamp, block.timestamp);
     }
 
@@ -705,12 +688,12 @@ contract ProductEscrow_Initializer is ReentrancyGuard {
                 productPrice = 0; // ✅ Zero before transfer
                 (bool sentBuyer, ) = buyer.call{value: refundAmount}("");
                 if (!sentBuyer) revert BuyerRefundFailed();
-                emit FundsTransferred(buyer, id, refundAmount, block.timestamp);
+                emit FundsTransferred(buyer, id, block.timestamp);
             }
         }
         // Private mode: no ETH to refund
         
-        emit PhaseChanged(id, oldPhase, phase, msg.sender, block.timestamp, 0, bytes32(0));
+        emit PhaseChanged(id, oldPhase, phase, msg.sender, block.timestamp, bytes32(0));
     }
 
     function withdrawBid() public nonReentrant {
@@ -737,9 +720,9 @@ contract ProductEscrow_Initializer is ReentrancyGuard {
         if (refundAmount > 0) {
             (bool sent, ) = payable(msg.sender).call{value: refundAmount}("");
             if (!sent) revert RefundFailed();
-            emit FundsTransferred(msg.sender, id, refundAmount, block.timestamp);
+            emit FundsTransferred(msg.sender, id, block.timestamp);
         }
-        emit BidWithdrawn(msg.sender, id, refundAmount, block.timestamp);
+        emit BidWithdrawn(msg.sender, id, block.timestamp);
         // No phase change here
     }
     
@@ -777,7 +760,7 @@ contract ProductEscrow_Initializer is ReentrancyGuard {
         phase = Phase.Purchased;
         
         emit PurchasedPrivate(buyer, _memoHash, _railgunTxRef);
-        emit PhaseChanged(id, oldPhase, phase, msg.sender, block.timestamp, 0, _memoHash);
+        emit PhaseChanged(id, oldPhase, phase, msg.sender, block.timestamp, _memoHash);
         // ✅ Remove OrderConfirmed - that's for seller confirmation, not purchase
         
         // Emit comprehensive state change event
@@ -786,20 +769,6 @@ contract ProductEscrow_Initializer is ReentrancyGuard {
         emit PrivatePaymentRecorded(id, _memoHash, _railgunTxRef, msg.sender, block.timestamp);
     }
     
-    function hasPrivatePayment() external view returns (bool) {
-        return productMemoHashes[id] != bytes32(0);
-    }
-    
-    function getPrivatePaymentDetails() external view returns (bytes32 memoHash, bytes32 railgunTxRef, address recorder) {
-        memoHash = productMemoHashes[id];
-        railgunTxRef = productRailgunTxRefs[id];
-        recorder = productPaidBy[id];
-    }
-
-    // Add price function for frontend compatibility (from working version)
-    function price() external view returns (uint256) {
-        return productPrice;
-    }
 
     // Explicitly reject unexpected ETH
     receive() external payable {

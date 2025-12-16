@@ -23,7 +23,7 @@ const inferChainId = () => {
 };
 
 const CHAIN = inferChainId();
-const ZERO_DID = `did:ethr:${CHAIN}:0x${"0".repeat(40)}`;
+// const ZERO_DID = `did:ethr:${CHAIN}:0x${"0".repeat(40)}`; // Not currently used
 
 export function hashVcPayload(vc) {
   // Use canonical JSON for hash
@@ -157,10 +157,11 @@ async function verifyLinkageZKP({ proof, verificationKey, publicInputs }) {
 export function buildStage3VCWithIdentityLinkage({ 
   stage2, 
   buyerProof, 
-  txHash, 
+  txHashCommitment,      // TX hash commitment for privacy
   zkpProof, 
   price, 
   proofType,
+  stage2Cid,             // ✅ Stage 2 VC CID (required for linear chain)
   identityLinkageProof = null  // NEW: Optional identity linkage proof
 }) {
   let priceObj;
@@ -184,11 +185,13 @@ export function buildStage3VCWithIdentityLinkage({
 
   const credentialSubject = {
     ...stage2.credentialSubject,
+    previousCredential: stage2Cid || stage2.credentialSubject.previousCredential, // ✅ Set to stage2Cid for linear chain S0→S1→S2
     price: JSON.stringify(priceObj),
   };
 
-  if (txHash) {
-    credentialSubject.transactionId = txHash;
+  // Store TX hash commitment for privacy
+  if (txHashCommitment) {
+    credentialSubject.txHashCommitment = txHashCommitment;
   }
 
   // Start with any existing proofs, then add buyerProof and identity linkage proof
@@ -281,9 +284,21 @@ export function buildStage2VC({
   buyerAddr,
   sellerAddr,
   issuerProof,
+  purchaseTxHashCommitment, // Phase 1: Optional purchase TX hash commitment
 }) {
   if (!stage0Cid) {
     throw new Error("stage0Cid is missing – cannot link previousCredential");
+  }
+
+  const credentialSubject = {
+    ...stage0.credentialSubject,
+    id: `did:ethr:${CHAIN}:${buyerAddr}`,
+    previousCredential: stage0Cid,
+  };
+
+  // Phase 1: Store purchase TX hash commitment for privacy
+  if (purchaseTxHashCommitment) {
+    credentialSubject.purchaseTxHashCommitment = purchaseTxHashCommitment;
   }
 
   const vc = {
@@ -302,11 +317,7 @@ export function buildStage2VC({
     },
     issuanceDate: stage0.issuanceDate, // preserve original date
 
-    credentialSubject: {
-      ...stage0.credentialSubject,
-      id: `did:ethr:${CHAIN}:${buyerAddr}`,
-      previousCredential: stage0Cid,
-    },
+    credentialSubject,
 
     proof: issuerProof ? [issuerProof] : [], // W3C VC proof array
   };
@@ -318,10 +329,11 @@ export function buildStage2VC({
 export function buildStage3VC({ 
   stage2, 
   buyerProof, 
-  txHash, 
+  txHashCommitment,      // TX hash commitment for privacy
   zkpProof, 
   price, 
   proofType,
+  stage2Cid,             // ✅ Stage 2 VC CID (required for linear chain)
   transporter,           // ✅ Transporter address (optional)
   onChainCommitment,     // ✅ On-chain commitment reference (optional)
   deliveryStatus         // ✅ Delivery status (optional)
@@ -347,12 +359,16 @@ export function buildStage3VC({
 
   const credentialSubject = {
     ...stage2.credentialSubject,
+    previousCredential: stage2Cid || stage2.credentialSubject.previousCredential, // ✅ Set to stage2Cid for linear chain S0→S1→S2
     price: JSON.stringify(priceObj),
   };
 
-  // ✅ Add delivery-related fields if provided
-  if (txHash) {
-    credentialSubject.transactionId = txHash;
+  // Phase 1: Preserve purchase TX hash commitment from stage2 (if present)
+  // It's already in stage2.credentialSubject, so it's preserved via spread operator above
+
+  // Store delivery TX hash commitment for privacy (Step 4)
+  if (txHashCommitment) {
+    credentialSubject.txHashCommitment = txHashCommitment;
   }
   
   // ✅ Add transporter address to subjectDetails

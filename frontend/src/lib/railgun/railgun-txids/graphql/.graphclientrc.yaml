@@ -1,0 +1,24 @@
+# .graphclientrc.yml
+sources:
+  - name: txs-ethereum
+    handler:
+      graphql:
+        endpoint: https://rail-squid.squids.live/squid-railgun-ethereum-v2/graphql
+  - name: txs-sepolia
+    handler:
+      graphql:
+        endpoint: https://rail-squid.squids.live/squid-railgun-eth-sepolia-v2/graphql
+  - name: txs-arbitrum
+    handler:
+      graphql:
+        endpoint: https://rail-squid.squids.live/squid-railgun-arbitrum-v2/graphql
+  - name: txs-bsc
+    handler:
+      graphql:
+        endpoint: https://rail-squid.squids.live/squid-railgun-bsc-v2/graphql
+  - name: txs-matic
+    handler:
+      graphql:
+        endpoint: https://rail-squid.squids.live/squid-railgun-polygon-v2/graphql
+documents:
+  - ./railgun-txids-query.graphql

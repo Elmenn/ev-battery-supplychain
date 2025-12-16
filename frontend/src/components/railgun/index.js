@@ -1,5 +1,3 @@
 // Railgun Components
 export { default as PrivatePaymentModal } from './PrivatePaymentModal';
-
-// Railgun Utilities
-export * from '../../utils/railgunUtils'; 
+export { default as RailgunInitializationTest } from './RailgunInitializationTest'; 

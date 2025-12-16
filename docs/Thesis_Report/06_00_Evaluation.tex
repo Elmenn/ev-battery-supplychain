@@ -1,0 +1,749 @@
+\chapter{Evaluation}
+\label{chapter:evaluation}
+\begin{comment}
+* In this chapter, you evaluate your approach and implementation.
+* The type and setup of your evaluation strongly depends of the type of project. Discuss this early on with your supervisor.
+* Do not underestimate this chapter. It is aimportant part of your contribution. It will take up a lot of time and effort. Start early.
+* Generally, you should compare your approach to other approaches, so your contribution is quantifiable.
+* Does your artifact meet the requirements you specified in concept an design?
+* Explain in detail, what you evaluate and how you evaluate it. Give all details necessary for reproducing the results. Should someone else evaluate your work with the exact setup you describe here, they should end up with the same results you did based on your descriptions in this chapter.
+* Describe and discuss all results. Do not omit the raw data.
+* 10-30 pages
+\end{comment}
+
+This chapter evaluates our implementation against the objectives and requirements defined in Chapter~\ref{chapter:concept_and_design}. We measured privacy guarantees (for both hidden prices and transaction-hash commitments), gas efficiency, proof performance, auditor verification workflows, and security properties. All measurements are reproducible using the methodology and tools described below.
+
+\section{Evaluation Plan and Metrics}
+\label{sec:eval-plan}
+
+This section defines our evaluation methodology, test environment, metrics, and comparison baselines.
+
+\subsection{Test Environment and Setup}
+\label{subsec:eval-setup}
+
+\paragraph{Hardware and Software.}
+All measurements for this evaluation were conducted on a machine equipped with an Intel Core i5-8265U CPU running at 1.60 GHz, 16 GB of RAM, and Microsoft Windows 11 Professional (Version 10.0.26200, 64-bit). The software environment was carefully controlled to ensure reproducibility and included the following versions: Ganache CLI v7.9.1 was used for local blockchain testing, with the Sepolia testnet employed for public demonstrations. Smart contract development used Solidity version 0.8.21, Truffle v5.11.5, and OpenZeppelin Contracts v5.4.0. The zero-knowledge proof (ZKP) backend was implemented in Rust 1.88.0, with the bulletproofs crate at version 4.0.0 and curve25519-dalek-ng at version 4.1.1. For the frontend and backend, the stack consisted of Node.js v18.20.8, React v18.3.1, and Express.js v5.1.0. Off-chain data was managed using the Pinata API and the IPFS gateway\footnote{\url{https://gateway.pinata.cloud/ipfs/}}.
+
+
+\paragraph{Measurement Methodology.}
+
+The measurement methodology was tailored to the specifics of each evaluation metric. \textbf{Gas costs} were measured using Truffle’s transaction receipts and the \texttt{gasUsed} field. Each transaction was executed \textbf{10} times, and results were averaged. All gas measurements were performed with the Solidity optimizer enabled (runs=\textbf{200}), targeting the \textbf{shanghai} EVM version and a base fee of \textbf{20 gwei} in Ganache; where relevant, results from the Sepolia testnet are also reported. 
+Proof generation and verification times were recorded using Rust’s \texttt{std::time::Instant}, with each operation repeated \textbf{100} times. Timings are reported as medians with interquartile ranges (IQR) across the 100 runs. We consider both cold and warm cache scenarios.
+Proof sizes were measured as the length of the serialized byte arrays.
+
+Auditor verification timings were captured using Node.js’s \texttt{performance.now()} and include a breakdown of time spent on each verification step. IPFS fetch times were measured both with and without gateway caching to assess the impact on end-to-end verification latency. On-chain storage utilization was quantified by inspecting contract storage slots, while off-chain verifiable credential sizes were measured directly from the JSON files.
+
+
+\paragraph{Reproducibility.}
+
+To ensure the reproducibility of all results, strict version control was maintained. All code was evaluated at fixed Git commit hashes for contracts, the frontend, and the ZKP backend (these details are documented in a private repository and omitted here for double-blind review). Benchmark commands included \texttt{npx truffle test test/GasMeasurement.test.js} for gas measurements, and \texttt{cargo run --release --bench range-proof} for proof performance, using a fixed random seed recorded alongside the benchmark scripts. 
+
+\subsection{Metrics and Baselines}
+\label{subsec:eval-metrics}
+To evaluate whether our implementation meets the objectives defined in Section \ref{sec:concept-problem}, we assess a range of metrics covering privacy, gas and storage efficiency, proof performance, auditor verification, and functional correctness.
+
+\paragraph{Privacy Metrics.}
+
+Privacy is evaluated by verifying that no plaintext price appears in any on-chain event, log, or publicly accessible verifiable credential. We also ensure that no raw transaction hash is ever stored on-chain, emitted in events, or present in VCs; only cryptographic commitments are visible to external observers. The effectiveness of zero-knowledge proof verification is measured by confirming that all valid price pairs $(C,t_{\mathrm{price}})$ and transaction pairs $(\text{commitment},t_{\mathrm{tx}})$ are accepted, while invalid or mismatched pairs are rejected. 
+To further assess leakage, we confirm that no plaintext price or transaction hash appears in any public artefact. We also check that the cryptographic hiding properties described in Section~\ref{sec:concept-crypto} are consistently upheld.
+
+\paragraph{Gas and Storage Metrics.}
+Gas and storage efficiency are measured by recording gas consumption for all core transactions, including \texttt{createProduct}, \texttt{setPublicPriceWith\-Commitment}, \texttt{purchasePublic}, \texttt{confirmOrderWithCommitment}, and \texttt{revealAndConfirmDelivery}. We quantify on-chain storage by counting the number of storage slots and total bytes used, limited to cryptographic anchors. To contextualize these results, we compare our anchor-only approach to a naïve baseline in which full VC JSON payloads are stored on-chain for each lifecycle stage, providing a clear estimate of the gas and storage savings achieved. We also compare the gas cost of deploying product escrows via the EIP-1167 minimal proxy pattern to the cost of deploying full contract logic for every product.
+
+
+\paragraph{Proof Performance Metrics.}
+
+Proof performance is assessed by measuring the size, generation time, and verification time of Bulletproofs range proofs. These measurements are repeated for different value ranges (e.g., 32-bit and 64-bit) to capture variability. Where possible, we include a comparison to theoretical proof sizes and performance of SNARK-based approaches, such as Groth16, to contextualize the trade-offs between proof size, speed, and trust assumptions.
+
+
+\paragraph{Auditor Verification Metrics.}
+Auditor verification is evaluated through end-to-end timing of the full verification process. This includes reading on-chain state, fetching VCs from IPFS, verifying EIP-712 signatures, checking zero-knowledge proofs, confirming transaction existence via commitment events, and traversing the credential chain.
+We provide a detailed breakdown of the time required for each verification step to identify potential bottlenecks. Additional experiments measure verification time as a function of provenance chain length (e.g., for chains of 1, 5, and 10 VCs) and the impact of IPFS caching on overall performance.
+
+\paragraph{Functional Correctness Metrics.}
+Functional correctness is demonstrated by verifying that all allowed state machine transitions (including normal and timeout paths) are executed correctly. We also confirm that key invariants—such as commitment immutability, VC CID monotonicity, phase discipline, and timeout enforcement—are upheld throughout the product lifecycle. Finally, we test access control logic to ensure that only authorized roles can invoke seller-only, buyer-only, or transporter-only functions.
+
+\FloatBarrier
+
+
+Together, these metrics provide a comprehensive assessment of the privacy, efficiency, correctness, and auditability of our system, and establish a clear basis for comparison to alternative designs and theoretical baselines.
+
+
+\subsection{Comparison Baselines}
+\label{subsec:eval-baselines}
+
+To contextualize and quantify the benefits of our approach, we evaluate our system against three comparison baselines, each representing a distinct alternative or prior-art design strategy.
+
+\paragraph{Baseline 1: Naïve On-Chain VC Storage.}
+This baseline models a hypothetical approach in which the entire VC for each lifecycle stage is stored directly on-chain, encoded as UTF-8 JSON in a Solidity \texttt{bytes} array without compression. For each product, the VC is written once per stage, resulting in three writes per product. This baseline is intentionally pessimistic but reproducible; while alternate encodings such as CBOR or deflate could yield different absolute gas costs, the fundamental distinction between an anchor-only approach and full-payload storage remains.
+
+\paragraph{Baseline 2: SNARK-Based Proofs.}
+
+For a theoretical performance comparison, we consider the use of Groth16 SNARKs for range proofs, as described in the literature \cite{hopwood2016zcash}. In this approach, range proofs are constructed using the Groth16 proving system, which relies on a trusted setup ceremony for each specific circuit. This baseline is included to illustrate the conceptual trade-offs between SNARK-based and Bulletproofs-based proof systems, specifically regarding trust assumptions, proof sizes, and verification characteristics. 
+
+
+
+
+
+\paragraph{Baseline 3: Full Contract Deployment.}
+The third baseline is a qualitative comparison between deploying product escrows via the EIP-1167 minimal proxy pattern\footnote{\url{https://eips.ethereum.org/EIPS/eip-1167}} and deploying the full smart contract logic for each product instance. This approach involves deploying a complete smart contract for each product without using minimal proxies or shared logic.
+
+\section{Results}
+\label{sec:eval-results}
+
+\subsection{Privacy Analysis}
+\label{subsec:eval-privacy}
+
+
+To determine whether the prototype achieves the privacy objectives articulated in Section \ref{sec:concept-problem},  we evaluated two core properties: (i) product prices remain hidden behind commitments and zero-knowledge proofs and (ii) transaction identifiers are referenced only via commitments, not as plaintext hashes.
+
+\paragraph{Plaintext Price and Transaction Exposure.}
+We first inspected all public artefacts generated during a complete product lifecycle (S0→S1→S2), including on-chain storage, events, and verifiable credentials (VCs).
+
+\begin{itemize}
+  \item \textbf{On-chain storage.} For each escrow instance, the contract exposes only the price commitment \texttt{publicPriceCommitment} (bytes32) and the VC pointer \texttt{vcCid} as privacy-relevant fields. No plaintext price is stored in any dedicated price variable; the only value field used during settlement is the public-flow payment amount, which is not emitted in events. The implementation does not store any raw transaction hashes on-chain; instead, the delivery transaction is referenced only via its commitment in the \texttt{DeliveryConfirmedWithCommitment} event.
+  \item \textbf{Events.} We inspected all emitted events during listing, purchase, order confirmation, transporter selection, delivery, and timeout paths. Events contain only identifiers (product ID, escrow address, role addresses), timestamps, phase labels, and the cryptographic anchors introduced in Chapter~\ref{chapter:implementation}, namely the price commitment \texttt{publicPriceCommitment}, the VC CID \texttt{vcCid}, the purchase transaction-hash commitment carried by \texttt{PurchaseConfirmedWithCommitment} (emitted during order confirmation if a purchase commitment is provided), and the delivery transaction-hash commitment carried by \texttt{DeliveryConfirmedWithCommitment}. No event contains a plaintext price or a raw transaction hash.
+  \item \textbf{VCs.} We inspected the JSON structure of the S0, S1, and S2 credentials as produced by the frontend. Prices are represented exclusively via the \newline \texttt{credentialSubject.price.zkp} object, which holds the commitment \(C\), the Bulletproofs proof, and the price binding tag, but no plaintext price. Transaction identifiers are represented as \texttt{credentialSubject.purchaseTxHashCommitment} and \texttt{credentialSubject.txHashCommitment}, each containing a commitment, proof, and binding tag. The legacy \texttt{transactionId} field is absent; no raw transaction hashes appear anywhere in the VC payload.
+\end{itemize}
+
+Across all inspected artefacts, we did not observe any plaintext price or transaction hash; only commitments, binding tags, and protocol metadata are visible. The residual leakage from the public payment amount (\texttt{msg.value}) in the public flow is discussed as a limitation in Section~\ref{subsec:eval-limitations}.
+
+\paragraph{ZKP Verification for Price and Transaction Commitments.}
+We then evaluated whether the zero-knowledge layer correctly enforces the intended hiding and binding properties for both price and transaction-hash commitments.
+
+\begin{itemize}
+  \item \textbf{Price proofs.} For the price commitment \(C = \mathsf{Com}(v;b)\), we generated and verified Bulletproofs range proofs over pairs \((C, t_{\mathrm{price}})\), where \(t_{\mathrm{price}}\) is the price binding tag derived from the on-chain and VC context (protocol version, chain identifier, escrow address, product identifier, stage, schema version, and previous VC CID (cf.~Section~\ref{subsec:impl-price-commitments}). All valid pairs were accepted (100\% success rate), while corrupted pairs with incorrect values, incorrect blinding, or incorrect binding tag were rejected with 100\% accuracy.
+  \item \textbf{Transaction-hash proofs.} For transaction-hash privacy, we tested the ZKP backend endpoints \texttt{/zkp/commit-tx-hash} and \texttt{/zkp/verify} using the binding tag \(t_{\mathrm{tx}}\) defined in §\ref{subsec:impl-linkable-commitments}. We generated commitments and proofs for purchase and delivery transaction hashes and embedded them as \texttt{purchaseTxHashCommitment} and \texttt{txHashCommitment} in the VC. Verification over the corresponding \((\mathsf{commitment}, t_{\mathrm{tx}})\) pairs succeeded for all valid cases and failed for deliberately corrupted inputs (wrong hash, wrong binding tag, wrong commitment), confirming that transaction-hash proofs are both hiding and context-bound.
+  \item \textbf{Binding tag enforcement.} For both price and transaction-hash proofs, we exercised replay and swap scenarios where proofs were moved between different products, VCs, or chains. In all cases where the binding tag derived from the current context did not match the tag embedded in the VC, verification failed, confirming that proofs cannot be reused outside their original context.
+\end{itemize}
+
+\FloatBarrier
+
+\paragraph{Summary of Privacy Properties.}
+Table~\ref{tab:eval-privacy} summarises the main privacy properties and their evaluation status.
+
+\begin{table}[H]
+  \centering
+  \small
+  \caption{Privacy properties verification.}
+  \label{tab:eval-privacy}
+  \begin{tabularx}{\textwidth}{>{\raggedright\arraybackslash}X >{\raggedright\arraybackslash}p{3.2cm} >{\raggedright\arraybackslash}p{2.8cm}}
+    \toprule
+    \textbf{Privacy Property} & \textbf{Requirement } & \textbf{Result} \\
+    \midrule
+    No plaintext price on-chain & Hidden price disclosure & \checkmark Not observed \\
+    No plaintext price in events & Hidden price disclosure & \checkmark Not observed \\
+    No plaintext price in VCs & Hidden price disclosure & \checkmark Not observed \\
+    No plaintext tx hash on-chain & Hidden transaction identifiers & \checkmark Not observed \\
+    No plaintext tx hash in events & Hidden transaction identifiers & \checkmark Not observed \\
+    No plaintext tx hash in VCs & Hidden transaction identifiers & \checkmark Not observed \\
+    ZKP verifies over price $(C,t_{\mathrm{price}})$ & Confidentiality via commitments & \checkmark Verified \\
+    ZKP verifies over tx $(\text{commitment},t_{\mathrm{tx}})$ & Confidentiality via commitments & \checkmark Verified \\
+    Purchase tx commitment matches event & Transaction verification & \checkmark Verified \\
+    Delivery tx commitment matches event & Transaction verification  & \checkmark Verified \\
+    Binding tags prevent replay/swap & Security property  & \checkmark Verified \\
+    No additional observable price/tx leakage & Confidentiality via commitments & \checkmark Verified \\
+    \bottomrule
+  \end{tabularx}
+\end{table}
+
+The cryptographic hiding guarantees are fundamentally derived from the properties of Pedersen commitments and Bulletproofs, as established in Section \ref{sec:concept-crypto}. The experiments above ensure that the implementation does not introduce unintended leakage channels beyond this model.
+
+\subsection{Gas Costs and Storage Efficiency}
+\label{subsec:eval-gas}
+
+We evaluated the gas consumption and on-chain storage requirements of our system, comparing them to a naïve baseline in which full verifiable credential (VC) payloads are stored on-chain. Gas measurements were averaged over ten runs in a controlled Ganache development environment, with the Solidity optimizer enabled (runs = 200), EVM version set to Shanghai, and a base fee of 20 gwei.
+
+
+\paragraph{Per-Transaction Gas Costs.}
+Table~\ref{tab:eval-gas} presents the gas consumption for each core transaction in the system.
+
+\begin{table}[H]
+  \centering
+  \small
+  \caption{Gas costs for core transactions (averaged over 10 runs).}
+  \label{tab:eval-gas}
+\begin{tabularx}{\textwidth}{>{\raggedright\arraybackslash}X >{\raggedleft\arraybackslash}p{2.2cm} >{\raggedleft\arraybackslash}p{2.2cm} >{\raggedleft\arraybackslash}p{2.2cm} >{\raggedleft\arraybackslash}p{2.2cm} >{\raggedleft\arraybackslash}p{1.8cm}}
+    \toprule
+    \textbf{Transaction} & \textbf{Mean} & \textbf{Min} & \textbf{Max} & \textbf{Std Dev} & \textbf{Events} \\
+    \midrule
+    \texttt{createProduct} (factory) & 280,013 & 276,593 & 310,793 & 10,260 & 1 \\
+    \texttt{setPublicPriceWith\-Commitment} & 88,709 & 88,709 & 88,709 & 0 & 2 \\
+    \texttt{purchasePublic} & 156,489 & 156,489 & 156,489 & 0 & 3 \\
+    \texttt{confirmOrderWith\-Commitment} & 81,670 & 81,670 & 81,670 & 0 & 3 \\
+    \texttt{setTransporter} & 70,042 & 70,042 & 70,042 & 0 & 2 \\
+    \texttt{revealAndConfirm\-Delivery} & 95,115 & 95,104 & 95,116 & 3.6 & 3 \\
+    \bottomrule
+  \end{tabularx}
+\end{table}
+
+The \texttt{createProduct} function, which initiates a new product escrow via EIP-1167 minimal proxy deployment and performs initialization, exhibits the highest average gas cost at 280,013 gas. 
+The observed standard deviation of 10,260 gas suggests minor state-dependent variability. 
+In contrast, transactions such as \texttt{setPublicPriceWith\-Commitment}, \texttt{purchasePublic}, \texttt{confirmOrderWithCommitment}, and \texttt{setTransporter} demonstrate deterministic gas usage, with zero standard deviation across all runs. The \texttt{reveal\-AndConfirmDelivery} function shows minimal variability (standard deviation of 3.6 gas).
+
+The \texttt{confirmOrderWithCommitment} function consumes 81{,}670 gas and emits three events.
+\newline The incremental cost of emitting the additional \texttt{PurchaseConfirmedWithCommitment} event is 3{,}866 gas. The \texttt{purchasePublic} transaction, which involves state updates, phase transitions, and multiple event emissions, is the second most expensive operation at 156,489 gas. The \texttt{revealAndConfirmDelivery} function (95,115 gas) includes logic for price commitment verification, phase transition, and fund distribution. The \texttt{setTransporter} function incurs the lowest gas cost at 70,042 gas, as it primarily updates state and emits events.
+
+
+\paragraph{On-Chain Storage.}
+Our implementation is designed to store only cryptographic anchors on-chain. For each product, 15 fixed-size storage slots are used (480 bytes total), which include variables such as \texttt{publicPriceCommitment}, packed phase and state variables, timestamps, addresses, and boolean flags. This storage allocation remains constant throughout the entire product lifecycle, from listing to delivery. Dynamic variables, such as the product name (\texttt{name}) and \texttt{vcCid}, are stored separately, with their size dependent on the content length. All zero-knowledge proofs and transaction-hash commitments are kept off-chain within the VC payloads.
+
+\textbf{Storage Breakdown:}
+A detailed breakdown reveals that the 15 slots (480 bytes) are efficiently optimized by packing multiple state variables and flags into single slots wherever possible. This design minimizes on-chain storage overhead and supports scalability.
+
+
+\paragraph{Baseline Comparison.}
+For comparison, we considered a baseline approach in which complete VC JSON payloads are stored on-chain. In this scenario, each VC would require 3,001 bytes (Stage 0), 1,273 bytes (Stage 1), and 4,368 bytes (Stage 2), resulting in a total of 8,642 bytes per product (UTF-8 JSON encoding, no compression). The corresponding gas cost for storing these payloads on-chain is estimated at 1,460,000 gas (505,000 gas for S0, 235,000 gas for S1, 720,000 gas for S2). By contrast, our anchor-only approach requires only 135,000 gas for three stages (45,000 gas per CID per stage), representing a gas savings of 90.75\% (1,325,000 gas saved per product).
+
+\begin{table}[H]
+  \centering
+  \small
+  \caption{Storage and gas comparison: anchors-only vs. naïve on-chain VC storage (per product).}
+  \label{tab:eval-storage}
+  \begin{tabularx}{\textwidth}{%
+    >{\raggedright\arraybackslash}X
+    >{\raggedleft\arraybackslash}p{2.2cm}
+    >{\raggedleft\arraybackslash}p{2.3cm}
+    >{\raggedleft\arraybackslash}p{2.2cm}
+    >{\raggedleft\arraybackslash}p{2.6cm}}
+    \toprule
+    \textbf{Approach} & \textbf{On-chain (bytes)} & \textbf{Off-chain (bytes)} & \textbf{Total (bytes)} & \textbf{Gas cost} \\
+    \midrule
+    Our approach (anchors only)  & 480   & 8\,642 & 9\,122 & 135\,000 \\
+    Naïve (full VC on-chain)     & 8\,642 & 0     & 8\,642 & 1\,460\,000 \\
+    \addlinespace
+    \multicolumn{1}{r}{\textbf{On-chain savings}} &
+      \textbf{8\,162} & \textbf{---} & \textbf{---} & \textbf{1\,325\,000 (90.8\%)} \\
+    \bottomrule
+  \end{tabularx}
+\end{table}
+
+These results demonstrate that our design achieves substantial improvements in both gas efficiency and on-chain storage utilisation. While the total number of bytes (on-chain + off-chain) per product is similar in both designs, shifting full VC payloads off-chain and keeping only compact anchors on-chain makes the system significantly cheaper and more scalable in an Ethereum setting.
+
+\subsection{Bulletproofs Performance}
+\label{subsec:eval-proofs}
+
+We evaluated Bulletproofs range proofs in terms of proof size, generation time, and verification time, and compared these results to theoretical values for Groth16 SNARKs as reported in prior work.
+
+\paragraph{Proof Sizes.}
+Table~\ref{tab:eval-proof-size} presents measured Bulletproofs proof sizes for two value ranges. For a 32-bit range \([0, 2^{32})\), the total serialized proof size is 672~bytes (including commitment and binding tag). For a 64-bit range \([0, 2^{64})\), the total size is 736~bytes. 
+These results are consistent with the logarithmic proof size scaling property of Bulletproofs. In comparison, Groth16 SNARKs have a constant proof size of approximately 192~bytes for BN254, as established by Groth (2016)~\citep{groth2016size} and observed in the Zcash Sapling protocol~\citep{hopwood2016zcash}.
+
+\begin{table}[H]
+  \centering
+  \small
+  \caption{Bulletproofs proof sizes for different value ranges.}
+  \label{tab:eval-proof-size}
+\begin{tabularx}{\textwidth}{>{\raggedright\arraybackslash}X >{\raggedleft\arraybackslash}p{4cm} >{\raggedleft\arraybackslash}p{4cm}}
+    \toprule
+    \textbf{Value Range} & \textbf{Proof Size (bytes)} & \textbf{Commitment + Proof + Binding Tag} \\
+    \midrule
+    32-bit range ($[0, 2^{32})$) & 608 & 672 (32 + 608 + 32) \\
+    64-bit range ($[0, 2^{64})$) & 672 & 736 (32 + 672 + 32) \\
+    \bottomrule
+  \end{tabularx}
+\end{table}
+
+\paragraph{Generation Time.}
+Table~\ref{tab:eval-proof-gen} summarises proof generation times for 64-bit range Bulletproofs, measured over 100 runs. The median total generation time is 196.3~ms, with the range proof generation step dominating at 195.1~ms. 
+Ancillary operations, such as computing the blinding factor and binding tag, are negligible. The interquartile range (IQR) of 71.7~ms demonstrates moderate variability, with 75\% of proofs generated in under 233.5~ms. In related SNARK literature, Groth16 proof generation times are estimated to be in the range of 100--300~ms for typical circuits of 200--500 constraints~\citep{ben_sasson_zerocash_2014,parno2016pinocchio}.
+
+\begin{table}[H]
+  \centering
+  \small
+  \caption{Proof generation time breakdown (measured over 100 runs, 64-bit range).}
+  \label{tab:eval-proof-gen}
+\begin{tabularx}{\textwidth}{>{\raggedright\arraybackslash}X >{\raggedleft\arraybackslash}p{2.4cm} >{\raggedleft\arraybackslash}p{2.4cm} >{\raggedleft\arraybackslash}p{2.4cm} >{\raggedleft\arraybackslash}p{2.4cm}}
+    \toprule
+    \textbf{Operation} & \textbf{Median (ms)} & \textbf{IQR (ms)} & \textbf{Min (ms)} & \textbf{Max (ms)} \\
+    \midrule
+    Compute blinding $b$ & 0.029 & 0.007 & 0.024 & 0.071 \\
+    Generate commitment $C$ & 1.041 & 0.431 & 0.815 & 18.812 \\
+    Generate range proof & 195.125 & 71.735 & 146.706 & 803.405 \\
+    Compute binding tag $t$ & 0.019 & 0.005 & 0.015 & 0.044 \\
+    \textbf{Total} & \textbf{196.266} & \textbf{71.694} & \textbf{147.641} & \textbf{805.798} \\
+    \bottomrule
+  \end{tabularx}
+\end{table}
+
+\paragraph{Verification Time.}
+Table~\ref{tab:eval-proof-verify} details Bulletproofs verification times for 64-bit range proofs, again over 100 runs. The median verification time is 55.6~ms, with approximately 39\% spent on setting up public inputs and 61\% on actual range proof verification. This is roughly 3.5 times faster than proof generation. By contrast, Groth16 SNARKs achieve much lower verification times, typically around 4~ms per proof, as reported in the Zcash protocol and related benchmarks~\citep{hopwood2016zcash,ben_sasson_zerocash_2014,parno2016pinocchio}.
+
+
+\begin{table}[H]
+  \centering
+  \small
+  \caption{Proof verification time breakdown (measured over 100 runs, 64-bit range).}
+  \label{tab:eval-proof-verify}
+\begin{tabularx}{\textwidth}{>{\raggedright\arraybackslash}X >{\raggedleft\arraybackslash}p{2.4cm} >{\raggedleft\arraybackslash}p{2.4cm} >{\raggedleft\arraybackslash}p{2.4cm} >{\raggedleft\arraybackslash}p{2.4cm}}
+    \toprule
+    \textbf{Operation} & \textbf{Median (ms)} & \textbf{IQR (ms)} & \textbf{Min (ms)} & \textbf{Max (ms)} \\
+    \midrule
+    Setup public inputs $(C,t)$ & 21.782 & 10.350 & 15.431 & 93.503 \\
+    Verify range proof & 34.086 & 19.581 & 24.024 & 104.661 \\
+    \textbf{Total} & \textbf{55.649} & \textbf{33.750} & \textbf{40.187} & \textbf{169.735} \\
+    \bottomrule
+  \end{tabularx}
+\end{table}
+
+\paragraph{Comparison to SNARKs.}
+Table~\ref{tab:eval-proof-comparison} compares Bulletproofs and Groth16 SNARKs across key dimensions. 
+Groth16 achieves a smaller proof size (\(\approx 192\)~bytes) and faster verification (\(\approx 4\)~ms), but requires a trusted setup ceremony for each circuit~\citep{groth2016size,hopwood2016zcash,ben_sasson_zerocash_2014}. 
+Bulletproofs require no trusted setup, have slightly larger proofs, and offer simple API integration for range proofs, making them operationally attractive for many privacy-preserving blockchain applications.
+
+\begin{table}[H]
+  \centering
+  \small
+  \caption{Proof system comparison: Bulletproofs vs. SNARKs (Groth16). \emph{SNARK values are theoretical from prior work; not experimentally measured.}}
+  \label{tab:eval-proof-comparison}
+\begin{tabularx}{\textwidth}{>{\raggedright\arraybackslash}X >{\raggedleft\arraybackslash}p{4cm} >{\raggedleft\arraybackslash}p{4cm}}
+    \toprule
+    \textbf{Metric} & \textbf{Bulletproofs} & \textbf{SNARKs (Groth16)} \\
+    \midrule
+    Proof size (64-bit range) & 736 bytes & $\sim$192 bytes\cite{groth2016size,hopwood2016zcash} (theoretical\footnote{BLS12-381 curve, from prior work}) \\
+    Generation time & 196.3 ms (median) & $\sim$100--300 ms (estimated for circuits with 200--500 constraints~\citep{hopwood2016zcash,ben_sasson_zerocash_2014,parno2016pinocchio}) \\
+    Verification time & 55.6 ms (median) & $\sim$4 ms (\cite{groth2016size,hopwood2016zcash}) \\
+    Trusted setup required & No & Yes (CRS ceremony \cite{groth2016size}) \\
+    Setup ceremony cost & None & High (one-time, operational overhead) \\
+    Circuit complexity & Simple (range proof API) & High (requires circuit design) (Circom/arkworks  \citep{parno2016pinocchio}) \\
+    \bottomrule
+  \end{tabularx}
+\end{table}
+
+\textbf{Why Bulletproofs over Groth16 for this use case:}
+\begin{itemize}
+  \item \textbf{Trustless setup:}  Bulletproofs require no trusted setup, eliminating both security risks and operational overhead. This aligns with open blockchain principles and avoids the complexities of secure multi-party computation needed for Groth16 \cite{groth2016size,hopwood2016zcash}
+  \item \textbf{Adequate performance:} Bulletproofs verification time (55.6~ms) accounts for only 37\% of the total auditor workflow (152~ms), leaving ample headroom for practical use. Proof generation time (196~ms) is acceptable for off-chain operations.
+  \item \textbf{Proof size not critical:} Proofs are stored off-chain in IPFS, so the size difference (672~bytes vs.\ \(\approx 192\)~bytes) does not affect gas costs or on-chain storage.
+  \item \textbf{Implementation simplicity:} Bulletproofs provide a straightforward API for 64-bit range proofs, while Groth16 requires circuit design, trusted setup, and specialized contract deployment~\citep{parno2016pinocchio}.
+  \item \textbf{Operational overhead:} Groth16's trusted setup ceremony requires secure multi-party computation, key management, and ongoing maintenance, adding significant complexity without proportional benefits for this application.
+\end{itemize}
+
+\textbf{When Groth16 would be preferable:}
+Groth16 would be preferable in scenarios where on-chain verification costs are dominant, sub-millisecond verification times are required, proof size directly impacts on-chain storage, or existing trusted setup infrastructure is available.
+
+
+\subsection{Auditor Verification Workflow}
+\label{subsec:eval-auditor}
+
+To assess the efficiency and scalability of the auditor verification process, we measured the total time required for an external auditor to verify a complete product lifecycle, including price and transaction-hash checks. Our analysis also quantifies the impact of provenance chain length and IPFS caching on verification performance.
+
+\paragraph{End-to-End Verification Time.}
+Table~\ref{tab:eval-auditor-time} presents a detailed breakdown of the verification steps for a single product (S0$\rightarrow$S1$\rightarrow$S2 chain). 
+The complete auditor workflow, executed in a local Ganache and backend environment, requires approximately $152\,\mathrm{ms}$ to complete. This leaves sufficient margin for additional user-interface or provenance-verification overhead.
+Event queries for transaction verification (\texttt{PurchaseConfirmedWithCommitment} and \texttt{DeliveryConfirmedWithCommitment}) account for $42.7\,\mathrm{ms}$, representing $28\%$ of total verification time.
+
+\begin{table}[H]
+  \centering
+  \small
+  \caption{Auditor verification time breakdown (single product, S0→S1→S2 chain).}
+  \label{tab:eval-auditor-time}
+\begin{tabularx}{\textwidth}{>{\raggedright\arraybackslash}X >{\raggedleft\arraybackslash}p{4cm} >{\raggedright\arraybackslash}p{4cm}}
+    \toprule
+    \textbf{Step} & \textbf{Time (ms)} & \textbf{Notes} \\
+    \midrule
+    Read on-chain state ($C$, \texttt{vcCid}) & $30.9$ (min $21.0$, max $40.3$; $\sigma = 6.4$) & Single RPC (Ganache) \\
+    Query transaction events & $42.7$ (min $39.3$, max $47.1$; $\sigma = 2.5$) & \texttt{PurchaseConfirmed\-WithCommitment} and \texttt{DeliveryConfirmedWith\-Commitment} event queries \\
+    Fetch VC from IPFS (S2) & $0.09$ (min $0.06$, max $0.20$; $\sigma = 0.06$) & Mocked local store (cold-cache impact negligible) \\
+    Verify EIP-712 signatures & $46.8$ (min $29.3$, max $107.9$; $\sigma = 30.6$) & Issuer + holder, with verifyingContract domain \\
+    Extract commitment and proof & $0.02$ (min $0.02$, max $0.03$; $\sigma = 0.00$) & JSON parse of VC payload \\
+    Recompute binding tag $t$ & $0.11$ (min $0.08$, max $0.16$; $\sigma = 0.03$) & SHA-256 over binding context \\
+    Verify ZKP proof(s) & $31.3$ (min $28.4$, max $38.5$; $\sigma = 3.6$) & Bulletproof backend (\texttt{/zkp/verify} for price + tx commitments) \\
+    Traverse \texttt{previousCredential} chain & $0.15$ (min $0.10$, max $0.28$; $\sigma = 0.07$) & S2→S1→S0 (Map lookups) \\
+    \textbf{Total} & \textbf{152.2} (min $130.0$, max $215.5$; $\sigma = 32.0$) & \textbf{End-to-end auditor latency} \\
+    \bottomrule
+  \end{tabularx}
+\end{table}
+
+During this process, the auditor queries both the \texttt{PurchaseConfirmedWithCommitment} event and the \texttt{DeliveryConfirmedWithCommitment} event to verify that the on-chain transaction-hash commitments match the VC commitments (two indexed RPC lookups, $< 2\,\mathrm{ms}$ on our setup). These checks are grouped with the “Read on-chain state” step in Table~\ref{tab:eval-auditor-time}.
+
+\paragraph{Scalability Analysis.}
+We also examined how auditor verification time scales with increasing provenance chain length. Table~\ref{tab:eval-auditor-scalability} summarises these results and shows that the verification process remains efficient even as the number of chained credentials increases.
+This scalability is essential for real-world supply chain scenarios, where products may accumulate long provenance histories across multiple stages and components.
+
+
+\begin{table}[H]
+  \centering
+  \small
+  \caption{Verification time vs. provenance chain length.}
+  \label{tab:eval-auditor-scalability}
+\begin{tabularx}{\textwidth}{>{\raggedright\arraybackslash}X >{\raggedleft\arraybackslash}p{3cm} >{\raggedleft\arraybackslash}p{3.2cm} >{\raggedleft\arraybackslash}p{3cm}}
+    \toprule
+    \textbf{Chain Length} & \textbf{VCs Fetched} & \textbf{Total Time (ms)} & \textbf{Time per VC (ms)} \\
+    \midrule
+    1 VC (single product) & 1 & $150.0$ (min $121.1$, max $206.3$; $\sigma=39.8$) & $150.0$ \\
+    5 VCs (provenance chain) & 5 & $97.3$ (min $93.3$, max $105.0$; $\sigma=5.4$) & $19.5$ \\
+    10 VCs (deep chain) & 10 & $119.1$ (min $112.4$, max $126.7$; $\sigma=5.9$) & $11.9$ \\
+    \bottomrule
+  \end{tabularx}
+\end{table}
+
+\paragraph{IPFS Caching Impact.}
+To understand the effect of data availability on verification performance, we simulated both uncached and cached IPFS gateway access scenarios. 
+Without caching, the first fetch of a credential incurs an average delay of 31.38 ms. 
+Subsequent fetches benefit from caching, reducing this delay to 16.16 ms, an improvement of 48.49\%. This result underscores the importance of efficient IPFS gateway caching for minimizing auditor wait times in practice.
+These findings demonstrate that the system enables rapid, scalable, and privacy-preserving verification for external auditors, supporting both compliance and operational transparency without exposing confidential business data.
+\subsection{Functional Correctness}
+\label{subsec:eval-functional}
+
+To verify that the implementation adheres to the state machine transitions and enforces all invariants as specified in Section \ref{subsec:invariants}, we conducted an extensive suite of functional correctness tests.
+
+\paragraph{State Machine Transitions.}
+Table~\ref{tab:eval-state-machine} summarises the results of the state machine transition tests. All permitted phase transitions were exercised and validated using the PhaseMachine test suite, comprising 22 individual tests. Every test passed successfully, confirming that the contract enforces the correct progression of product lifecycle phases and blocks any disallowed transitions.
+
+\begin{table}[H]
+  \centering
+  \small
+  \caption{State machine transition tests.}
+  \label{tab:eval-state-machine}
+\begin{tabularx}{\textwidth}{>{\raggedright\arraybackslash}X >{\raggedright\arraybackslash}p{4cm} >{\raggedright\arraybackslash}p{2.5cm}}
+    \toprule
+    \textbf{Transition} & \textbf{Expected} & \textbf{Result} \\
+    \midrule
+    Listed → Purchased & Allowed & \checkmark Observed \\
+    Purchased → OrderConfirmed & Allowed & \checkmark Observed \\
+    OrderConfirmed → Bound & Allowed & \checkmark Observed \\
+    Bound → Delivered & Allowed & \checkmark Observed \\
+    Bound → Expired (timeout) & Allowed & \checkmark Observed \\
+    Purchased → Expired (sellerTimeout) & Allowed & \checkmark Observed \\
+    OrderConfirmed → Expired (bidTimeout) & Allowed & \checkmark Observed \\
+    Listed → Delivered (skip) & Disallowed & \checkmark Reverted \\
+    Purchased → Listed (backward) & Disallowed & \checkmark Reverted \\
+    \bottomrule
+  \end{tabularx}
+\end{table}
+
+\paragraph{Invariants Verification.}
+Table~\ref{tab:eval-invariants} presents the results of verifying all core invariants described in \ref{subsec:invariants}. These invariants were assessed through comprehensive, targeted test suites, with each check performed under both normal and edge-case conditions:
+
+\begin{table}[H]
+  \centering
+  \small
+  \caption{Invariants verification results.}
+  \label{tab:eval-invariants}
+\begin{tabularx}{\textwidth}{>{\raggedright\arraybackslash}X >{\raggedright\arraybackslash}p{3cm}}
+    \toprule
+    \textbf{Invariant} & \textbf{Result} \\
+    \midrule
+    Commitment immutability (frozen after first set) & \checkmark Verified \\
+    VC CID monotonicity (new CID differs from previous) & \checkmark Verified \\
+    Phase discipline (only allowed transitions) & \checkmark Verified \\
+    Timeout enforcement (SELLER\_WINDOW, BID\_WINDOW, DELIVERY\_WINDOW) & \checkmark Verified \\
+    Reentrancy protection (CEI pattern) & \checkmark Verified \\
+    Access control (seller-only, buyer-only functions) & \checkmark Verified \\
+    \bottomrule
+  \end{tabularx}
+\end{table}
+
+\textbf{Detailed Results:}
+\begin{itemize}
+  \item \textbf{Commitment immutability} was confirmed using the SimpleProductEscrow test suite. The contract allows the price commitment to be set once, after which it is frozen. Any subsequent attempt to modify the commitment correctly fails with a \texttt{CommitmentFrozen} error. The original commitment value remains unchanged, and the  \texttt{commitmentFrozen} flag remains true after the initial set.
+  \item \textbf{Phase discipline} was evaluated by the PhaseMachine test suite. All invalid phase transitions (such as attempting delivery confirmation before purchase) were correctly rejected, and functions could only be invoked in the appropriate phases. The contract enforces unidirectional, forward-only phase transitions.
+  \item \textbf{Timeout enforcement} was validated through both the PhaseMachine and ProductEscrowConfidential test suites. All configured time windows (\verb|SELLER_WINDOW|, \verb|BID_WINDOW|, \verb|DELIVERY_WINDOW|, each set to two days) were enforced as expected, with edge-time precision validated to within one second. Premature timeout attempts were properly rejected.
+  \item \textbf{Reentrancy protection}  was tested using the Reentrancy suite, which included six targeted tests. All critical functions (\texttt{depositPurchase}, \texttt{securityDeposit}, \texttt{withdrawBid}, \texttt{revealAndConfirmDelivery}) are protected by the \texttt{nonReentrant} modifier, and simulated malicious reentrancy attempts were blocked. The contract consistently follows the Effects-Then-Interactions pattern.
+  \item \textbf{Access control} was verified through multiple test suites. Only the seller is permitted to set commitments (enforced by the \texttt{onlySeller} modifier), and the contract prevents the owner from purchasing their own product. Phase-based access control was also confirmed to work as intended.
+\end{itemize}
+
+\paragraph{Requirements Fulfillment.}
+Table~\ref{tab:eval-requirements} provides a mapping from evaluation results to the requirements specified in Section \ref{sec:concept-requirements}.
+This mapping demonstrates that all functional and non-functional requirements—spanning confidentiality, gas efficiency, modularity, indexability, and user experience—are satisfied by the implementation.
+\begin{table}[H]
+  \centering
+  \small
+  \caption{Requirements fulfillment mapping.}
+  \label{tab:eval-requirements}
+\begin{tabularx}{\textwidth}{>{\raggedright\arraybackslash}X >{\raggedright\arraybackslash}p{3.2cm} >{\raggedright\arraybackslash}p{3cm}}
+    \toprule
+    \textbf{Requirement } & \textbf{Metric} & \textbf{Status} \\
+    \midrule
+    Staged lifecycle (S0→S1→S2) & State machine tests & \checkmark Fulfilled \\
+    Purchase → confirm → deliver workflow & Functional tests & \checkmark Fulfilled \\
+    Transporter bidding & Functional tests & \checkmark Fulfilled \\
+    Auditor verification (public, anytime) & Auditor workflow tests & \checkmark Fulfilled \\
+    VC chaining (intra-product + inter-product) & Chain traversal tests & \checkmark Fulfilled \\
+    Confidentiality (prices \& tx hashes hidden) & Privacy analysis & \checkmark Fulfilled \\
+    Gas efficiency (minimal on-chain state) & Gas \& storage analysis & \checkmark Fulfilled \\
+    Modularity (separate services) & Architecture  & \checkmark Fulfilled \\
+    Indexability (event-driven) & Event emission tests & \checkmark Fulfilled \\
+    UX clarity (abstract complexity) & UI implementation  & \checkmark Fulfilled \\
+    \bottomrule
+  \end{tabularx}
+\end{table}
+
+\section{Security Validation}
+\label{sec:eval-security}
+
+We validated the system’s security properties by systematically testing a range of adversarial scenarios and invalid inputs.
+
+\subsection{Replay and Swap Attack Prevention}
+\label{subsec:eval-replay-swap}
+
+To ensure the effectiveness of binding tags in preventing misuse of zero-knowledge proofs, we conducted a suite of tests targeting potential replay, swap, commitment-substitution, and context-manipulation attacks. 
+These tests were executed for both price commitments and transaction-hash commitments (such as \texttt{purchaseTxHashCommitment} and \texttt{txHashCommitment}). In all cases, the presence of a context-specific binding tag successfully prevented proof reuse outside the intended product, credential, or contract.
+Specifically, the validation process confirmed that:
+
+\paragraph{Replay attacks}
+(where a proof generated for one verifiable credential is reused with a different binding tag) are consistently rejected, because the tag incorporates context such as the VC CID.
+
+\paragraph{Swap attacks}
+(where a proof attached to one credential is embedded in another referencing the same commitment) are prevented, 
+as the binding tag also encodes credential- and contract-specific data.
+
+\paragraph{Commitment substitution and binding tag manipulation}
+are detected and blocked, since Bulletproofs proofs are cryptographically bound to both the commitment value and the specific tag.
+
+\paragraph{Cross-chain and cross-contract attacks}
+are thwarted, as a binding tag mismatch due to different chain IDs or contract addresses results in rejected verification.
+
+\paragraph{Valid proofs}
+with correct parameters are always accepted, ensuring that legitimate use cases function as intended.
+
+\FloatBarrier
+
+Table~\ref{tab:eval-security-replay} summarises all tested scenarios, expected behaviours, and observed results. In every instance, the binding-tag mechanism enforced strict context binding, preventing replay, swap, and context-manipulation attacks across the full range of tested cases.
+
+\begin{table}[H]
+  \centering
+  \small
+  \caption{Security test results: replay and swap attack prevention (6 test scenarios).}
+  \label{tab:eval-security-replay}
+  \begin{tabularx}{\textwidth}{>{\raggedright\arraybackslash}X >{\raggedright\arraybackslash}p{4cm} >{\raggedright\arraybackslash}p{3cm}}
+    \toprule
+    \textbf{Test Scenario} & \textbf{Expected Behaviour} & \textbf{Result} \\
+    \midrule
+    Replay attack (VC A → VC B) & Rejected (binding tag mismatch) & \checkmark Rejected \\
+    Swap attack (credential X → Y) & Rejected (binding tag mismatch) & \checkmark Rejected \\
+    Wrong commitment $C$ & Rejected (commitment mismatch) & \checkmark Rejected \\
+    Wrong binding tag $t$ & Rejected (binding tag mismatch) & \checkmark Rejected \\
+    Wrong chainId/escrowAddr & Rejected (binding tag mismatch) & \checkmark Rejected \\
+    Valid proof (correct parameters) & Accepted & \checkmark Accepted \\
+    \bottomrule
+  \end{tabularx}
+\end{table}
+
+\subsection{Invalid Input Handling}
+\label{subsec:eval-invalid-input}
+
+To ensure contract robustness and secure operation, we systematically tested the system’s response to invalid inputs and enforced preconditions across all critical functions. 
+The results of these tests are summarised in Table~\ref{tab:eval-security-invalid}.
+We verified that the contract correctly rejects invalid attempts to reveal a price during delivery confirmation. Several test cases were executed:
+
+\paragraph{Wrong Reveal Test.}
+Providing a wrong value (with correct blinding), a wrong blinding (with correct value), or both incorrect parameters resulted in transaction
+reverts as expected.
+Only when both the value and blinding factor were correct did the transaction succeed. 
+Comprehensive testing covered multiple incorrect value scenarios (including off-by-one, multiplication, zero, and large arbitrary values) and blinding scenarios (zero, maximum, and random blindings). 
+In all cases, invalid reveals were rejected with a 100\% accuracy rate.
+
+\paragraph{Out-of-Phase Calls.}
+The contract’s phase discipline was validated by attempting to call functions in inappropriate lifecycle
+phases (e.g., confirming an order before a purchase, revealing delivery before order confirmation, setting a transporter before purchase). 
+Each invalid call correctly reverted with a custom error (e.g., \texttt{WrongPhase()}, \texttt{TransporterNotSet()}). 
+Additional checks confirmed that zero commitments were rejected (\texttt{ZeroPriceCommitment} error) and that double purchase attempts were blocked (\texttt{AlreadyPurchased} error).
+
+\begin{table}[H]
+  \centering
+  \small
+  \caption{Security test results: invalid input handling.}
+  \label{tab:eval-security-invalid}
+  \begin{tabularx}{\textwidth}{>{\raggedright\arraybackslash}X >{\raggedright\arraybackslash}p{4cm} >{\raggedright\arraybackslash}p{3cm}}
+    \toprule
+    \textbf{Test Scenario} & \textbf{Expected Behaviour} & \textbf{Result} \\
+    \midrule
+    Wrong value $v$ in reveal & Revert & \checkmark Reverted \\
+    Wrong blinding $b$ in reveal & Revert & \checkmark Reverted \\
+    \texttt{confirmOrderWithCommitment} before purchase & Revert (wrong phase) & \checkmark Reverted \\
+    \texttt{revealAndConfirmDelivery} before order confirmed & Revert (wrong phase) & \checkmark Reverted \\
+    \texttt{setTransporter} in Listed phase & Revert (wrong phase) & \checkmark Reverted \\
+    \bottomrule
+  \end{tabularx}
+\end{table}
+
+\paragraph{Transaction Verification Tests.}
+We tested that the system correctly emits and verifies transaction commitment events for both purchase and delivery workflows:
+\begin{itemize}
+  \item The \texttt{PurchaseConfirmedWithCommitment} event is emitted when \texttt{confirmOrderWith\-Commitment} is called with a non-zero purchase commitment. The event parameters (productId, commitment, buyer, vcCID) match the VC commitment. Verification correctly succeeds for matching commitments and fails for wrong commitments or wrong VC CIDs.
+  \item The \texttt{DeliveryConfirmedWithCommitment} event behaves similarly for delivery commitments, with correct parameter matching and failure on mismatches.
+  \item \textbf{Backward compatibility} was verified by ensuring the system functions correctly when zero commitments are provided (no events emitted), maintaining compatibility with deployments that do not use transaction-hash commitments.
+  \item An \textbf{end-to-end workflow} from purchase through delivery was validated, demonstrating that the complete transaction verification process works as intended in realistic scenarios.
+\end{itemize}
+
+All transaction verification tests (10 test cases) passed successfully, confirming that purchase and delivery transactions can be verified on-chain via commitment events without revealing the actual transaction hashes.
+
+\subsection{VC Integrity Verification}
+\label{subsec:eval-vc-integrity}
+
+To ensure the integrity of verifiable credentials (VCs) and their associated provenance chains, we tested the system’s ability to detect tampering and signature forgery. 
+The results of these tests are summarised in Table~\ref{tab:eval-security-vc}.
+
+\paragraph{Tampered VC Test.}
+The VC integrity verification tests confirmed that any modification of a VC’s content results in a new content identifier (CID), making tampering immediately detectable. 
+When an attempt is made to update the on-chain VC pointer (\texttt{vcCid}) with a tampered credential, the original CID stored on-chain remains unchanged, and auditors are able to identify the discrepancy by comparing CIDs.
+
+\paragraph{Tampered Provenance Link Test.}
+We also validated the system’s response to modifications in provenance links. If an entry in the \texttt{componentCredentials[]} array is altered to reference a different or invalid CID, traversal of the provenance chain fails at the mutated link. 
+This allows auditors to quickly flag inconsistencies and identify tampered references during chain reconstruction.
+
+\paragraph{Signature Verification Test.}
+Signature verification was rigorously tested using both invalid and valid VC signatures. 
+Credentials with invalid issuer or holder signatures were consistently rejected, while those with valid signatures were accepted without issue. 
+This ensures that all VCs in the system are both tamper-evident and unforgeable.
+
+\begin{table}[H]
+  \centering
+  \small
+  \caption{Security test results: VC integrity verification.}
+  \label{tab:eval-security-vc}
+  \begin{tabularx}{\textwidth}{>{\raggedright\arraybackslash}X >{\raggedright\arraybackslash}p{4cm} >{\raggedright\arraybackslash}p{3cm}}
+    \toprule
+    \textbf{Test Scenario} & \textbf{Expected Behaviour} & \textbf{Result} \\
+    \midrule
+    Tampered VC (CID changed) & Detected (CID mismatch) & \checkmark Detected \\
+    Tampered provenance link (\texttt{componentCredentials[]}) & Detected (CID mismatch) & \checkmark Detected \\
+    Invalid issuer signature & Rejected & \checkmark Rejected \\
+    Invalid holder signature & Rejected & \checkmark Rejected \\
+    Valid signatures & Accepted & \checkmark Accepted \\
+    \bottomrule
+  \end{tabularx}
+\end{table}
+
+
+\section{Discussion}
+\label{sec:eval-discussion}
+
+This section interprets the evaluation results and ties them back to design choices from Chapter~\ref{chapter:concept_and_design}.
+
+\subsection{Interpretation of Results}
+\label{subsec:eval-interpretation}
+
+The evaluation indicates that the chosen design improves efficiency, privacy, and auditability without sacrificing practical performance.
+
+\paragraph{Gas Efficiency.}
+The adoption of EIP-1167 minimal proxies for contract deployment results in a large reduction in gas costs: a \textbf{92.32\%} saving compared to full contract deployment. 
+This makes it economically feasible to deploy individual escrow contracts for each product. 
+By storing only cryptographic anchors on-chain and keeping full verifiable credentials off-chain, the system achieves an additional \textbf{90.75\%} gas savings relative to a naïve approach that stores all VC data directly on-chain. 
+The use of event-driven indexing, rather than on-chain storage arrays, further minimises gas consumption associated with state queries, while simultaneously enabling flexible and scalable off-chain indexing.
+
+\paragraph{Proof Performance.}
+Bulletproofs range proofs were found to perform well within practical constraints for the prototype’s use case. 
+The typical proof size of \textbf{672 bytes} for 64-bit value commitments is acceptable for off-chain storage and IPFS uploads. 
+Proof generation times, with a median of \textbf{196 ms}, are suitable for seller workflows such as Stage S0 VC creation, and proof verification completes in just \textbf{55.6 ms}, fast enough to support real-time auditor verification without introducing significant latency. 
+The trade-off of larger proof sizes compared to SNARKs is justified by the elimination of trusted-setup requirements, thereby simplifying operations and reducing security risks.
+
+\paragraph{Privacy Guarantees.}
+The privacy objectives articulated in Chapter~\ref{chapter:concept_and_design} are fully realised in the implementation. 
+No plaintext price or transaction hash is ever stored on-chain or emitted in events; only commitments and protocol metadata are publicly visible. 
+Off-chain, verifiable credentials contain only cryptographic commitments, zero-knowledge proofs, and binding tags, with no exposure of sensitive business data. 
+The only residual privacy leakage is the visibility of on-chain payment amounts (\texttt{msg.value}) in the public payment flow, a limitation noted in the threat model and targeted for future mitigation through privacy-preserving payment adapters such as Railgun (see §\ref{sec:private-transfers}).
+
+\paragraph{Auditor Verification.}
+End-to-end verification by external auditors is both practical and scalable. 
+The total time required to verify a complete product lifecycle (S0 → S1 → S2) is approximately \textbf{152 ms}, enabling near real-time assurance of compliance. 
+The verification process scales linearly with the length of the credential chain, remaining efficient even for extended provenance histories involving ten or more credentials. 
+The use of IPFS gateway caching further accelerates repeated verifications, reducing fetch times by nearly half in cached scenarios.
+
+\FloatBarrier
+
+Overall, the results indicate that the system’s architectural and cryptographic choices balance efficiency, privacy, and verifiability, and provide a robust foundation for privacy-preserving, auditable supply-chain traceability.
+\subsection{Design Trade-offs}
+\label{subsec:eval-tradeoffs}
+
+In light of the evaluation results, we revisit the major design trade-offs identified in Section~\ref{sec:concept-tradeoffs} and assess their impact on system performance, privacy, and usability.
+
+\paragraph{Deterministic vs.\ Random Blinding.}
+We opted to derive the blinding factor deterministically using public protocol context, including the chain identifier, escrow address, product identifier, and stage, as detailed in Section~\ref{subsec:impl-price-commitments}. 
+This approach yields a significant benefit: both the seller and buyer can independently recompute the commitment without the need for out-of-band key exchange, ensuring consistency across all verifiable-credential stages. 
+While deterministic blinding is based on public inputs, this does not compromise the hiding property of Pedersen commitments under the discrete logarithm assumption for the chosen elliptic-curve group. 
+Our privacy analysis confirms that commitments remain hiding despite deterministic blinding, with no evidence of additional leakage observed in practice.
+
+\paragraph{Off-Chain vs.\ On-Chain ZKP Verification.}
+The decision to perform zero-knowledge proof verification on a dedicated backend, rather than on-chain, was driven by the need to minimise gas costs and optimise performance. 
+Off-chain verification eliminates the gas overhead associated with on-chain proof checking, with each verification operation completing in a median of \textbf{55.6 ms} on our backend. 
+Although this approach introduces a requirement to trust the correctness of the backend, this risk is mitigated by exposing public verification endpoints that allow independent validation. 
+The gas savings achieved through this design are detailed in Section~\ref{subsec:eval-gas}, and verification performance is reported in Section~\ref{subsec:eval-proofs}.
+
+\paragraph{Bulletproofs vs.\ SNARKs.}
+Our choice to employ Bulletproofs for range proofs reflects a preference for minimising trust assumptions. 
+Bulletproofs eliminate the need for a trusted-setup ceremony, reducing both operational complexity and security risk. 
+The primary trade-off is a larger proof size (\textbf{672 bytes} for Bulletproofs) compared to Groth16 SNARKs (typically around \textbf{192 bytes}). 
+However, as proofs are stored off-chain, this size difference does not materially impact gas costs or on-chain storage requirements. 
+The evaluation of proof performance is presented in Section~\ref{subsec:eval-proofs}, and a comparative analysis with SNARKs is included in Table~\ref{tab:eval-proof-comparison}.
+
+\FloatBarrier
+
+These trade-offs, evaluated in the context of our implementation, demonstrate that our design choices effectively balance efficiency, privacy, trust assumptions, and usability in a practical, auditable supply-chain system.
+
+\subsection{Requirements Fulfilment}
+\label{subsec:eval-requirements-fulfillment}
+
+The results of our evaluation confirm that all functional and non-functional requirements from Section~\ref{sec:concept-requirements} are met by the implemented system. 
+As summarised in Table~\ref{tab:eval-requirements}, the functional requirements—including support for staged product lifecycles, robust workflow management, and comprehensive audit and verification procedures—are fully satisfied, as demonstrated by the test results reported in this chapter.
+
+In addition, the system achieves all non-functional requirements. 
+Confidentiality is maintained throughout by leveraging cryptographic commitments and zero-knowledge proofs to protect sensitive data. 
+Gas efficiency is realised through the use of minimal on-chain storage and event-driven indexing, as documented in Section~\ref{subsec:eval-gas}. 
+The modular architecture facilitates separation of concerns among smart contracts, backend services, and user interfaces, while indexability is supported by the anchor-based design and use of content-addressed credentials. 
+Finally, user-experience clarity is achieved by abstracting cryptographic operations from end users and providing clear, role-specific feedback and error messages.
+
+\FloatBarrier
+
+Collectively, these results demonstrate that the system not only meets its initial design objectives but also satisfies the practical considerations necessary for secure, efficient, and auditable supply-chain traceability.
+
+\subsection{Answering the Research Questions}
+\label{subsec:eval-rq-answers}
+
+We now revisit the research questions articulated in Section~\ref{sec:research-questions}, interpreting the evaluation results in light of the system’s objectives and design.
+
+\paragraph{RQ1: VC-based traceability across EV battery transformations.}
+The first research question asked whether a verifiable-credential schema and chaining model can provide end-to-end traceability across typical EV battery supply-chain transformations, without modelling products as on-chain assets. 
+The functional correctness tests detailed in Section~\ref{subsec:eval-functional} confirm that the implemented VC schema and chaining logic support all required lifecycle stages (S0 → S1 → S2), as well as operations such as assembly. 
+Furthermore, the auditor workflow evaluation in Section~\ref{subsec:eval-auditor} demonstrates that an auditor can reconstruct complete product histories and verify digital signatures and credential chaining using only the VC payloads, on-chain anchors, and IPFS-resident data. 
+Combined with the comprehensive requirements coverage in Section~\ref{subsec:eval-requirements-fulfillment}, these findings provide strong evidence that RQ1 is positively satisfied for the modelled transformations and chain lengths evaluated in this prototype.
+
+\paragraph{RQ2: Hiding prices and transaction identifiers with commitments and Bulletproofs.}
+The second question considered the effectiveness of Pedersen commitments and Bulletproofs in hiding prices and transaction identifiers from public artefacts, while still allowing verifiers to check necessary constraints and bindings. 
+The privacy analysis in Section~\ref{subsec:eval-privacy} establishes that no plaintext prices or transaction hashes appear in contract storage, events, or VC JSON; all public artefacts are limited to commitments, binding tags, and proof metadata. 
+Security validation in Sections~\ref{subsec:eval-replay-swap}--\ref{subsec:eval-vc-integrity} confirms that attempted attacks are reliably detected and rejected. These include proof reuse with incorrect binding tags, swapping commitments between products, and tampering with VC content.
+These results affirm that the implemented binding between commitments, Bulletproofs, and VC context operates as designed. 
+While Sections~\ref{subsec:eval-privacy} and~\ref{subsec:eval-limitations} acknowledge residual leakage from public payment amounts and network-level metadata, we conclude that RQ2 is affirmatively answered for the privacy and binding properties of the traceability layer, subject to these stated limitations.
+
+\paragraph{RQ3: Cost and performance impact compared to naïve baselines.}
+The third research question asked about the gas, storage, and performance implications of introducing commitments and Bulletproof-based proofs into the escrow-based marketplace, relative to naïve baselines.
+As shown in Section~\ref{subsec:eval-gas}, storing only anchors (commitments and CIDs) results in substantial savings in both storage space and gas fees compared to a naïve on-chain VC storage design, while still enabling full verifiability through off-chain reconstruction.
+The proof performance results in Section~\ref{subsec:eval-proofs} indicate that Bulletproof generation and verification times are on the order of tens of milliseconds for 64-bit ranges on commodity hardware, which is acceptable for interactive use in backends and auditor tools. 
+These findings demonstrate that the introduction of a cryptographic privacy layer entails manageable computational overhead while substantially improving on-chain efficiency, confirming a positive answer to RQ3.
+
+\paragraph{RQ4: Auditor verifiability and robustness against tampering.}
+The fourth question considered whether auditors and stakeholders can, relying solely on public chain data, IPFS, and the proof backend, reconstruct product histories and verify both provenance and price-related constraints, while remaining robust against misbinding and tampering. 
+As demonstrated in Section~\ref{subsec:eval-auditor}, the auditor verification workflow enables a complete product lifecycle (S0 → S1 → S2) to be verified in approximately 150~milliseconds. This encompasses credential retrieval, signature verification, commitment and binding-tag checks, and Bulletproof verification.
+Security validation tests in Sections~\ref{subsec:eval-replay-swap}--\ref{subsec:eval-vc-integrity} show that tampered VCs, mismatched commitments, and wrong binding contexts are reliably detected. 
+Taken together with the requirements mapping in Section~\ref{subsec:eval-requirements-fulfillment}, these results provide compelling evidence that RQ4 is satisfied, under the assumptions regarding IPFS availability and backend correctness discussed in Section~\ref{subsec:eval-limitations}.
+
+\subsection{Limitations and Future Work}
+\label{subsec:eval-limitations}
+
+While the evaluation results demonstrate that the system fulfils its core objectives, several limitations remain and serve as avenues for future research and development.
+
+\paragraph{Current Limitations.}
+The most significant current limitation is the visibility of payment amounts on-chain. 
+In the public payment flow, the transaction amount (\texttt{msg.value}) remains exposed, potentially allowing observers to infer sensitive business information. 
+Although cryptographic commitments and zero-knowledge proofs successfully hide prices and transaction identifiers within the traceability layer, full payment privacy will require the integration of privacy-preserving transfer systems such as Railgun, as discussed in Section~\ref{sec:private-transfers}.
+
+Another limitation is the reliance on a server-side backend for zero-knowledge proof (ZKP) verification. 
+While this approach minimises on-chain gas costs and simplifies implementation, it introduces a dependency on backend availability and trustworthiness. 
+In the future, implementing a browser-based WebAssembly (WASM) verifier would enable auditors to conduct ZKP verification independently, further decentralising the audit process and reducing reliance on centralised infrastructure.
+
+The system’s dependence on IPFS gateway availability is also a consideration. 
+Although multi-pinning strategies help mitigate data-availability risks, verification workflows ultimately rely on the accessibility of off-chain credential data. 
+Further work is needed to ensure robust data persistence and to explore additional redundancy mechanisms.
+
+\FloatBarrier
+
+\paragraph{Future Work.}
+Several avenues for future work are identified to address these limitations and extend system capabilities. 
+Integrating Railgun or a similar privacy protocol would enable fully private payment flows while preserving attestation features. 
+The development of a WASM-based ZKP verifier would facilitate browser-based, decentralised verification for auditors. 
+Additional performance optimisations could be achieved through further gas savings, improved storage-packing strategies, and refinements to event design. 
+Finally, the system’s scalability should be evaluated in scenarios involving larger provenance chains (e.g., 50 or more verifiable credentials) and concurrent product transactions, to ensure continued performance and reliability in real-world, high-throughput environments.
+
+\FloatBarrier

@@ -1,6 +1,6 @@
 // src/utils/web3Utils.js
 
-import { JsonRpcProvider, BrowserProvider, Wallet, Contract } from "ethers";
+import { JsonRpcProvider, BrowserProvider, Wallet, Contract, getBytes, hexlify } from "ethers";
 import Web3 from "web3";
 import ProductEscrowArtifact from "../abis/ProductEscrow_Initializer.json";
 
@@ -10,7 +10,10 @@ export const ethersProvider = new JsonRpcProvider(
 );
 
 // 2) Confirm order on-chain
-export async function confirmOrder(escrowAddress, newCid, vcHash) {
+// @param escrowAddress - The escrow contract address
+// @param newCid - The VC CID to store
+// @param purchaseTxHashCommitment - Optional purchase TX hash commitment (bytes32 hex string with 0x prefix)
+export async function confirmOrder(escrowAddress, newCid, purchaseTxHashCommitment) {
   let signer;
   if (window.ethereum) {
     await window.ethereum.request({ method: "eth_requestAccounts" });
@@ -35,19 +38,42 @@ export async function confirmOrder(escrowAddress, newCid, vcHash) {
     console.log("[confirmOrder] Current phase:", phase.toString());
     console.log("[confirmOrder] Contract owner:", owner);
     console.log("[confirmOrder] Current user:", await signer.getAddress());
-    console.log("[confirmOrder] Arguments:", newCid, vcHash);
+    console.log("[confirmOrder] Arguments:", newCid, purchaseTxHashCommitment);
   } catch (err) {
     console.warn("[confirmOrder] Could not fetch contract state:", err);
   }
-  // Try calling with or without vcHash depending on contract signature
+  
   try {
     let tx;
-    if (typeof vcHash !== 'undefined') {
-      tx = await escrow.confirmOrder(newCid, vcHash);
+    // Always use confirmOrderWithCommitment if available (preferred function)
+    const hasCommitmentFunction = typeof escrow.confirmOrderWithCommitment === 'function';
+    
+    if (hasCommitmentFunction) {
+      // Ensure commitment is properly formatted as bytes32
+      // Default to zero bytes32 if not provided or is zero
+      let commitmentHex = purchaseTxHashCommitment || "0x0000000000000000000000000000000000000000000000000000000000000000";
+      
+      if (!commitmentHex.startsWith('0x')) {
+        commitmentHex = `0x${commitmentHex}`;
+      }
+      
+      // Ensure it's exactly 32 bytes (64 hex chars + 0x = 66 chars)
+      const commitmentBytes = getBytes(commitmentHex);
+      if (commitmentBytes.length !== 32) {
+        // Pad or truncate to 32 bytes
+        const padded = new Uint8Array(32);
+        padded.set(commitmentBytes.slice(0, 32), 0);
+        commitmentHex = hexlify(padded);
+      }
+      
+      console.log("[confirmOrder] Calling confirmOrderWithCommitment with commitment:", commitmentHex);
+      tx = await escrow.confirmOrderWithCommitment(newCid, commitmentHex);
     } else {
+      // Fallback to regular confirmOrder only if confirmOrderWithCommitment doesn't exist
+      console.log("[confirmOrder] confirmOrderWithCommitment not available, falling back to confirmOrder");
       tx = await escrow.confirmOrder(newCid);
     }
-    return tx.wait();
+    return tx;
   } catch (err) {
     console.error("[confirmOrder] Error calling confirmOrder:", err);
     throw err;

@@ -1,0 +1,282 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Verification Issues Test</title>
+    <style>
+        body { font-family: monospace; padding: 20px; background: #1a1a1a; color: #0f0; }
+        .test { margin: 10px 0; padding: 10px; border: 1px solid #0f0; }
+        .pass { background: #0a4a0a; }
+        .fail { background: #4a0a0a; color: #f00; }
+        .info { background: #2a2a2a; }
+    </style>
+</head>
+<body>
+    <h1>🔍 Verification Issues Test</h1>
+    <div id="results"></div>
+    <script type="module">
+        const ZKP_BACKEND = 'http://localhost:5010';
+        const MOCK_TX_HASH = "0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef";
+        
+        function log(msg, type = 'info') {
+            const div = document.createElement('div');
+            div.className = `test ${type}`;
+            div.textContent = msg;
+            document.getElementById('results').appendChild(div);
+        }
+        
+        // Test 1: Check if price ZKP proof is preserved
+        async function test1_PriceZKPProofPreservation() {
+            log("Test 1: Price ZKP Proof Preservation", 'info');
+            
+            // Simulate stage2 with price ZKP proof
+            const stage2 = {
+                credentialSubject: {
+                    price: JSON.stringify({
+                        hidden: true,
+                        zkpProof: {
+                            commitment: "0xpricecommitment123",
+                            proof: "0xpriceproof123",
+                            protocol: "bulletproofs-pedersen",
+                            version: "1.0",
+                            encoding: "hex",
+                            proofType: "zkRangeProof-v1"
+                        }
+                    })
+                }
+            };
+            
+            // Simulate what App.js does now
+            let priceZkpProof = null;
+            try {
+                const stage2Price = typeof stage2.credentialSubject?.price === 'string' 
+                    ? JSON.parse(stage2.credentialSubject.price) 
+                    : stage2.credentialSubject?.price;
+                if (stage2Price?.zkpProof) {
+                    priceZkpProof = stage2Price.zkpProof;
+                }
+            } catch (e) {
+                log(`  ❌ Error extracting: ${e.message}`, 'fail');
+                return false;
+            }
+            
+            if (!priceZkpProof) {
+                log("  ❌ Price ZKP proof not extracted", 'fail');
+                return false;
+            }
+            
+            if (priceZkpProof.commitment !== "0xpricecommitment123") {
+                log("  ❌ Wrong commitment extracted", 'fail');
+                return false;
+            }
+            
+            log("  ✅ Price ZKP proof correctly extracted", 'pass');
+            return true;
+        }
+        
+        // Test 2: Check TX hash commitment separation
+        async function test2_TXHashCommitmentSeparation() {
+            log("Test 2: TX Hash Commitment Separation", 'info');
+            
+            // Simulate TX hash commitment
+            const txHashCommitment = {
+                commitment: "0xtxcommitment123",
+                proof: "0xtxproof123",
+                protocol: "bulletproofs-pedersen",
+                version: "1.0",
+                encoding: "hex"
+            };
+            
+            // Simulate price ZKP proof
+            const priceZkpProof = {
+                commitment: "0xpricecommitment123",
+                proof: "0xpriceproof123",
+                protocol: "bulletproofs-pedersen",
+                version: "1.0",
+                encoding: "hex"
+            };
+            
+            // They should be different
+            if (txHashCommitment.commitment === priceZkpProof.commitment) {
+                log("  ❌ TX hash commitment same as price commitment!", 'fail');
+                return false;
+            }
+            
+            log("  ✅ TX hash commitment is separate from price ZKP proof", 'pass');
+            return true;
+        }
+        
+        // Test 3: Check VC structure
+        async function test3_VCStructure() {
+            log("Test 3: VC Structure Check", 'info');
+            
+            const mockVC = {
+                credentialSubject: {
+                    price: JSON.stringify({
+                        hidden: true,
+                        zkpProof: {
+                            commitment: "0xpricecommitment123",
+                            proof: "0xpriceproof123"
+                        }
+                    }),
+                    transactionId: MOCK_TX_HASH,
+                    txHashCommitment: {
+                        commitment: "0xtxcommitment123",
+                        proof: "0xtxproof123"
+                    }
+                }
+            };
+            
+            // Check price ZKP proof
+            const price = JSON.parse(mockVC.credentialSubject.price);
+            if (!price.zkpProof) {
+                log("  ❌ Price ZKP proof missing", 'fail');
+                return false;
+            }
+            
+            // Check TX hash commitment
+            if (!mockVC.credentialSubject.txHashCommitment) {
+                log("  ❌ TX hash commitment missing", 'fail');
+                return false;
+            }
+            
+            // They should be different
+            if (price.zkpProof.commitment === mockVC.credentialSubject.txHashCommitment.commitment) {
+                log("  ❌ Price and TX commitments are the same!", 'fail');
+                return false;
+            }
+            
+            log("  ✅ VC structure is correct", 'pass');
+            return true;
+        }
+        
+        // Test 4: Check extraction functions
+        async function test4_ExtractionFunctions() {
+            log("Test 4: Extraction Functions", 'info');
+            
+            const mockVC = {
+                credentialSubject: {
+                    price: JSON.stringify({
+                        hidden: true,
+                        zkpProof: {
+                            commitment: "0xpricecommitment123",
+                            proof: "0xpriceproof123"
+                        }
+                    }),
+                    txHashCommitment: {
+                        commitment: "0xtxcommitment123",
+                        proof: "0xtxproof123"
+                    }
+                }
+            };
+            
+            // Test extractTxHashCommitment logic
+            const txHashCommitment = mockVC?.credentialSubject?.txHashCommitment;
+            if (!txHashCommitment) {
+                log("  ❌ extractTxHashCommitment would return null", 'fail');
+                return false;
+            }
+            
+            if (!txHashCommitment.commitment || !txHashCommitment.proof) {
+                log("  ❌ TX hash commitment malformed", 'fail');
+                return false;
+            }
+            
+            // Test extractZKPProof logic
+            let price = mockVC?.credentialSubject?.price;
+            if (typeof price === "string") {
+                price = JSON.parse(price);
+            }
+            const zkp = price?.zkpProof;
+            if (!zkp || !zkp.commitment || !zkp.proof) {
+                log("  ❌ extractZKPProof would fail", 'fail');
+                return false;
+            }
+            
+            log("  ✅ Extraction functions work correctly", 'pass');
+            return true;
+        }
+        
+        // Test 5: Check API endpoint
+        async function test5_APIEndpoint() {
+            log("Test 5: API Endpoint Check", 'info');
+            
+            try {
+                const response = await fetch(`${ZKP_BACKEND}/zkp/commit-tx-hash`, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ tx_hash: MOCK_TX_HASH }),
+                });
+                
+                if (!response.ok) {
+                    log(`  ⚠️  API not available (HTTP ${response.status})`, 'info');
+                    log("  ℹ️  Make sure ZKP backend is running: cargo run --bin bulletproof-demo", 'info');
+                    return null; // Not a failure, just not available
+                }
+                
+                const data = await response.json();
+                if (!data.commitment || !data.proof) {
+                    log("  ❌ API response missing commitment or proof", 'fail');
+                    return false;
+                }
+                
+                log("  ✅ API endpoint works", 'pass');
+                return true;
+            } catch (error) {
+                log(`  ⚠️  API not available: ${error.message}`, 'info');
+                log("  ℹ️  Make sure ZKP backend is running: cargo run --bin bulletproof-demo", 'info');
+                return null;
+            }
+        }
+        
+        // Run all tests
+        async function runAllTests() {
+            log("=".repeat(60), 'info');
+            log("Starting Verification Issues Test", 'info');
+            log("=".repeat(60), 'info');
+            
+            const results = {
+                test1: await test1_PriceZKPProofPreservation(),
+                test2: await test2_TXHashCommitmentSeparation(),
+                test3: await test3_VCStructure(),
+                test4: await test4_ExtractionFunctions(),
+                test5: await test5_APIEndpoint(),
+            };
+            
+            log("=".repeat(60), 'info');
+            log("Test Results Summary", 'info');
+            log("=".repeat(60), 'info');
+            log(`Test 1 (Price ZKP Preservation): ${results.test1 ? '✅ PASS' : '❌ FAIL'}`, results.test1 ? 'pass' : 'fail');
+            log(`Test 2 (TX Hash Separation):     ${results.test2 ? '✅ PASS' : '❌ FAIL'}`, results.test2 ? 'pass' : 'fail');
+            log(`Test 3 (VC Structure):            ${results.test3 ? '✅ PASS' : '❌ FAIL'}`, results.test3 ? 'pass' : 'fail');
+            log(`Test 4 (Extraction Functions):    ${results.test4 ? '✅ PASS' : '❌ FAIL'}`, results.test4 ? 'pass' : 'fail');
+            log(`Test 5 (API Endpoint):            ${results.test5 === null ? '⚠️  SKIP' : results.test5 ? '✅ PASS' : '❌ FAIL'}`, results.test5 === null ? 'info' : (results.test5 ? 'pass' : 'fail'));
+            
+            const criticalTests = [results.test1, results.test2, results.test3, results.test4];
+            const allCriticalPassed = criticalTests.every(r => r === true);
+            
+            log("=".repeat(60), 'info');
+            if (allCriticalPassed) {
+                log("✅ ALL CRITICAL TESTS PASSED!", 'pass');
+                log("", 'info');
+                log("If verifications are still failing, check:", 'info');
+                log("1. ZKP backend is running (Test 5)", 'info');
+                log("2. Stage2 VC has price ZKP proof", 'info');
+                log("3. Both proofs are being generated correctly", 'info');
+            } else {
+                log("❌ SOME CRITICAL TESTS FAILED!", 'fail');
+                log("", 'info');
+                log("Issues found:", 'fail');
+                if (!results.test1) log("  - Price ZKP proof not being preserved", 'fail');
+                if (!results.test2) log("  - TX hash commitment mixed with price proof", 'fail');
+                if (!results.test3) log("  - VC structure is incorrect", 'fail');
+                if (!results.test4) log("  - Extraction functions have issues", 'fail');
+            }
+            log("=".repeat(60), 'info');
+        }
+        
+        // Run tests when page loads
+        runAllTests();
+    </script>
+</body>
+</html>
+

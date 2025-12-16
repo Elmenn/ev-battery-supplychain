@@ -1,0 +1,49 @@
+{
+  "@context": [
+    "https://www.w3.org/2018/credentials/v1"
+  ],
+  "id": "https://example.edu/credentials/uuid-placeholder",
+  "type": [
+    "VerifiableCredential"
+  ],
+  "schemaVersion": "1.0",
+  "issuer": {
+    "id": "did:ethr:11155111:0x88dcDCfB5e330049597003D41eF8E744Fa613E68",
+    "name": "Seller"
+  },
+  "holder": {
+    "id": "did:ethr:11155111:0x90DD9aBf619f63494B3711120A309a6573d4ACeA",
+    "name": "Buyer"
+  },
+  "issuanceDate": "2025-11-17T23:04:11.508Z",
+  "credentialSubject": {
+    "id": "did:ethr:11155111:0x90DD9aBf619f63494B3711120A309a6573d4ACeA",
+    "productName": "Battery",
+    "batch": "",
+    "quantity": 1,
+    "subjectDetails": {
+      "productContract": "0xc448142dF27D18A7bE5a439589320429AB18855c"
+    },
+    "previousCredential": "QmeSTHELtvN6jjtEp58uMLVTfGqwc53Ts9UE4aa6j2Y2Ub",
+    "componentCredentials": [],
+    "transactionId": "",
+    "certificateCredential": {
+      "name": "",
+      "cid": ""
+    },
+    "price": "{\"hidden\":true}"
+  },
+  "proof": [],
+  "proofs": {
+    "issuerProof": {
+      "type": "EcdsaSecp256k1Signature2019",
+      "created": "2025-11-17T23:12:08.143Z",
+      "proofPurpose": "assertionMethod",
+      "verificationMethod": "did:ethr:11155111:0x88dcdcfb5e330049597003d41ef8e744fa613e68",
+      "jws": "0x277b47ca8e337958c4c606189a0b581c739cedb8749dd1276a5d334eb396b44f11ef20dee7aa90e7d6f4d3e0ca6943b0afaaec619fa86e261572a0421c530ae61b",
+      "payloadHash": "0xdc6bf8dde6d198ec21e35a3503c4dcc906e82506081940993e7791d9ab043552",
+      "role": "seller"
+    }
+  }
+}
+

@@ -93,6 +93,20 @@ module.exports = function override(config, env) {
     ]
   });
 
+  // CRITICAL: Exclude TypeScript files in railgun directory from ALL processing
+  // This must come BEFORE any other rules that might process TS files
+  // Add this rule at the beginning with high priority
+  if (!config.module.rules.find(rule => rule.test && rule.test.toString().includes('railgun'))) {
+    config.module.rules.unshift({
+      test: /\.ts$/,
+      include: [path.resolve(__dirname, 'src/lib/railgun')],
+      use: {
+        loader: path.resolve(__dirname, 'scripts/null-loader.js')
+      },
+      enforce: 'pre' // Run before other loaders
+    });
+  }
+
   // Fix webpack module resolution issues
   config.resolve.modules = ['node_modules'];
   
@@ -109,6 +123,72 @@ module.exports = function override(config, env) {
     /json-canonicalize/,
     /src\//
   ];
+
+  // CRITICAL: Exclude TypeScript files in railgun directory from being processed during build
+  // These files will be loaded via dynamic imports at runtime (after TS compilation or conversion to JS)
+  // This prevents webpack from trying to statically analyze TS files during build
+  
+  // Method 1: Use IgnorePlugin to ignore .ts files in railgun directory
+  config.plugins.push(
+    new webpack.IgnorePlugin({
+      resourceRegExp: /\.ts$/,
+      contextRegExp: /[\\/]lib[\\/]railgun[\\/]/
+    })
+  );
+  
+  // Method 2: Exclude TypeScript files from module resolution (backup)
+  // Remove .ts and .tsx from extensions so webpack won't try to resolve them
+  if (config.resolve.extensions) {
+    config.resolve.extensions = config.resolve.extensions.filter(ext => ext !== '.ts' && ext !== '.tsx');
+  }
+  
+  // Method 3: Use NormalModuleReplacementPlugin to replace TS files with empty modules
+  // This prevents webpack from trying to process them while still allowing the build to complete
+  const railgunTSFiles = [
+    'core/init',
+    'core/prover',
+    'core/engine',
+    'core/load-provider',
+    'core/artifacts',
+    'core/providers',
+    'core/merkletree',
+    'core/shields',
+    'wallets/wallets',
+    'wallets/balances',
+    'wallets/balance-update',
+    'transactions/tx-transfer',
+    'transactions/tx-shield',
+    'transactions/tx-unshield',
+    'transactions/tx-generator',
+    'transactions/tx-notes',
+    'transactions/tx-nullifiers',
+    'transactions/tx-gas-details',
+    'transactions/tx-cross-contract-calls',
+    'transactions/proof-cache',
+    'transactions/tx-proof-transfer',
+    'transactions/tx-proof-unshield',
+    'quick-sync/quick-sync-events',
+    'quick-sync/graph-query',
+    'quick-sync/shared-formatters',
+    'railgun-txids/railgun-txid-sync-graph-v2',
+    'railgun-txids/index',
+    'railgun-txids/blinded-commitments',
+    'railgun-txids/railgun-txid-merkletrees',
+    'railgun-txids/railgun-txid-graph-type-formatters',
+    'railgun-txids/tail-guards',
+    'history/transaction-history',
+    'process/extract-transaction-data',
+    'contract-query',
+  ];
+  
+  railgunTSFiles.forEach(file => {
+    config.plugins.push(
+      new webpack.NormalModuleReplacementPlugin(
+        new RegExp(`^.*lib/railgun/${file}\\.ts$`),
+        path.resolve(__dirname, 'src/lib/railgun-stub.js')
+      )
+    );
+  });
 
   // Fix webpack dev server deprecation warnings
   if (config.devServer) {

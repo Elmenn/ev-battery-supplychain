@@ -1,4 +1,4 @@
-import { ethers, getAddress, solidityPackedKeccak256 } from "ethers";
+import { getAddress, solidityPackedKeccak256 } from "ethers";
 
 /**
  * Generate deterministic blinding factor for Pedersen commitment
@@ -250,6 +250,62 @@ export function generateBindingTag({
       ]
     );
   }
+
+  // Remove 0x prefix and return as hex string (64 chars)
+  return bindingTag.slice(2);
+}
+
+/**
+ * Generate binding tag for TX hash commitments (Feature 2: Linkable Commitment)
+ * This creates a deterministic binding tag that links purchase and delivery TX commitments
+ * 
+ * @param {string|number} chainId - Chain ID (e.g., 11155111 for Sepolia, 1337 for local)
+ * @param {string} escrowAddr - Product escrow contract address (checksummed)
+ * @param {string|number|bigint} productId - Product ID from contract
+ * @param {string} buyerAddress - Buyer's EOA address (checksummed)
+ * @returns {string} - 32-byte hex string (64 hex chars, no 0x prefix) for binding tag
+ */
+export function generateTxHashCommitmentBindingTag({
+  chainId,
+  escrowAddr,
+  productId,
+  buyerAddress,
+}) {
+  // Validate required parameters
+  if (!chainId || !escrowAddr || productId === undefined || productId === null || !buyerAddress) {
+    throw new Error("chainId, escrowAddr, productId, and buyerAddress are required for TX hash commitment binding tag");
+  }
+
+  // Normalize addresses
+  const normalizedEscrow = getAddress(escrowAddr);
+  const normalizedBuyer = getAddress(buyerAddress);
+  
+  // Convert chainId to number
+  const chainIdNum = typeof chainId === 'string' ? parseInt(chainId, 10) : Number(chainId);
+  if (isNaN(chainIdNum)) {
+    throw new Error(`Invalid chainId: ${chainId}. Must be a valid number`);
+  }
+
+  // Convert productId to number
+  const productIdNum = typeof productId === 'bigint' ? Number(productId) : Number(productId);
+  if (isNaN(productIdNum)) {
+    throw new Error(`Invalid productId: ${productId}. Must be a valid number`);
+  }
+
+  // Generate binding tag using keccak256
+  // Protocol version: tx-hash-bind-v1 = for linking purchase and delivery TX commitments
+  const protocolVersion = 'tx-hash-bind-v1';
+  
+  const bindingTag = solidityPackedKeccak256(
+    ['string', 'uint256', 'address', 'uint256', 'address'],
+    [
+      protocolVersion,
+      chainIdNum,
+      normalizedEscrow,
+      productIdNum,
+      normalizedBuyer,
+    ]
+  );
 
   // Remove 0x prefix and return as hex string (64 chars)
   return bindingTag.slice(2);

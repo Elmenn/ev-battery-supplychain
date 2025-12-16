@@ -49,7 +49,7 @@ const VCViewer = ({ vc }) => {
   const transporter = subject.subjectDetails?.transporter;
   const onChainCommitment = subject.subjectDetails?.onChainCommitment;
   const deliveryStatus = subject.deliveryStatus;
-  const transactionId = subject.transactionId;
+  const txHashCommitment = subject.txHashCommitment;
 
   return (
     <div className="vc-result-box">
@@ -105,9 +105,10 @@ const VCViewer = ({ vc }) => {
             <strong>On-Chain Commitment:</strong> <Copyable value={onChainCommitment} /> <br />
           </>
         )}
-        {transactionId && (
+        {txHashCommitment && (
           <>
-            <strong>Transaction ID:</strong> <Copyable value={transactionId} /> <br />
+            <strong>TX Hash Commitment:</strong> <Copyable value={txHashCommitment.commitment?.substring(0, 20) + '...'} /> <br />
+            <strong>Protocol:</strong> {txHashCommitment.protocol || 'bulletproofs-pedersen'} <br />
           </>
         )}
         {deliveryStatus !== undefined && (

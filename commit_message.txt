@@ -1,0 +1,11 @@
+Major refactoring: Remove subsquid integration, update Railgun implementation, add comprehensive tests and documentation
+
+- Removed subsquid/railgun-sepolia-v2 integration (no longer needed)
+- Removed old Railgun quick-sync V2/V3 implementations
+- Updated Railgun integration with new client implementation
+- Enhanced VC (Verifiable Credentials) components and verification
+- Added comprehensive test suites (DeliveryTxHashCommitment, Security tests, etc.)
+- Added extensive documentation (Thesis Report, Test Reports, implementation guides)
+- Updated contracts and frontend components for improved functionality
+- Cleaned up unused configuration files and legacy code
+

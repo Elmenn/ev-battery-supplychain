@@ -1,12 +1,12 @@
 //! BP⁺ 4 × 64-bit range proof that hides a full 256-bit Ethereum tx-hash.
 
 use curve25519_dalek::{
-    ristretto::{CompressedRistretto, RistrettoPoint},
+    ristretto::CompressedRistretto,
     scalar::Scalar,
-    traits::Identity, // for RistrettoPoint::identity()
 };
 use merlin::Transcript;
 use rand::rngs::OsRng;
+use rand::{RngCore, CryptoRng};
 use tari_bulletproofs_plus::{
     commitment_opening::CommitmentOpening,
     generators::pedersen_gens::ExtensionDegree,
@@ -24,6 +24,17 @@ const LIMBS: usize     = 4;             // 4 × 64 = 256 bits
 /// Produce a BP⁺ proof for a full 32-byte tx-hash.
 /// Returns `(commitments, proof bytes)`.
 pub fn prove_txid_commitment(hash: [u8; 32]) -> (Vec<CompressedRistretto>, Vec<u8>) {
+    let mut rng = OsRng;
+    prove_txid_commitment_with_rng(hash, &mut rng)
+}
+
+/// Produce a BP⁺ proof for a full 32-byte tx-hash with a provided RNG.
+/// This version allows using a faster RNG (like ThreadRng) for testing/benchmarking.
+/// Returns `(commitments, proof bytes)`.
+pub fn prove_txid_commitment_with_rng<R: RngCore + CryptoRng>(
+    hash: [u8; 32],
+    rng: &mut R,
+) -> (Vec<CompressedRistretto>, Vec<u8>) {
     // 1️⃣ split hash into four little-endian 64-bit limbs
     let limbs: [u64; LIMBS] = [
         u64::from_le_bytes(hash[0..8].try_into().unwrap()),
@@ -33,6 +44,8 @@ pub fn prove_txid_commitment(hash: [u8; 32]) -> (Vec<CompressedRistretto>, Vec<u
     ];
 
     // 2️⃣ generators & parameters
+    // Note: These are created each time (same as BP's approach for consistency)
+    // In production, they could be cached, but for benchmarking we match BP's behavior
     let pc_gens = create_pedersen_gens_with_extension_degree(ExtensionDegree::DefaultPedersen);
     let params  = RangeParameters::init(LIMB_BITS, LIMBS, pc_gens.clone()).unwrap();
 
@@ -40,7 +53,7 @@ pub fn prove_txid_commitment(hash: [u8; 32]) -> (Vec<CompressedRistretto>, Vec<u
     let mut commitments = Vec::with_capacity(LIMBS);
     let mut openings    = Vec::with_capacity(LIMBS);
     for &limb in &limbs {
-        let blind = Scalar::random(&mut OsRng);
+        let blind = Scalar::random(rng);
         let com = pc_gens.commit(&Scalar::from(limb), &[blind]).unwrap();
         commitments.push(com.compress());
         openings.push(CommitmentOpening::new(limb, vec![blind]));
@@ -56,8 +69,10 @@ pub fn prove_txid_commitment(hash: [u8; 32]) -> (Vec<CompressedRistretto>, Vec<u
     ).unwrap();
 
     // 5️⃣ prove
+    // Note: BP+ requires RNG during proof generation (unlike BP which uses pre-computed blinding)
+    // This is a fundamental difference in the APIs
     let mut transcript = Transcript::new(LABEL);
-    let proof = RistrettoRangeProof::prove_with_rng(&mut transcript, &statement, &witness, &mut OsRng).unwrap();
+    let proof = RistrettoRangeProof::prove_with_rng(&mut transcript, &statement, &witness, rng).unwrap();
 
     (commitments, proof.to_bytes())
 }

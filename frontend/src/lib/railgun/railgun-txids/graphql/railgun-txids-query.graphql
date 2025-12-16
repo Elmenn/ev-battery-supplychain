@@ -1,0 +1,107 @@
+query GetRailgunTransactionsAfterGraphID($idLow: String = "0x00") {
+  transactions(orderBy: id_ASC, limit: 5000, where: { id_gt: $idLow }) {
+    # Make sure types match in both queries.
+    id
+    nullifiers
+    commitments
+    transactionHash
+    boundParamsHash
+    blockNumber
+    utxoTreeIn
+    utxoTreeOut
+    utxoBatchStartPositionOut
+    hasUnshield
+    unshieldToken {
+      tokenType
+      tokenSubID
+      tokenAddress
+    }
+    unshieldToAddress
+    unshieldValue
+    blockTimestamp
+    verificationHash
+  }
+}
+
+query GetRailgunTransactionsByTxid($txid: Bytes) {
+  transactions(where: { transactionHash_eq: $txid }) {
+    # Make sure types match in both queries.
+    id
+    nullifiers
+    commitments
+    transactionHash
+    boundParamsHash
+    blockNumber
+    utxoTreeIn
+    utxoTreeOut
+    utxoBatchStartPositionOut
+    hasUnshield
+    unshieldToken {
+      tokenType
+      tokenSubID
+      tokenAddress
+    }
+    unshieldToAddress
+    unshieldValue
+    blockTimestamp
+    verificationHash
+  }
+}
+
+query GetRailgunTransactionsByUnshieldToAddress($address: Bytes) {
+  transactions(
+    orderBy: id_ASC
+    limit: 5000
+    where: { unshieldToAddress_eq: $address }
+  ) {
+    # Make sure types match in both queries.
+    id
+    nullifiers
+    commitments
+    transactionHash
+    boundParamsHash
+    blockNumber
+    utxoTreeIn
+    utxoTreeOut
+    utxoBatchStartPositionOut
+    hasUnshield
+    unshieldToken {
+      tokenType
+      tokenSubID
+      tokenAddress
+    }
+    unshieldToAddress
+    unshieldValue
+    blockTimestamp
+    verificationHash
+  }
+}
+
+query GetRailgunTransactionsByBlockNumber($blockNumber: BigInt = "0") {
+  transactions(
+    orderBy: blockNumber_ASC
+    limit: 5000
+    where: { blockNumber_gte: $blockNumber }
+  ) {
+    # Same fields as GetRailgunTransactionsAfterGraphID
+    id
+    nullifiers
+    commitments
+    transactionHash
+    boundParamsHash
+    blockNumber
+    utxoTreeIn
+    utxoTreeOut
+    utxoBatchStartPositionOut
+    hasUnshield
+    unshieldToken {
+      tokenType
+      tokenSubID
+      tokenAddress
+    }
+    unshieldToAddress
+    unshieldValue
+    blockTimestamp
+    verificationHash
+  }
+}

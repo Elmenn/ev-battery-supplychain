@@ -78,7 +78,6 @@ const ProductFormStep3 = ({ onNext, productData, backendUrl }) => {
       },
       previousCredential: null,
       componentCredentials: productData.componentCredentials || [],
-      transactionId: "",
       certificateCredential: {
         name: productData.certificateName || "",
         cid: productData.certificateCid || "",
@@ -289,7 +288,7 @@ const ProductFormStep3 = ({ onNext, productData, backendUrl }) => {
       // Normalize all string fields to non-null strings
       const cs = vcToUpload.credentialSubject;
       const stringFields = [
-        "id", "productName", "batch", "previousCredential", "transactionId"
+        "id", "productName", "batch", "previousCredential"
       ];
       stringFields.forEach(field => {
         if (cs[field] == null) cs[field] = "";
