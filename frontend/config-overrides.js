@@ -3,6 +3,18 @@ const webpack = require('webpack');
 const path = require('path');
 
 module.exports = function override(config, env) {
+  // Allow imports outside of src folder (for Railgun packages)
+  if (config.resolve && Array.isArray(config.resolve.plugins)) {
+    config.resolve.plugins = config.resolve.plugins.filter(
+      (plugin) => plugin?.constructor?.name !== 'ModuleScopePlugin'
+    );
+  }
+
+  // Helps when dependencies resolve via symlinks
+  if (config.resolve) {
+    config.resolve.symlinks = false;
+  }
+
   // Add polyfills for Node.js core modules
   config.resolve.fallback = {
     ...config.resolve.fallback,

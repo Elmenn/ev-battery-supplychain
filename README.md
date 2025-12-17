@@ -305,6 +305,14 @@ cargo test
 
 7. **Environment variables not updating**: After changing `.env` files, you must restart `npm start` for changes to take effect (React apps read env vars at build time).
 
+8. **ESLint errors blocking dev build**: If ESLint errors prevent the frontend from starting, you can disable ESLint during development by adding to `frontend/.env`:
+   ```
+   DISABLE_ESLINT_PLUGIN=true
+   ```
+   Note: This is a development-only workaround. Fix ESLint errors before committing code.
+
+9. **Ganache port**: Ensure your Ganache is running on port 7545 (or update `REACT_APP_RPC_URL` in `.env` to match your Ganache port).
+
 ---
 
 ## 9. File/Directory Overview
