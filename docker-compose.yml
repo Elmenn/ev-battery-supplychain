@@ -1,0 +1,10 @@
+services:
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    ports:
+      - "3000:3000"
+    # Note: Environment variables are read from frontend/.env at build time
+    # Make sure to create frontend/.env from frontend/.env.example before building
+
