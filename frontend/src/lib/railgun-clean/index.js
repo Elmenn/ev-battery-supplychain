@@ -1,8 +1,26 @@
 /**
- * Railgun Clean - Consolidated Public API
+ * Railgun Clean - Single Source of Truth for Railgun Integration
  *
- * This is the single entry point for all Railgun functionality.
- * Components should ONLY import from this file, never from internal modules.
+ * This module provides the public API for all Railgun functionality.
+ * Components should import ONLY from this module.
+ *
+ * Phase 1 Cleanup: Consolidated from multiple legacy files
+ * - Extracted working code from railgun-legacy-shim.js
+ * - Replaced railgun-browser-init.js with bootstrap.js
+ * - Deleted serve-html.ts monolith (11,360 lines)
+ *
+ * Structure:
+ * - bootstrap.js: Engine initialization
+ * - connection.js: Wallet connection/disconnection
+ * - balances.js: Balance queries
+ * - payments.js: Private transfers
+ * - shield.js: Shielding operations
+ * - wallet-state.js: In-memory state
+ *
+ * Dependencies:
+ * - @railgun-community/wallet (SDK)
+ * - railgun/ directory (internal TypeScript wrappers)
+ * - railgun-client-browser.js (SDK wrapper)
  *
  * COMPLETE API REFERENCE:
  *
