@@ -4,6 +4,14 @@ import { Button } from '../ui/button';
 import toast from 'react-hot-toast';
 import { ethers } from 'ethers';
 import { fmt18 } from '../../helpers/format';
+import {
+  setSignerAndProvider,
+  setRailgunIdentity,
+  getAllBalances,
+  wrapETHtoWETH,
+  estimateShieldWETH,
+  shieldWETH
+} from '../../lib/railgun-clean';
 
 export default function PrivateFundsDrawer({ open, onClose }) {
   const [balances, setBalances] = useState(null);
@@ -26,23 +34,22 @@ export default function PrivateFundsDrawer({ open, onClose }) {
       const provider = new ethers.BrowserProvider(window.ethereum);
       const signer = await provider.getSigner();
       
-      // Set the provider and signer in railgunClient
-      // TODO: Update to use new Railgun structure
-      const { setSignerAndProvider, setRailgunIdentity } = await import('../../lib/railgun-legacy-shim');
+      // Set the provider and signer in railgunClient (functions imported at top)
       setSignerAndProvider(provider, signer);
       console.log('🔧 Provider/signer set in railgunClient');
       
       // ✅ Check for existing Railgun connection and set global state
       const stored = JSON.parse(localStorage.getItem('railgun.wallet') || 'null');
-      if (stored && stored.walletID && stored.railgunAddress && stored.userAddress) {
+      if (stored && stored.walletID && stored.userAddress) {
         const currentUser = await signer.getAddress();
         const belongsToCurrentUser = stored.userAddress.toLowerCase() === currentUser.toLowerCase();
-        
+        const placeholderAddress = stored.railgunAddress || `0zk1q_dummy_${stored.walletID}`;
+
         if (belongsToCurrentUser) {
-          console.log('🔧 Setting Railgun identity for balance checking:', stored.railgunAddress);
+          console.log('🔧 Setting Railgun identity for balance checking:', placeholderAddress);
           setRailgunIdentity({
             walletID: stored.walletID,
-            railgunAddress: stored.railgunAddress
+            railgunAddress: placeholderAddress
           });
         } else {
           console.log('⚠️ Stored Railgun connection belongs to different user - skipping');
@@ -52,7 +59,6 @@ export default function PrivateFundsDrawer({ open, onClose }) {
       }
       
       // Now get all balances (EOA + Railgun)
-      const { getAllBalances } = await import('../../lib/railgun-legacy-shim');
       console.log('🔍 Calling getAllBalances...');
       const b = await getAllBalances();
       // getAllBalances returns { success, data }
@@ -109,12 +115,9 @@ export default function PrivateFundsDrawer({ open, onClose }) {
       const provider = new ethers.BrowserProvider(window.ethereum);
       const signer = await provider.getSigner();
       
-      // Set the provider/signer in railgunClient
-      const { setSignerAndProvider } = await import('../../lib/railgun-legacy-shim');
-      // TODO: Implement wrapETHtoWETH in new structure
-      const wrapETHtoWETH = async () => { throw new Error('wrapETHtoWETH not yet implemented in new structure'); };
+      // Set the provider/signer in railgunClient (functions imported at top)
       setSignerAndProvider(provider, signer);
-      
+
       console.log('🔧 Provider/signer set, calling wrapETHtoWETH...');
       const result = await wrapETHtoWETH(wrapAmt);
       console.log('📦 Wrap result:', result);
@@ -144,13 +147,10 @@ export default function PrivateFundsDrawer({ open, onClose }) {
         const provider = new ethers.BrowserProvider(window.ethereum);
         const signer = await provider.getSigner();
         
-        // Set the provider/signer in railgunClient
-        const { setSignerAndProvider } = await import('../../lib/railgun-legacy-shim');
+        // Set the provider/signer in railgunClient (functions imported at top)
         setSignerAndProvider(provider, signer);
       }
-      
-      // TODO: Implement estimateShieldWETH in new structure
-      const estimateShieldWETH = async () => { throw new Error('estimateShieldWETH not yet implemented in new structure'); };
+
       const result = await estimateShieldWETH(shieldAmt);
       
       if (result.success) {
@@ -180,13 +180,10 @@ export default function PrivateFundsDrawer({ open, onClose }) {
         const provider = new ethers.BrowserProvider(window.ethereum);
         const signer = await provider.getSigner();
         
-        // Set the provider/signer in railgunClient
-        const { setSignerAndProvider } = await import('../../lib/railgun-legacy-shim');
+        // Set the provider/signer in railgunClient (functions imported at top)
         setSignerAndProvider(provider, signer);
       }
-      
-      // TODO: Implement shieldWETH in new structure
-      const shieldWETH = async () => { throw new Error('shieldWETH not yet implemented in new structure'); };
+
       const result = await shieldWETH(shieldAmt);
       
       if (result.success) {
