@@ -44,9 +44,17 @@ Plans:
 
 ## Phase 2: Wallet Connection in Browser
 
-**Goal:** Working Railgun wallet connection from browser UI
+**Goal:** Working Railgun wallet connection with persistent encrypted storage
 
 **Why Second:** Foundation for all subsequent payment features
+
+**Status:** PLANNED
+
+**Plans:** 2 plans
+
+Plans:
+- [ ] 02-01-PLAN.md — Implement encrypted mnemonic storage with fixed signing message
+- [ ] 02-02-PLAN.md — Add copy button, retry logic, and UX improvements
 
 **Deliverables:**
 - [ ] Fix RailgunConnectionButton component
@@ -57,9 +65,10 @@ Plans:
 
 **Key Components:**
 - `frontend/src/components/railgun/RailgunConnectionButton.jsx`
-- `frontend/src/components/railgun/RailgunSimple.tsx`
+- `frontend/src/lib/railgun-clean/connection.js`
+- `frontend/src/lib/railgun-clean/crypto.js` (new)
 
-**Acceptance:** User can click connect, see Railgun address displayed
+**Acceptance:** User can click connect, see Railgun address displayed, copy address, refresh and stay connected
 
 ---
 
