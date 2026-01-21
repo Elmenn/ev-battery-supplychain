@@ -30,8 +30,10 @@
  *   - checkWalletState(eoaAddress)   - Check wallet exists and is loaded
  *
  * Shielding:
- *   - shieldWETH(amount, signer)     - Wrap ETH and record shield
+ *   - shieldWETH(amount, signer)        - Wrap ETH and record shield
  *   - getWETHBalance(address, provider) - Get WETH balance
+ *   - wrapETHtoWETH(amount, signer)     - Wrap ETH to WETH only
+ *   - estimateShieldWETH(amount)        - Estimate gas for shielding
  *
  * State:
  *   - getWalletState()               - Get in-memory wallet state
@@ -73,7 +75,7 @@ import { getAllBalances } from './balances';
 import { paySellerV2, checkWalletState } from './payments';
 
 // Shield
-import { shieldWETH, getWETHBalance } from './shield';
+import { shieldWETH, getWETHBalance, wrapETHtoWETH, estimateShieldWETH } from './shield';
 
 // Wallet State
 import { getWalletState, updateWalletState, resetWalletState } from './wallet-state';
@@ -216,7 +218,7 @@ export { paySellerV2, checkWalletState };
 export { getWalletState, updateWalletState, resetWalletState };
 
 // Shield
-export { shieldWETH, getWETHBalance };
+export { shieldWETH, getWETHBalance, wrapETHtoWETH, estimateShieldWETH };
 
 // ==========================================
 // DEFAULT EXPORT
@@ -251,6 +253,8 @@ export default {
   // Shield
   shieldWETH,
   getWETHBalance,
+  wrapETHtoWETH,
+  estimateShieldWETH,
 
   // Wallet State
   getWalletState,
