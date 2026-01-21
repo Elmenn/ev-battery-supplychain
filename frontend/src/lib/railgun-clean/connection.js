@@ -1,6 +1,11 @@
 // Connection helpers for client-side Railgun wallet flow
 // Exports: connectRailgun, disconnectRailgun, restoreRailgunConnection, isRailgunConnectedForEOA, getRailgunState
 
+import { encryptMnemonic, decryptMnemonic } from './crypto.js';
+
+// Fixed signing message - NO timestamp for deterministic key derivation
+const FIXED_SIGNING_MESSAGE = 'Railgun Wallet Encryption Key';
+
 let _state = {
   connected: false,
   eoa: null,
@@ -12,6 +17,8 @@ const DEFAULT_API = (typeof process !== 'undefined' && process.env && process.en
 
 /**
  * Connect to Railgun wallet
+ * Uses fixed signing message for deterministic key derivation and encrypts mnemonic for persistent storage.
+ *
  * @param {string|Object} arg - EOA address string or options object { userAddress, backendBaseURL, rpcUrl }
  * @returns {Promise<{ success: boolean, walletID?: string, railgunAddress?: string, error?: string }>}
  */
@@ -30,42 +37,66 @@ export async function connectRailgun(arg) {
       throw new Error(initRes && initRes.error ? initRes.error : 'Failed to initialize Railgun SDK');
     }
 
-    // If we have an existing walletID for this user, try to load it
+    // Request signature with FIXED message (no timestamp - deterministic)
+    const provider = new (await import('ethers')).ethers.BrowserProvider(window.ethereum);
+    const signer = await provider.getSigner();
+    const signature = await signer.signMessage(FIXED_SIGNING_MESSAGE);
+
+    // Check for existing encrypted mnemonic for this user
     const storedRaw = localStorage.getItem('railgun.wallet') || null;
     let stored = null;
     try { stored = storedRaw ? JSON.parse(storedRaw) : null; } catch (e) { stored = null; }
 
-    if (stored && stored.userAddress && stored.userAddress.toLowerCase() === String(eoaAddress).toLowerCase() && stored.walletID) {
-      // Try to load wallet in SDK
-      try {
-        const loaded = await client.loadWallet(stored.walletID);
-        _state.connected = true;
-        _state.eoa = String(eoaAddress).toLowerCase();
-        _state.walletID = stored.walletID;
-        _state.railgunAddress = stored.railgunAddress || null;
-        localStorage.setItem('railgun.wallet', JSON.stringify({ ...stored, timestamp: Date.now() }));
-        return { success: true, walletID: stored.walletID, railgunAddress: stored.railgunAddress || null };
-      } catch (e) {
-        console.warn('Failed to load stored wallet in SDK, creating new wallet:', e.message);
+    if (stored && stored.encryptedMnemonic && stored.userAddress?.toLowerCase() === String(eoaAddress).toLowerCase()) {
+      // Try to decrypt and restore existing wallet
+      console.log('Found encrypted mnemonic, attempting to restore wallet...');
+      const mnemonic = await decryptMnemonic(stored.encryptedMnemonic, signature);
+
+      if (mnemonic) {
+        // Recreate wallet with existing mnemonic
+        const walletInfo = await client.createWalletFromSignature(signature, {
+          userAddress: eoaAddress,
+          mnemonic // Pass existing mnemonic to recreate same wallet
+        });
+
+        if (walletInfo && walletInfo.walletID) {
+          // Update stored data with new walletID (may differ due to SDK internals) but keep encrypted mnemonic
+          const updatedStore = {
+            ...stored,
+            walletID: walletInfo.walletID,
+            railgunAddress: walletInfo.railgunAddress || stored.railgunAddress,
+            timestamp: Date.now()
+          };
+          localStorage.setItem('railgun.wallet', JSON.stringify(updatedStore));
+
+          _state.connected = true;
+          _state.eoa = String(eoaAddress).toLowerCase();
+          _state.walletID = walletInfo.walletID;
+          _state.railgunAddress = walletInfo.railgunAddress || null;
+
+          console.log('Wallet restored from encrypted mnemonic');
+          return { success: true, walletID: walletInfo.walletID, railgunAddress: walletInfo.railgunAddress || null };
+        }
+      } else {
+        console.warn('Failed to decrypt mnemonic, creating new wallet');
       }
     }
 
-    // Create a new wallet deterministically using a MetaMask signature
-    const provider = new (await import('ethers')).ethers.BrowserProvider(window.ethereum);
-    const signer = await provider.getSigner();
-    const msg = `Connect Railgun wallet for ${String(eoaAddress)} at ${new Date().toISOString()}`;
-    const signature = await signer.signMessage(msg);
-
-    // Create wallet from signature via wrapper
+    // Create NEW wallet (no existing encrypted mnemonic or decryption failed)
+    console.log('Creating new Railgun wallet...');
     const walletInfo = await client.createWalletFromSignature(signature, { userAddress: eoaAddress });
     if (!walletInfo || !walletInfo.walletID) {
       throw new Error('SDK failed to create wallet from signature');
     }
 
+    // Encrypt mnemonic before storing (NEVER store plaintext)
+    const encryptedMnemonic = await encryptMnemonic(walletInfo.mnemonic, signature);
+
     const store = {
       walletID: walletInfo.walletID,
       railgunAddress: walletInfo.railgunAddress || null,
       userAddress: String(eoaAddress).toLowerCase(),
+      encryptedMnemonic, // Encrypted payload: { iv, salt, data }
       timestamp: Date.now()
     };
     localStorage.setItem('railgun.wallet', JSON.stringify(store));
@@ -75,6 +106,7 @@ export async function connectRailgun(arg) {
     _state.walletID = walletInfo.walletID;
     _state.railgunAddress = walletInfo.railgunAddress || null;
 
+    console.log('New wallet created and mnemonic encrypted');
     return { success: true, walletID: walletInfo.walletID, railgunAddress: walletInfo.railgunAddress || null };
   } catch (err) {
     _state.connected = false;
@@ -103,6 +135,8 @@ export function disconnectRailgun() {
 
 /**
  * Restore Railgun connection from localStorage
+ * Requires MetaMask signature to decrypt stored mnemonic.
+ *
  * @param {string} userAddress - Optional user address to verify connection belongs to
  * @returns {Promise<{ success: boolean, connected?: boolean, walletID?: string, railgunAddress?: string, userAddress?: string, error?: string }>}
  */
@@ -114,7 +148,7 @@ export async function restoreRailgunConnection(userAddress) {
     }
 
     const stored = JSON.parse(storedRaw);
-    if (!stored || !stored.walletID || !stored.userAddress) {
+    if (!stored || !stored.userAddress) {
       return { success: false, connected: false, error: 'Invalid stored connection data' };
     }
 
@@ -123,7 +157,15 @@ export async function restoreRailgunConnection(userAddress) {
       return { success: false, connected: false, error: 'Stored connection belongs to different user' };
     }
 
-    // Try to reconnect using stored user address
+    // Check if we have encrypted mnemonic (new format)
+    if (!stored.encryptedMnemonic) {
+      // Legacy format without encrypted mnemonic - user needs to reconnect
+      console.warn('Legacy wallet format detected - requires full reconnection');
+      return { success: false, connected: false, error: 'Legacy wallet format - please reconnect' };
+    }
+
+    // Request signature to decrypt mnemonic
+    // connectRailgun will handle the decryption and wallet restoration
     const result = await connectRailgun({ userAddress: stored.userAddress });
 
     if (result.success) {
