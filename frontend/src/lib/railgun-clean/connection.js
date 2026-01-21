@@ -6,6 +6,25 @@ import { encryptMnemonic, decryptMnemonic } from './crypto.js';
 // Fixed signing message - NO timestamp for deterministic key derivation
 const FIXED_SIGNING_MESSAGE = 'Railgun Wallet Encryption Key';
 
+/**
+ * Retry wrapper with exponential backoff
+ * @param {Function} fn - Async function to retry
+ * @param {number} maxRetries - Maximum retry attempts (default 3)
+ * @param {number} baseDelay - Base delay in ms (default 1000)
+ * @returns {Promise} Result of fn() or throws after all retries fail
+ */
+async function withRetry(fn, maxRetries = 3, baseDelay = 1000) {
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    try {
+      return await fn();
+    } catch (err) {
+      console.warn(`Attempt ${attempt}/${maxRetries} failed:`, err.message);
+      if (attempt === maxRetries) throw err;
+      await new Promise(r => setTimeout(r, baseDelay * attempt));
+    }
+  }
+}
+
 let _state = {
   connected: false,
   eoa: null,
@@ -30,9 +49,13 @@ export async function connectRailgun(arg) {
   if (!eoaAddress) throw new Error('userAddress required');
 
   try {
-    // Initialize SDK (non-blocking if already initialized)
+    // Initialize SDK (non-blocking if already initialized) with retry logic
     const client = await import('../railgun-client-browser.js');
-    const initRes = await client.initializeSDK();
+    const initRes = await withRetry(
+      () => client.initializeSDK(),
+      3,  // 3 attempts
+      1000 // 1s, 2s, 3s backoff
+    );
     if (!initRes || !initRes.success) {
       throw new Error(initRes && initRes.error ? initRes.error : 'Failed to initialize Railgun SDK');
     }
@@ -110,7 +133,16 @@ export async function connectRailgun(arg) {
     return { success: true, walletID: walletInfo.walletID, railgunAddress: walletInfo.railgunAddress || null };
   } catch (err) {
     _state.connected = false;
-    return { success: false, error: String(err.message || err) };
+    // Convert technical errors to user-friendly messages
+    const errMsg = String(err.message || err);
+    const friendlyMessage = errMsg.includes('Failed to initialize') || errMsg.includes('SDK')
+      ? 'Connection failed. Please try again.'
+      : errMsg.includes('User rejected') || errMsg.includes('rejected')
+      ? 'Connection cancelled.'
+      : errMsg.includes('MetaMask') || errMsg.includes('wallet')
+      ? 'Wallet error. Please try again.'
+      : 'Connection failed. Please try again.';
+    return { success: false, error: friendlyMessage };
   }
 }
 
