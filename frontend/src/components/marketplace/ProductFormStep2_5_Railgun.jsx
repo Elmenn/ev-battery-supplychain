@@ -1,10 +1,7 @@
 import React, { useState, useEffect, useCallback } from "react";
 import { Button } from "../ui/button";
 import toast from "react-hot-toast";
-// TODO: Update to use new Railgun structure
-import { connectRailgun } from "../../lib/railgun-legacy-shim";
-// TODO: Implement isRailgunConnectedForEOA in legacy shim
-const isRailgunConnectedForEOA = async () => ({ connected: false, message: 'Please update to new Railgun structure' });
+import { connectRailgun, isRailgunConnectedForEOA } from "../../lib/railgun-clean";
 
 const ProductFormStep2_5_Railgun = ({ onNext, productData, currentUser, backendUrl }) => {
   const [isConnecting, setIsConnecting] = useState(false);

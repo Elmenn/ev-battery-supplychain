@@ -1,8 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { Button } from '../ui/button';
 import toast from 'react-hot-toast';
-// TODO: Update to use new Railgun structure
-import { connectRailgun, disconnectRailgun, restoreRailgunConnection } from '../../lib/railgun-legacy-shim';
+import { connectRailgun, disconnectRailgun, restoreRailgunConnection } from '../../lib/railgun-clean';
 
 const RailgunConnectionButton = ({ currentUser }) => {
   const [isConnecting, setIsConnecting] = useState(false);
@@ -28,11 +27,14 @@ const RailgunConnectionButton = ({ currentUser }) => {
   const checkConnectionStatus = useCallback(() => {
     try {
       const stored = JSON.parse(localStorage.getItem('railgun.wallet') || 'null');
-      if (stored && stored.walletID && stored.railgunAddress && stored.userAddress) {
+      if (stored && stored.walletID && stored.userAddress) {
+        // Accept credentials-only stored connections (backend holds secrets)
+        const belongsToCurrentUser = stored.userAddress.toLowerCase() === currentUser.toLowerCase();
+        const placeholderAddress = stored.railgunAddress || `0zk1q_dummy_${stored.walletID}`;
         // Check if the stored connection belongs to the current user
-        if (stored.userAddress.toLowerCase() === currentUser.toLowerCase()) {
+        if (belongsToCurrentUser) {
           setIsConnected(true);
-          setRailgunAddress(stored.railgunAddress);
+          setRailgunAddress(placeholderAddress);
           setRailgunWalletID(stored.walletID);
           console.log('🔍 Found existing Railgun connection for current user:', stored);
         } else {
@@ -155,18 +157,18 @@ const RailgunConnectionButton = ({ currentUser }) => {
         rpcUrl: rpcUrl
       });
       
-      if (result && result.walletID && result.railgunAddress) {
+      if (result && result.success) {
         setIsConnected(true);
-        setRailgunAddress(result.railgunAddress);
-        setRailgunWalletID(result.walletID);
-        
+        setRailgunAddress(result.railgunAddress || null);
+        setRailgunWalletID(result.walletID || null);
+
         // Dispatch event to notify other components
         window.dispatchEvent(new CustomEvent('railgunConnectionChanged'));
-        
+
         toast.success('✅ Railgun wallet connected successfully!');
         console.log('✅ Railgun connection successful:', result);
       } else {
-        throw new Error('Connection failed - no wallet data returned');
+        throw new Error(result && result.error ? result.error : 'Connection failed - no wallet data returned');
       }
       
     } catch (error) {
