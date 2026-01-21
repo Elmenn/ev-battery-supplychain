@@ -10,17 +10,28 @@ const RailgunConnectionButton = ({ currentUser }) => {
   // eslint-disable-next-line no-unused-vars
   const [railgunWalletID, setRailgunWalletID] = useState(null);
 
+  // Copy address to clipboard
+  const copyAddress = async () => {
+    if (!railgunAddress) return;
+    try {
+      await navigator.clipboard.writeText(railgunAddress);
+      toast.success('Address copied!');
+    } catch (err) {
+      toast.error('Failed to copy');
+    }
+  };
+
   const handleDisconnect = useCallback(async () => {
     try {
       await disconnectRailgun();
       setIsConnected(false);
       setRailgunAddress(null);
       setRailgunWalletID(null);
-      toast.success('🔌 Railgun wallet disconnected');
-      console.log('🔌 Railgun wallet disconnected');
+      toast.success('Railgun wallet disconnected');
+      console.log('Railgun wallet disconnected');
     } catch (error) {
-      console.error('❌ Error disconnecting:', error);
-      toast.error('❌ Failed to disconnect: ' + error.message);
+      console.error('Error disconnecting:', error);
+      toast.error('Failed to disconnect');
     }
   }, []);
 
@@ -36,10 +47,10 @@ const RailgunConnectionButton = ({ currentUser }) => {
           setIsConnected(true);
           setRailgunAddress(placeholderAddress);
           setRailgunWalletID(stored.walletID);
-          console.log('🔍 Found existing Railgun connection for current user:', stored);
+          console.log('Found existing Railgun connection for current user:', stored);
         } else {
           // Different user - clear the connection
-          console.log('🔍 Found Railgun connection for different user - clearing');
+          console.log('Found Railgun connection for different user - clearing');
           console.log('   - Stored user:', stored.userAddress);
           console.log('   - Current user:', currentUser);
           // CRITICAL: Only disconnect if we're sure it's a different user
@@ -48,17 +59,17 @@ const RailgunConnectionButton = ({ currentUser }) => {
           if (timeSinceConnection > 5000) { // Only clear if connection is older than 5 seconds
             handleDisconnect();
           } else {
-            console.log('⚠️ Connection is recent - might be in progress, not clearing yet');
+            console.log('Connection is recent - might be in progress, not clearing yet');
           }
         }
       } else {
         setIsConnected(false);
         setRailgunAddress(null);
         setRailgunWalletID(null);
-        console.log('🔍 No existing Railgun connection found');
+        console.log('No existing Railgun connection found');
       }
     } catch (error) {
-      console.error('❌ Error checking connection status:', error);
+      console.error('Error checking connection status:', error);
       setIsConnected(false);
     }
   }, [currentUser, handleDisconnect]);
@@ -68,19 +79,19 @@ const RailgunConnectionButton = ({ currentUser }) => {
     const restoreConnection = async () => {
       const stored = JSON.parse(localStorage.getItem('railgun.wallet') || 'null');
       if (stored && stored.userAddress && stored.userAddress.toLowerCase() === currentUser.toLowerCase()) {
-        console.log('🔄 Restoring Railgun connection...');
+        console.log('Restoring Railgun connection...');
         const result = await restoreRailgunConnection(currentUser);
         if (result.success) {
           setIsConnected(true);
           setRailgunAddress(result.railgunAddress);
           setRailgunWalletID(result.walletID);
-          console.log('✅ Railgun connection restored');
+          console.log('Railgun connection restored');
         }
       } else {
         checkConnectionStatus();
       }
     };
-    
+
     if (currentUser) {
       restoreConnection();
     }
@@ -91,16 +102,16 @@ const RailgunConnectionButton = ({ currentUser }) => {
     if (!window.ethereum) return;
 
     const handleAccountsChanged = (accounts) => {
-      console.log('🔄 MetaMask accounts changed:', accounts);
-      
+      console.log('MetaMask accounts changed:', accounts);
+
       if (accounts.length === 0) {
         // User disconnected MetaMask
-        console.log('🔌 MetaMask disconnected - clearing Railgun connection');
+        console.log('MetaMask disconnected - clearing Railgun connection');
         handleDisconnect();
       } else {
         const newAddress = accounts[0].toLowerCase();
-        console.log('🔄 MetaMask switched to:', newAddress);
-        
+        console.log('MetaMask switched to:', newAddress);
+
         // Check if the connected Railgun wallet belongs to the new EOA
         if (isConnected) {
           // Get the stored connection info to check the EOA
@@ -109,16 +120,16 @@ const RailgunConnectionButton = ({ currentUser }) => {
             if (stored && stored.userAddress) {
               const connectedEOA = stored.userAddress.toLowerCase();
               if (connectedEOA !== newAddress) {
-                console.log('🔌 EOA changed - disconnecting Railgun wallet');
+                console.log('EOA changed - disconnecting Railgun wallet');
                 console.log('   - Previous EOA:', connectedEOA);
                 console.log('   - New EOA:', newAddress);
                 handleDisconnect();
               } else {
-                console.log('✅ Same EOA - keeping Railgun connection');
+                console.log('Same EOA - keeping Railgun connection');
               }
             }
           } catch (error) {
-            console.log('⚠️ Error checking stored connection:', error);
+            console.log('Error checking stored connection:', error);
             // If we can't check, disconnect to be safe
             handleDisconnect();
           }
@@ -140,14 +151,14 @@ const RailgunConnectionButton = ({ currentUser }) => {
   const handleConnectRailgun = async () => {
     // Debounce: ignore clicks while connecting
     if (isConnecting) {
-      console.log('⏸️ Connection already in progress, ignoring click');
+      console.log('Connection already in progress, ignoring click');
       return;
     }
-    
+
     try {
       setIsConnecting(true);
-      console.log('🔐 Connecting to Railgun for user:', currentUser);
-      
+      console.log('Connecting to Railgun for user:', currentUser);
+
       // Connect with current user's address
       // Use environment variable or reliable default (rpc.sepolia.org)
       const rpcUrl = process.env.REACT_APP_RPC_URL || 'https://rpc.sepolia.org';
@@ -156,7 +167,7 @@ const RailgunConnectionButton = ({ currentUser }) => {
         userAddress: currentUser,
         rpcUrl: rpcUrl
       });
-      
+
       if (result && result.success) {
         setIsConnected(true);
         setRailgunAddress(result.railgunAddress || null);
@@ -165,15 +176,19 @@ const RailgunConnectionButton = ({ currentUser }) => {
         // Dispatch event to notify other components
         window.dispatchEvent(new CustomEvent('railgunConnectionChanged'));
 
-        toast.success('✅ Railgun wallet connected successfully!');
-        console.log('✅ Railgun connection successful:', result);
+        toast.success('Railgun wallet connected successfully!');
+        console.log('Railgun connection successful:', result);
       } else {
         throw new Error(result && result.error ? result.error : 'Connection failed - no wallet data returned');
       }
-      
+
     } catch (error) {
-      console.error('❌ Railgun connection failed:', error);
-      toast.error('❌ Failed to connect Railgun wallet: ' + error.message);
+      console.error('Railgun connection failed:', error);
+      // User-friendly error message (hide technical details)
+      const userMessage = error.message.includes('rejected') || error.message.includes('cancelled')
+        ? 'Connection cancelled'
+        : 'Failed to connect. Please try again.';
+      toast.error(userMessage);
       setIsConnected(false);
     } finally {
       setIsConnecting(false);
@@ -189,8 +204,20 @@ const RailgunConnectionButton = ({ currentUser }) => {
     <div className="flex items-center gap-2">
       {isConnected ? (
         <div className="flex items-center gap-2">
-          <div className="text-xs text-green-700 bg-green-50 px-2 py-1 rounded">
-            🔒 Railgun: {railgunAddress ? `${railgunAddress.slice(0, 8)}...${railgunAddress.slice(-8)}` : 'Connected'}
+          <div className="flex items-center gap-1 text-xs text-green-700 bg-green-50 px-2 py-1 rounded">
+            <span>Railgun:</span>
+            <span className="font-mono">
+              {railgunAddress ? `${railgunAddress.slice(0, 8)}...${railgunAddress.slice(-6)}` : 'Connected'}
+            </span>
+            <button
+              onClick={copyAddress}
+              className="ml-1 p-0.5 hover:bg-green-100 rounded"
+              title="Copy full address"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+              </svg>
+            </button>
           </div>
           <Button
             onClick={handleDisconnect}
@@ -198,7 +225,7 @@ const RailgunConnectionButton = ({ currentUser }) => {
             size="sm"
             className="text-xs border-red-200 text-red-700 hover:bg-red-50"
           >
-            🔌 Disconnect
+            Disconnect
           </Button>
         </div>
       ) : (
@@ -208,7 +235,17 @@ const RailgunConnectionButton = ({ currentUser }) => {
           variant="outline"
           className="bg-purple-50 border-purple-200 text-purple-700 hover:bg-purple-100"
         >
-          {isConnecting ? '🔄 Connecting...' : '🔐 Connect Railgun'}
+          {isConnecting ? (
+            <span className="flex items-center gap-2">
+              <svg className="animate-spin h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+              </svg>
+              Connecting...
+            </span>
+          ) : (
+            'Connect Railgun'
+          )}
         </Button>
       )}
     </div>
