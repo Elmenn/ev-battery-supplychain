@@ -72,20 +72,26 @@ Plans:
 
 ## Phase 3: ETH to WETH Wrapping
 
-**Goal:** Allow users to wrap ETH into WETH within the UI
+**Goal:** Fix wrapETHtoWETH to work with existing UI by making signer parameter optional
+
+**Status:** PLANNED
+
+**Plans:** 1 plan
+
+Plans:
+- [ ] 03-01-PLAN.md — Make signer optional in wrapETHtoWETH with MetaMask auto-resolution
 
 **Why Third:** WETH is required for Railgun shielding (ETH cannot be shielded directly)
 
 **Deliverables:**
-- [ ] Implement `wrapETHtoWETH()` function in railgun-clean
-- [ ] Remove "not yet implemented" stub
-- [ ] Add UI for wrap amount input
-- [ ] Handle transaction signing and confirmation
-- [ ] Update balance display after wrap
+- [ ] Make signer parameter optional in wrapETHtoWETH()
+- [ ] Add automatic signer resolution from window.ethereum
+- [ ] Improve error handling (ACTION_REJECTED, INSUFFICIENT_FUNDS)
+- [ ] Verify wrap flow works end-to-end
 
 **Key Files:**
-- `frontend/src/components/railgun/PrivateFundsDrawer.jsx:115`
-- `frontend/src/lib/railgun-clean/operations/wrap.js` (to create)
+- `frontend/src/lib/railgun-clean/shield.js` (modify)
+- `frontend/src/components/railgun/PrivateFundsDrawer.jsx` (no changes needed)
 
 **Acceptance:** User can wrap 0.01 ETH to 0.01 WETH, balance updates
 
