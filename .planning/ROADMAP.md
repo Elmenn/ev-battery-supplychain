@@ -42,33 +42,31 @@ Plans:
 
 ---
 
-## Phase 2: Wallet Connection in Browser
+## Phase 2: Wallet Connection in Browser ✓
 
 **Goal:** Working Railgun wallet connection with persistent encrypted storage
 
-**Why Second:** Foundation for all subsequent payment features
+**Status:** COMPLETE (2026-01-22)
 
-**Status:** PLANNED
-
-**Plans:** 2 plans
+**Plans:** 2/2 complete
 
 Plans:
-- [ ] 02-01-PLAN.md — Implement encrypted mnemonic storage with fixed signing message
-- [ ] 02-02-PLAN.md — Add copy button, retry logic, and UX improvements
+- [x] 02-01-PLAN.md — Implement encrypted mnemonic storage with fixed signing message
+- [x] 02-02-PLAN.md — Add copy button, retry logic, and UX improvements
 
 **Deliverables:**
-- [ ] Fix RailgunConnectionButton component
-- [ ] Implement wallet ID retrieval/creation
-- [ ] Display connection status correctly
-- [ ] Handle wallet derivation from mnemonic
-- [ ] Test connection with MetaMask + Railgun
+- [x] Fix RailgunConnectionButton component
+- [x] Implement wallet ID retrieval/creation
+- [x] Display connection status correctly
+- [x] Handle wallet derivation from mnemonic
+- [x] Test connection with MetaMask + Railgun
 
 **Key Components:**
 - `frontend/src/components/railgun/RailgunConnectionButton.jsx`
 - `frontend/src/lib/railgun-clean/connection.js`
 - `frontend/src/lib/railgun-clean/crypto.js` (new)
 
-**Acceptance:** User can click connect, see Railgun address displayed, copy address, refresh and stay connected
+**Result:** User can click connect, sign MetaMask message, see Railgun address with copy button, connection persists across refreshes
 
 ---
 
