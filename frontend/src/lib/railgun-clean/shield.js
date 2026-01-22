@@ -10,12 +10,18 @@ import { getRailgunState } from './connection';
  * Note: This only wraps ETH to WETH. For full shielding, use shieldWETH.
  *
  * @param {string} amountEth - Amount in ETH (e.g., "1.5")
- * @param {ethers.Signer} signer - Ethers signer (MetaMask)
+ * @param {ethers.Signer} signer - Ethers signer (optional, obtained from MetaMask if not provided)
  * @returns {Promise<{ success: boolean, txHash?: string, error?: string }>}
  */
-export async function wrapETHtoWETH(amountEth, signer) {
+export async function wrapETHtoWETH(amountEth, signer = null) {
+  // Get signer from MetaMask if not provided
+  if (!signer && typeof window !== 'undefined' && window.ethereum) {
+    const provider = new ethers.BrowserProvider(window.ethereum);
+    signer = await provider.getSigner();
+  }
+
   if (!signer) {
-    throw new Error('Signer required for wrapETHtoWETH');
+    throw new Error('MetaMask not connected');
   }
 
   if (!amountEth || isNaN(parseFloat(amountEth))) {
@@ -56,6 +62,14 @@ export async function wrapETHtoWETH(amountEth, signer) {
     return { success: true, txHash: receipt.hash };
   } catch (error) {
     console.error('wrapETHtoWETH failed:', error);
+    // Handle user rejection
+    if (error.code === 'ACTION_REJECTED') {
+      return { success: false, error: 'Transaction cancelled by user' };
+    }
+    // Handle insufficient funds
+    if (error.code === 'INSUFFICIENT_FUNDS') {
+      return { success: false, error: 'Insufficient ETH for gas and value' };
+    }
     return { success: false, error: error.message };
   }
 }
