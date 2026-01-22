@@ -4,13 +4,13 @@
 
 ## Current Position
 
-- **Phase:** 2 of 6 (Wallet Connection) - COMPLETE
-- **Plan:** 2 of 2 complete
-- **Status:** Phase complete, ready for Phase 3
+- **Phase:** 3 of 6 (ETH to WETH Wrapping) - Plan 1 complete
+- **Plan:** 1 of 1 complete
+- **Status:** Phase 3 complete, ready for Phase 4
 
-Progress: [==========--------------------] 2/6 phases complete
+Progress: [===============---------------] 3/6 phases complete
 
-Last activity: 2026-01-22 - Completed 02-02-PLAN.md (UX Improvements)
+Last activity: 2026-01-22 - Completed 03-01-PLAN.md (Fix ETH to WETH Wrapping)
 
 ## Living Memory
 
@@ -27,46 +27,44 @@ Last activity: 2026-01-22 - Completed 02-02-PLAN.md (UX Improvements)
 | pbkdf2-100k | PBKDF2 with 100k iterations for key derivation | Balance between brute-force resistance and user experience | 02-01 |
 | encrypted-payload-format | Store { iv, salt, data } arrays in localStorage | JSON-serializable, self-contained encrypted payload | 02-01 |
 | retry-with-backoff | SDK init retries 3 times with exponential backoff | Silent failure recovery before showing errors to user | 02-02 |
+| optional-signer | wrapETHtoWETH obtains signer from MetaMask if not provided | PrivateFundsDrawer calls without signer - auto-resolution enables existing UI | 03-01 |
+| friendly-errors | User-facing error messages instead of technical errors | "MetaMask not connected" instead of "Signer required" | 03-01 |
 
 ### Issues Log
 
 - ~~Multiple duplicate Railgun implementations causing confusion~~ RESOLVED (Phase 1)
 - ~~11,360-line serve-html.ts monolith needs extraction~~ RESOLVED (Phase 1 Plan 3 - deleted)
 - ~~Non-deterministic wallet creation due to timestamp in signing message~~ RESOLVED (Phase 2 Plan 1)
-- `SDK.getPrivateBalances not available` - balance fetching issue (Phase 3/4 scope)
-- `wrapETHtoWETH` now implemented in shield.js
+- ~~wrapETHtoWETH signer parameter required~~ RESOLVED (Phase 3 Plan 1 - now optional)
+- `SDK.getPrivateBalances not available` - balance fetching issue (Phase 4 scope)
+- Shielding and private balances - Phase 4 scope
 
 ### Context
 
-**PHASE 2 COMPLETE!**
+**PHASE 3 COMPLETE!**
 
-Wallet connection flow working end-to-end:
-- User clicks Connect Railgun button
-- MetaMask prompts for signature (fixed message: "Railgun Wallet Encryption Key")
-- Mnemonic encrypted with AES-GCM and stored in localStorage
-- Railgun address displayed with copy button
-- Connection persists across page refreshes (same signature decrypts same mnemonic)
-- Retry logic handles SDK initialization failures silently
+ETH to WETH wrapping now works end-to-end:
+- User enters amount in PrivateFundsDrawer
+- Clicks "Wrap ETH to WETH" button
+- MetaMask prompts for transaction
+- Transaction confirms, WETH balance updates
+- No "Signer required" errors
 
-Human verification passed - user tested full flow.
+Human verification passed - user tested wrap flow.
+
+User noted next goal: "now we need to fix shielding and correct balances the goal is to do private transaction with spendable shielded weth" - this is Phase 4 scope.
 
 ## Session Continuity
 
 - **Last session:** 2026-01-22
-- **Stopped at:** Completed Phase 2
-- **Resume file:** .planning/phases/03-eth-to-weth-wrapping/ (when created)
+- **Stopped at:** Completed Phase 3
+- **Resume file:** .planning/phases/04-weth-shielding/ (when created)
 
 ## Commits This Session
 
 | Hash | Message |
 |------|---------|
-| dedd6b57 | feat(02-01): create crypto.js with AES-GCM encryption utilities |
-| bfcc0296 | feat(02-01): update connection.js with fixed signing message and encrypted storage |
-| 0bd59f5c | feat(02-01): update createWalletFromSignature to accept optional mnemonic |
-| cd70ba84 | docs(02-01): complete encrypted mnemonic storage plan |
-| e53fdf74 | feat(02-02): add retry wrapper to connection.js |
-| b015cc25 | feat(02-02): update RailgunConnectionButton with copy button and improved UX |
-| 5752151b | docs(02-02): complete UX improvements plan |
+| daf75f90 | feat(03-01): make wrapETHtoWETH signer parameter optional |
 
 ## Phase 1 Summary
 
@@ -84,6 +82,13 @@ Human verification passed - user tested full flow.
 - Copy button for Railgun address
 - Retry logic for SDK initialization (3 attempts, exponential backoff)
 - Improved UX (SVG spinner, friendly error messages)
+
+## Phase 3 Summary
+
+**ETH to WETH wrapping:**
+- wrapETHtoWETH function with auto-signer resolution
+- Optional signer pattern established
+- User-friendly transaction error messages
 
 ---
 
