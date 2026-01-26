@@ -75,31 +75,28 @@ export default function PrivateFundsDrawer({ open, onClose }) {
   }
 
   useEffect(() => {
-    if (!open) return;
-    
-    // Force refresh balances when drawer opens
-    refreshBalances();
-    
-    // Chain guard (hard fail early)
-    if (window.ethereum?.chainId !== '0xaa36a7') { // Sepolia
-      setMsg('Please switch MetaMask to Sepolia.');
-      toast.error('Please switch MetaMask to Sepolia');
-      return;
-    }
-    
-    refreshBalances();
-    
-    // Refresh when chain/account changes
-    const onChain = () => refreshBalances();
-    const onAcct = () => refreshBalances();
-    window.ethereum?.on?.('chainChanged', onChain);
-    window.ethereum?.on?.('accountsChanged', onAcct);
-    
-    return () => {
-      window.ethereum?.removeListener?.('chainChanged', onChain);
-      window.ethereum?.removeListener?.('accountsChanged', onAcct);
-    };
-  }, [open]);
+  if (!open) return;
+
+  // Chain guard
+  if (window.ethereum?.chainId !== '0xaa36a7') {
+    setMsg('Please switch MetaMask to Sepolia.');
+    toast.error('Please switch MetaMask to Sepolia');
+    return;
+  }
+
+  refreshBalances();
+
+  const onChain = () => refreshBalances();
+  const onAcct = () => refreshBalances();
+  window.ethereum?.on?.('chainChanged', onChain);
+  window.ethereum?.on?.('accountsChanged', onAcct);
+
+  return () => {
+    window.ethereum?.removeListener?.('chainChanged', onChain);
+    window.ethereum?.removeListener?.('accountsChanged', onAcct);
+  };
+}, [open]);
+
 
   async function onWrap() {
     try {
@@ -137,70 +134,86 @@ export default function PrivateFundsDrawer({ open, onClose }) {
   }
 
   async function onEstimate() {
-    try {
-      setMsg('');
-      setEstimating(true);
-      console.log('🔍 Estimating shield gas...');
-      
-      // First, ensure provider/signer are set
-      if (typeof window !== 'undefined' && window.ethereum) {
-        const provider = new ethers.BrowserProvider(window.ethereum);
-        const signer = await provider.getSigner();
-        
-        // Set the provider/signer in railgunClient (functions imported at top)
-        setSignerAndProvider(provider, signer);
-      }
+  try {
+    setMsg('');
+    setEstimating(true);
+    console.log('🔍 Estimating shield gas...');
 
-      const result = await estimateShieldWETH(shieldAmt);
-      
-      if (result.success) {
-        setMsg(`✅ Estimate ok: ${result.gasEstimate} wei`);
-        toast.success(`Gas estimate: ${result.gasEstimate} wei`);
-      } else {
-        throw new Error(result.error || 'Gas estimation failed');
-      }
-      
-    } catch (e) {
-      console.error('❌ Estimate failed:', e);
-      setMsg(e.message);
-      toast.error('Estimate failed: ' + e.message);
-    } finally {
-      setEstimating(false);
+    if (!window.ethereum) throw new Error('MetaMask not connected');
+
+    const provider = new ethers.BrowserProvider(window.ethereum);
+    const signer = await provider.getSigner();
+
+    setSignerAndProvider(provider, signer);
+
+    // ✅ PASS signer now
+    const result = await estimateShieldWETH(shieldAmt, signer);
+
+    if (result.success) {
+      setMsg(`✅ Estimate ok: ${result.gasEstimate} wei`);
+      toast.success(`Gas estimate: ${result.gasEstimate} wei`);
+    } else {
+      throw new Error(result.error || 'Gas estimation failed');
     }
+  } catch (e) {
+    console.error('❌ Estimate failed:', e);
+    setMsg(e.message);
+    toast.error('Estimate failed: ' + e.message);
+  } finally {
+    setEstimating(false);
   }
+}
+
 
   async function onShield() {
-    try {
-      setMsg('');
-      setShielding(true);
-      console.log('🛡️ Shielding WETH to Railgun...');
-      
-      // First, ensure provider/signer are set
-      if (typeof window !== 'undefined' && window.ethereum) {
-        const provider = new ethers.BrowserProvider(window.ethereum);
-        const signer = await provider.getSigner();
-        
-        // Set the provider/signer in railgunClient (functions imported at top)
-        setSignerAndProvider(provider, signer);
-      }
+  try {
+    setMsg('');
+    setShielding(true);
+    console.log('🛡️ Shielding WETH to Railgun...');
 
-      const result = await shieldWETH(shieldAmt);
-      
-      if (result.success) {
-        setMsg(`✅ Shielded: ${result.txHash}`);
-        toast.success(`WETH shielded to Railgun! TX: ${result.txHash.slice(0, 10)}...`);
-        await refreshBalances();
-      } else {
-        throw new Error(result.error || 'Shield transaction failed');
-      }
-    } catch (e) {
-      console.error('❌ Shield failed:', e);
-      setMsg(e.message);
-      toast.error('Shield failed: ' + e.message);
-    } finally {
-      setShielding(false);
+    if (!window.ethereum) {
+      throw new Error('MetaMask not connected');
     }
+
+    const provider = new ethers.BrowserProvider(window.ethereum);
+    const signer = await provider.getSigner();
+
+    // Set the provider/signer in railgunClient
+    setSignerAndProvider(provider, signer);
+
+    // ✅ PASS signer into shieldWETH
+    const result = await shieldWETH(shieldAmt, signer);
+
+    if (result.success) {
+      const explorerUrl = `https://sepolia.etherscan.io/tx/${result.txHash}`;
+      setMsg(`Shielded: ${result.txHash}`);
+      toast.success(
+        <div>
+          <p>WETH shielded successfully!</p>
+          <a
+            href={explorerUrl}
+            target="_blank"
+            rel="noreferrer"
+            className="text-blue-500 underline text-sm"
+          >
+            View on Etherscan
+          </a>
+        </div>,
+        { duration: 5000 }
+      );
+      await refreshBalances();
+    } else {
+      throw new Error(result.error || 'Shield transaction failed');
+    }
+  } catch (e) {
+    console.error('❌ Shield failed:', e);
+    setMsg(e.message);
+    toast.error('Shield failed: ' + e.message);
+  } finally {
+    setShielding(false);
   }
+}
+
 
   if (!open) return null;
 
@@ -222,58 +235,49 @@ export default function PrivateFundsDrawer({ open, onClose }) {
 
         {/* Balances Section */}
         <section className="mb-6 p-4 bg-gray-50 rounded-lg">
-          <h4 className="font-medium text-gray-900 mb-3">Balances</h4>
-          {balances ? (
-            <div className="space-y-3">
-              {/* EOA Balances */}
-              <div className="space-y-2">
-                <h5 className="text-xs font-medium text-gray-700 uppercase tracking-wide">EOA (Public)</h5>
-                <ul className="space-y-1 text-sm">
-                  <li className="flex justify-between">
-                    <span className="text-gray-600">ETH:</span>
-                    <span className="font-mono font-medium">{balances.eoa?.eth ?? 0} ETH</span>
-                  </li>
-                  <li className="flex justify-between">
-                    <span className="text-gray-600">WETH:</span>
-                    <span className="font-mono font-medium">{balances.eoa?.weth ?? 0} WETH</span>
-                  </li>
-                </ul>
-              </div>
-              
-              {/* Railgun Balances */}
-              <div className="space-y-2">
-                <h5 className="text-xs font-medium text-gray-700 uppercase tracking-wide">Railgun (Private)</h5>
-                <ul className="space-y-1 text-sm">
-                  <li className="flex justify-between">
-                    <span className="text-gray-600">WETH:</span>
-                    <span className="font-mono font-medium text-purple-600">
-                      {fmt18(balances.railgun?.weth)} WETH (Spendable)
-                    </span>
-                  </li>
-                  {balances.railgun?.pendingWeth && fmt18(balances.railgun?.pendingWeth) !== '0' && (
-                    <li className="flex justify-between">
-                      <span className="text-gray-600">WETH (Pending):</span>
-                      <span className="font-mono font-medium text-orange-600">
-                        {fmt18(balances.railgun?.pendingWeth)} WETH
-                    </span>
-                  </li>
-                  )}
-                  <li className="flex justify-between">
-                    <span className="text-gray-600">ETH:</span>
-                    <span className="font-mono font-medium text-purple-600">
-                      {balances.railgun?.eth ?? 0} ETH
-                    </span>
-                  </li>
-                </ul>
-                {balances.railgunError && (
-                  <p className="text-xs text-red-500">⚠️ {balances.railgunError}</p>
+          <h4 className="font-medium text-gray-900 mb-3">WETH Balances</h4>
+
+          {/* Side-by-side WETH Balances */}
+          <div className="flex gap-4 mb-4">
+            {/* Public WETH */}
+            <div className="flex-1 p-3 bg-white rounded-lg border border-gray-200">
+              <span className="text-xs text-gray-500 uppercase tracking-wide">Public</span>
+              <p className="font-mono text-lg">
+                {busy ? (
+                  <span className="animate-pulse">...</span>
+                ) : (
+                  `${balances?.eoa?.weth ?? '0'} WETH`
                 )}
-              </div>
+              </p>
             </div>
-          ) : (
-            <p className="text-gray-500">Loading balances...</p>
+
+            {/* Private WETH */}
+            <div className="flex-1 p-3 bg-purple-50 rounded-lg border border-purple-200">
+              <span className="text-xs text-purple-500 uppercase tracking-wide">Private</span>
+              <p className="font-mono text-lg text-purple-700">
+                {busy ? (
+                  <span className="animate-pulse">...</span>
+                ) : (
+                  `${fmt18(balances?.railgun?.weth)} WETH`
+                )}
+              </p>
+              {balances?.railgun?.pendingWeth > 0n && (
+                <p className="text-xs text-orange-500">
+                  +{fmt18(balances?.railgun?.pendingWeth)} pending
+                </p>
+              )}
+            </div>
+          </div>
+
+          {/* ETH Balance (for wrapping) */}
+          <div className="text-sm text-gray-600 mb-2">
+            ETH Balance: {busy ? '...' : (balances?.eoa?.eth ?? '0')} ETH
+          </div>
+
+          {balances?.railgunError && (
+            <p className="text-xs text-red-500 mt-2">{balances.railgunError}</p>
           )}
-          {busy && <p className="text-blue-600 text-sm mt-2">🔄 Refreshing...</p>}
+          {busy && <p className="text-blue-600 text-sm mt-2">Refreshing...</p>}
         </section>
 
         {/* Wrap ETH → WETH Section */}
@@ -289,12 +293,12 @@ export default function PrivateFundsDrawer({ open, onClose }) {
               step="0.01"
               min="0.001"
             />
-            <Button 
-              onClick={onWrap} 
+            <Button
+              onClick={onWrap}
               disabled={busy || !wrapAmt || parseFloat(wrapAmt) <= 0}
               className="w-full bg-blue-600 hover:bg-blue-700 disabled:bg-gray-400"
             >
-              {busy ? 'Wrapping...' : '🔄 Wrap ETH to WETH'}
+              {busy ? 'Wrapping...' : 'Wrap ETH to WETH'}
             </Button>
           </div>
         </section>
@@ -313,20 +317,30 @@ export default function PrivateFundsDrawer({ open, onClose }) {
               min="0.001"
             />
             <div className="grid grid-cols-2 gap-2">
-              <Button 
-                onClick={onEstimate} 
+              <Button
+                onClick={onEstimate}
                 disabled={estimating || !shieldAmt || parseFloat(shieldAmt) <= 0}
                 variant="outline"
                 className="border-purple-300 text-purple-700 hover:bg-purple-50"
               >
-                {estimating ? 'Estimating...' : '🔍 Estimate Gas'}
+                {estimating ? 'Estimating...' : 'Estimate Gas'}
               </Button>
-              <Button 
-                onClick={onShield} 
+              <Button
+                onClick={onShield}
                 disabled={shielding || !shieldAmt || parseFloat(shieldAmt) <= 0}
                 className="bg-purple-600 hover:bg-purple-700 disabled:bg-gray-400"
               >
-                {shielding ? 'Shielding...' : '🛡️ Shield WETH'}
+                {shielding ? (
+                  <>
+                    <svg className="animate-spin -ml-1 mr-2 h-4 w-4 inline" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                    </svg>
+                    Shielding WETH...
+                  </>
+                ) : (
+                  'Shield WETH'
+                )}
               </Button>
             </div>
           </div>
@@ -342,14 +356,14 @@ export default function PrivateFundsDrawer({ open, onClose }) {
         {/* Action Buttons */}
         <div className="text-center space-y-2">
           <div className="flex gap-2 justify-center flex-wrap">
-            <Button 
+            <Button
               onClick={refreshBalances}
               disabled={busy}
               variant="outline"
               size="sm"
               className="text-gray-600 hover:text-gray-800"
             >
-              🔄 Refresh Balances
+              Refresh Balances
             </Button>
           </div>
         </div>
