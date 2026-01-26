@@ -70,51 +70,58 @@ Plans:
 
 ---
 
-## Phase 3: ETH to WETH Wrapping
+## Phase 3: ETH to WETH Wrapping ✓
 
 **Goal:** Fix wrapETHtoWETH to work with existing UI by making signer parameter optional
+
+**Status:** COMPLETE (2026-01-22)
+
+**Plans:** 1/1 complete
+
+Plans:
+- [x] 03-01-PLAN.md — Make signer optional in wrapETHtoWETH with MetaMask auto-resolution
+
+**Why Third:** WETH is required for Railgun shielding (ETH cannot be shielded directly)
+
+**Deliverables:**
+- [x] Make signer parameter optional in wrapETHtoWETH()
+- [x] Add automatic signer resolution from window.ethereum
+- [x] Improve error handling (ACTION_REJECTED, INSUFFICIENT_FUNDS)
+- [x] Verify wrap flow works end-to-end
+
+**Key Files:**
+- `frontend/src/lib/railgun-clean/shield.js` (modify)
+- `frontend/src/components/railgun/PrivateFundsDrawer.jsx` (no changes needed)
+
+**Result:** User can wrap ETH to WETH, balance updates, MetaMask prompts correctly
+
+---
+
+## Phase 4: WETH Shielding (Public to Private)
+
+**Goal:** Move WETH from public wallet to Railgun private balance with side-by-side balance display
 
 **Status:** PLANNED
 
 **Plans:** 1 plan
 
 Plans:
-- [ ] 03-01-PLAN.md — Make signer optional in wrapETHtoWETH with MetaMask auto-resolution
-
-**Why Third:** WETH is required for Railgun shielding (ETH cannot be shielded directly)
-
-**Deliverables:**
-- [ ] Make signer parameter optional in wrapETHtoWETH()
-- [ ] Add automatic signer resolution from window.ethereum
-- [ ] Improve error handling (ACTION_REJECTED, INSUFFICIENT_FUNDS)
-- [ ] Verify wrap flow works end-to-end
-
-**Key Files:**
-- `frontend/src/lib/railgun-clean/shield.js` (modify)
-- `frontend/src/components/railgun/PrivateFundsDrawer.jsx` (no changes needed)
-
-**Acceptance:** User can wrap 0.01 ETH to 0.01 WETH, balance updates
-
----
-
-## Phase 4: WETH Shielding (Public to Private)
-
-**Goal:** Move WETH from public wallet to Railgun private balance
+- [ ] 04-01-PLAN.md — Fix shield.js SDK types and update UI with side-by-side balances + Etherscan toast
 
 **Why Fourth:** Private balance needed before private transfers
 
 **Deliverables:**
-- [ ] Implement shield transaction generation
-- [ ] Handle shield transaction signing
-- [ ] Update private balance display
-- [ ] Implement `estimateShieldWETH()` for gas estimation
-- [ ] Handle shield confirmation
+- [ ] Fix shieldWETH to use TXIDVersion enum (not string literals)
+- [ ] Side-by-side public/private WETH balance display
+- [ ] Spinner with "Shielding WETH..." during operation
+- [ ] Toast notification with Etherscan link on success
+- [ ] Private balance updates after shield confirms
 
 **Key Files:**
-- `frontend/src/components/railgun/PrivateFundsDrawer.jsx:153`
-- `frontend/src/lib/railgun-clean/operations/shield.js` (to create)
+- `frontend/src/lib/railgun-clean/shield.js` (fix SDK types)
+- `frontend/src/components/railgun/PrivateFundsDrawer.jsx` (UI updates)
 
-**Acceptance:** User can shield WETH, private balance shows in UI
+**Acceptance:** User can shield WETH, sees side-by-side balances, gets Etherscan link in toast
 
 ---
 
