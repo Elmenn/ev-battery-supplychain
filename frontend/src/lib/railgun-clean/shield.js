@@ -83,16 +83,11 @@ export async function estimateShieldWETH(amountWeth, signer) {
     }
     console.log('[Shield] SDK initialized successfully');
 
-    // Get the chain object instead of just the network name
-    const network = NetworkName.EthereumSepolia;
-    const sepoliaConfig = NETWORK_CONFIG[network];
-    const chain = sepoliaConfig?.chain;
-    
-    if (!chain) {
-      throw new Error('Could not get chain from NETWORK_CONFIG');
-    }
-    
-    console.log('[Shield] Using chain:', chain);
+    // SDK functions need networkName (string), not chain object
+    const networkName = NetworkName.EthereumSepolia;
+    const sepoliaConfig = NETWORK_CONFIG[networkName];
+
+    console.log('[Shield] Using networkName:', networkName);
     
     const WETH_ADDRESS =
       sepoliaConfig?.baseToken?.wrappedAddress || '0xfff9976782d46cc05630d1f6ebab18b2324d6b14';
@@ -112,18 +107,15 @@ export async function estimateShieldWETH(amountWeth, signer) {
     ];
 
     const nftAmountRecipients = [];
-    
+
     console.log('[Shield] Attempting to call gasEstimateForShield...');
-    
-    // Based on the error pattern, let's try a completely different approach
-    // The error suggests the SDK wants a chain object, not a network name
-    
+
     try {
       // Try with V2 (primary version)
       console.log('[Shield] Attempting gasEstimateForShield with V2_PoseidonMerkle');
       const gasEstimate = await gasEstimateForShield(
         TXIDVersion.V2_PoseidonMerkle,
-        chain,
+        networkName,
         shieldPrivateKey,
         erc20AmountRecipients,
         nftAmountRecipients,
@@ -144,7 +136,7 @@ export async function estimateShieldWETH(amountWeth, signer) {
       try {
         const gasEstimate = await gasEstimateForShield(
           TXIDVersion.V3_PoseidonMerkle,
-          chain,
+          networkName,
           shieldPrivateKey,
           erc20AmountRecipients,
           nftAmountRecipients,
@@ -191,14 +183,14 @@ export async function shieldWETH(amountWeth, signer) {
       return { success: false, error: `SDK initialization failed: ${initResult.error}` };
     }
 
-    const network = NetworkName.EthereumSepolia;
-    const sepoliaConfig = NETWORK_CONFIG[network];
-    const chain = sepoliaConfig?.chain;
-    
+    const networkName = NetworkName.EthereumSepolia;
+    const sepoliaConfig = NETWORK_CONFIG[networkName];
+    const chain = sepoliaConfig?.chain; // Keep chain for refreshBalances
+
     if (!chain) {
       throw new Error('Could not get chain from NETWORK_CONFIG');
     }
-    
+
     const WETH_ADDRESS =
       sepoliaConfig?.baseToken?.wrappedAddress || '0xfff9976782d46cc05630d1f6ebab18b2324d6b14';
 
@@ -257,7 +249,7 @@ export async function shieldWETH(amountWeth, signer) {
     console.log('[Shield] Gas estimate successful:', estimateResult.gasEstimate);
 
     // 5) Gas details
-    const evmGasType = getEVMGasTypeForTransaction(network, true);
+    const evmGasType = getEVMGasTypeForTransaction(networkName, true);
     const fee = await provider.getFeeData();
 
     let gasDetails;
@@ -278,12 +270,12 @@ export async function shieldWETH(amountWeth, signer) {
 
     // 6) Populate transaction
     console.log('[Shield] Populating shield transaction...');
-    
+
     let populatedTransaction;
     try {
       populatedTransaction = await populateShield(
         TXIDVersion.V2_PoseidonMerkle,
-        chain,
+        networkName,
         shieldPrivateKey,
         erc20AmountRecipients,
         nftAmountRecipients,
@@ -293,7 +285,7 @@ export async function shieldWETH(amountWeth, signer) {
       console.log('[Shield] Populate with V2 failed, trying V3:', error.message);
       populatedTransaction = await populateShield(
         TXIDVersion.V3_PoseidonMerkle,
-        chain,
+        networkName,
         shieldPrivateKey,
         erc20AmountRecipients,
         nftAmountRecipients,
@@ -310,14 +302,20 @@ export async function shieldWETH(amountWeth, signer) {
     const receipt = await tx.wait();
     console.log('[Shield] Shield transaction confirmed:', receipt.hash);
 
-    // 8) Refresh balances
+    // 8) Refresh balances (non-blocking - transaction already succeeded)
     console.log('[Shield] Refreshing balances for chain:', chain);
-    await refreshBalances(chain, [stored.walletID]);
-    await awaitWalletScan(chain, stored.walletID);
+    try {
+      await refreshBalances(chain, [stored.walletID]);
+      await awaitWalletScan(chain, stored.walletID);
+      console.log('[Shield] Balance refresh completed');
+    } catch (refreshError) {
+      // Balance refresh failure is non-critical - transaction already confirmed
+      console.warn('[Shield] Balance refresh failed (non-critical):', refreshError.message);
+    }
 
     console.log('[Shield] Shield completed successfully');
     return { success: true, txHash: tx.hash };
-    
+
   } catch (e) {
     console.error('[Shield] Shield failed:', e);
     return { success: false, error: e?.message || String(e) };
