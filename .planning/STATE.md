@@ -1,16 +1,16 @@
 # Project State
 
-**Updated:** 2026-01-22
+**Updated:** 2026-01-27
 
 ## Current Position
 
-- **Phase:** 3 of 6 (ETH to WETH Wrapping) - Plan 1 complete
-- **Plan:** 1 of 1 complete
-- **Status:** Phase 3 complete, ready for Phase 4
+- **Phase:** 5 of 6 (Private Transfer) - Plan 1 complete
+- **Plan:** 1 of ? in phase
+- **Status:** Phase 5 Plan 1 complete, ready for Plan 2 (UI Integration)
 
-Progress: [===============---------------] 3/6 phases complete
+Progress: [========================------] 5/6 phases in progress
 
-Last activity: 2026-01-22 - Completed 03-01-PLAN.md (Fix ETH to WETH Wrapping)
+Last activity: 2026-01-27 - Completed 05-01-PLAN.md (Private Transfer Core)
 
 ## Living Memory
 
@@ -29,6 +29,9 @@ Last activity: 2026-01-22 - Completed 03-01-PLAN.md (Fix ETH to WETH Wrapping)
 | retry-with-backoff | SDK init retries 3 times with exponential backoff | Silent failure recovery before showing errors to user | 02-02 |
 | optional-signer | wrapETHtoWETH obtains signer from MetaMask if not provided | PrivateFundsDrawer calls without signer - auto-resolution enables existing UI | 03-01 |
 | friendly-errors | User-facing error messages instead of technical errors | "MetaMask not connected" instead of "Signer required" | 03-01 |
+| signature-derived-key | Derive encryptionKey from signature (not stored in localStorage) | Better security - key only exists transiently during operations | 05-01 |
+| bigint-transfer-amounts | Use BigInt for transfer amounts (not string like shield) | SDK transfer functions expect BigInt, shield uses string | 05-01 |
+| memo-txref-return | Return memoHash and railgunTxRef from privateTransfer | Required for Phase 6 on-chain recording via recordPrivatePayment() | 05-01 |
 
 ### Issues Log
 
@@ -36,35 +39,35 @@ Last activity: 2026-01-22 - Completed 03-01-PLAN.md (Fix ETH to WETH Wrapping)
 - ~~11,360-line serve-html.ts monolith needs extraction~~ RESOLVED (Phase 1 Plan 3 - deleted)
 - ~~Non-deterministic wallet creation due to timestamp in signing message~~ RESOLVED (Phase 2 Plan 1)
 - ~~wrapETHtoWETH signer parameter required~~ RESOLVED (Phase 3 Plan 1 - now optional)
-- `SDK.getPrivateBalances not available` - balance fetching issue (Phase 4 scope)
-- Shielding and private balances - Phase 4 scope
+- ~~SDK.getPrivateBalances not available~~ RESOLVED (Phase 4 - balance callback pattern)
+- ~~Shielding and private balances~~ RESOLVED (Phase 4 - full shield flow working)
 
 ### Context
 
-**PHASE 3 COMPLETE!**
+**PHASE 5 PLAN 1 COMPLETE!**
 
-ETH to WETH wrapping now works end-to-end:
-- User enters amount in PrivateFundsDrawer
-- Clicks "Wrap ETH to WETH" button
-- MetaMask prompts for transaction
-- Transaction confirms, WETH balance updates
-- No "Signer required" errors
+Private transfer core function implemented:
+- 3-step SDK flow: gasEstimateForUnprovenTransfer -> generateTransferProof -> populateProvedTransfer
+- encryptionKey derived from MetaMask signature (not stored)
+- Progress callback for UI during 20-30 second proof generation
+- Returns memoHash and railgunTxRef for on-chain recording (Phase 6)
 
-Human verification passed - user tested wrap flow.
+Key pattern established: operations/ subdirectory for complex SDK operations.
 
-User noted next goal: "now we need to fix shielding and correct balances the goal is to do private transaction with spendable shielded weth" - this is Phase 4 scope.
+Next: UI integration to connect privateTransfer to PrivatePaymentModal.
 
 ## Session Continuity
 
-- **Last session:** 2026-01-22
-- **Stopped at:** Completed Phase 3
-- **Resume file:** .planning/phases/04-weth-shielding/ (when created)
+- **Last session:** 2026-01-27
+- **Stopped at:** Completed 05-01-PLAN.md
+- **Resume file:** .planning/phases/05-private-transfer/05-02-PLAN.md (when created)
 
 ## Commits This Session
 
 | Hash | Message |
 |------|---------|
-| daf75f90 | feat(03-01): make wrapETHtoWETH signer parameter optional |
+| fbd1b77d | feat(05-01): create transfer.js with 3-step SDK flow |
+| 23921d55 | feat(05-01): export privateTransfer from index.js |
 
 ## Phase 1 Summary
 
@@ -90,6 +93,25 @@ User noted next goal: "now we need to fix shielding and correct balances the goa
 - Optional signer pattern established
 - User-friendly transaction error messages
 
+## Phase 4 Summary
+
+**WETH Shielding:**
+- Fixed SDK parameter types (networkName vs chain)
+- Side-by-side Public/Private balance display
+- Spinner with "Shielding WETH..." during operation
+- Toast with Etherscan link on success
+- Pending balance indicator
+- Non-blocking balance refresh (transaction success is what matters)
+
+## Phase 5 Summary
+
+**Private Transfer Core:**
+- privateTransfer function with 3-step SDK flow
+- encryptionKey derived from signature (better security)
+- Progress callback during proof generation
+- Returns memoHash and railgunTxRef for Phase 6
+- operations/ subdirectory pattern established
+
 ---
 
-*Last updated: 2026-01-22*
+*Last updated: 2026-01-27*
