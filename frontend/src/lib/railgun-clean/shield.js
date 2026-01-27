@@ -16,6 +16,7 @@ import {
   refreshBalances,
   awaitWalletScan,
 } from '@railgun-community/wallet';
+import { initializeSDK } from '../railgun-client-browser';
 
 // -------------------------
 // Helper functions
@@ -64,7 +65,7 @@ export async function wrapETHtoWETH(amountEth, signer = null) {
 export async function estimateShieldWETH(amountWeth, signer) {
   try {
     console.log('[Shield] ===== START estimateShieldWETH =====');
-    
+
     if (!signer) return { success: false, error: 'Signer required' };
     if (!amountWeth || isNaN(parseFloat(amountWeth))) return { success: false, error: 'Valid amount required' };
 
@@ -72,6 +73,15 @@ export async function estimateShieldWETH(amountWeth, signer) {
     if (!stored?.walletID || !stored?.railgunAddress) {
       return { success: false, error: 'No Railgun wallet connected' };
     }
+
+    // CRITICAL: Ensure SDK is initialized with provider loaded
+    // This loads the network configuration internally which gasEstimateForShield needs
+    console.log('[Shield] Ensuring SDK is initialized...');
+    const initResult = await initializeSDK();
+    if (!initResult.success) {
+      return { success: false, error: `SDK initialization failed: ${initResult.error}` };
+    }
+    console.log('[Shield] SDK initialized successfully');
 
     // Get the chain object instead of just the network name
     const network = NetworkName.EthereumSepolia;
@@ -165,13 +175,20 @@ export async function estimateShieldWETH(amountWeth, signer) {
 export async function shieldWETH(amountWeth, signer) {
   try {
     console.log('[Shield] ===== START shieldWETH =====');
-    
+
     if (!signer) return { success: false, error: 'Signer required for shieldWETH' };
     if (!amountWeth || isNaN(parseFloat(amountWeth))) return { success: false, error: 'Valid amount required' };
 
     const stored = JSON.parse(localStorage.getItem('railgun.wallet') || 'null');
     if (!stored?.walletID || !stored?.railgunAddress) {
       return { success: false, error: 'No Railgun wallet connected (missing walletID/railgunAddress).' };
+    }
+
+    // CRITICAL: Ensure SDK is initialized with provider loaded
+    console.log('[Shield] Ensuring SDK is initialized...');
+    const initResult = await initializeSDK();
+    if (!initResult.success) {
+      return { success: false, error: `SDK initialization failed: ${initResult.error}` };
     }
 
     const network = NetworkName.EthereumSepolia;
