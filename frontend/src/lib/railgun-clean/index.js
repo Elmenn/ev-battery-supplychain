@@ -44,7 +44,7 @@
  *
  * Payments:
  *   - paySellerV2(params)            - Execute private transfer
- *   - privateTransfer(params)        - Alias for paySellerV2
+ *   - privateTransfer(params)        - Execute private transfer (SDK 3-step flow)
  *   - checkWalletState(eoaAddress)   - Check wallet exists and is loaded
  *
  * Shielding:
@@ -92,6 +92,9 @@ import { getAllBalances } from './balances';
 // Payments
 import { paySellerV2, checkWalletState } from './payments';
 
+// Private Transfer (SDK implementation)
+import { privateTransfer as sdkPrivateTransfer } from './operations/transfer';
+
 // Shield
 import { shieldWETH, getWETHBalance, wrapETHtoWETH, estimateShieldWETH } from './shield';
 
@@ -136,9 +139,10 @@ export const getRailgunAddressFromCredentials = async (mnemonic, encryptionKey) 
 // ==========================================
 
 /**
- * Alias for paySellerV2 - some components import as privateTransfer
+ * Private transfer using SDK 3-step flow (gas estimate, proof, populate)
+ * Replaces legacy paySellerV2 alias
  */
-export const privateTransfer = paySellerV2;
+export const privateTransfer = sdkPrivateTransfer;
 
 /**
  * Alias for bootstrap - RailgunSimple.tsx imports as initRailgunEngine
@@ -265,7 +269,7 @@ export default {
 
   // Payments
   paySellerV2,
-  privateTransfer,
+  privateTransfer: sdkPrivateTransfer,
   checkWalletState,
 
   // Shield
