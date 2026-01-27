@@ -59,28 +59,17 @@ const safeJSON = (x) => JSON.parse(JSON.stringify(x, (_, v) =>
 const ZERO = "0x0000000000000000000000000000000000000000";
 
 const ProductDetail = ({ provider, currentUser, onConfirmDelivery }) => {
-  // quick helper to gate private UI
+  // Client-side SDK is always ready after initialization
+  // No backend status check needed
   const checkRailgunReady = useCallback(async () => {
-    if (!IS_RAILGUN_API_CONFIGURED) {
-      return false;
-    }
-    try {
-      const res = await fetch(`${RAILGUN_API_BASE}/api/railgun/status`);
-      const json = await res.json();
-      return json?.success && json?.data && json.data.engineReady && !json.data.fallbackMode;
-    } catch {
-      return false;
-    }
+    // SDK initialization is handled by railgun-client-browser.js
+    // Just return true - errors will be caught during actual payment
+    return true;
   }, []);
 
   const openPrivatePaymentModal = useCallback(async () => {
-    const ok = await checkRailgunReady();
-    if (!ok) {
-      toast.error('Private flow temporarily unavailable (Railgun engine offline).');
-      return;
-    }
     setShowPrivatePaymentModal(true);
-  }, [checkRailgunReady]);
+  }, []);
 
   const { address } = useParams();
   /* ─────────────── State ────────────────────────────────────── */
