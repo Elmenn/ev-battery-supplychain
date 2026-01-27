@@ -97,31 +97,31 @@ Plans:
 
 ---
 
-## Phase 4: WETH Shielding (Public to Private)
+## Phase 4: WETH Shielding (Public to Private) ✓
 
 **Goal:** Move WETH from public wallet to Railgun private balance with side-by-side balance display
 
-**Status:** PLANNED
+**Status:** COMPLETE (2026-01-27)
 
-**Plans:** 1 plan
+**Plans:** 1/1 complete
 
 Plans:
-- [ ] 04-01-PLAN.md — Fix shield.js SDK types and update UI with side-by-side balances + Etherscan toast
+- [x] 04-01-PLAN.md — Fix shield.js SDK types and update UI with side-by-side balances + Etherscan toast
 
 **Why Fourth:** Private balance needed before private transfers
 
 **Deliverables:**
-- [ ] Fix shieldWETH to use TXIDVersion enum (not string literals)
-- [ ] Side-by-side public/private WETH balance display
-- [ ] Spinner with "Shielding WETH..." during operation
-- [ ] Toast notification with Etherscan link on success
-- [ ] Private balance updates after shield confirms
+- [x] Fix shieldWETH to use TXIDVersion enum (not string literals)
+- [x] Side-by-side public/private WETH balance display
+- [x] Spinner with "Shielding WETH..." during operation
+- [x] Toast notification with Etherscan link on success
+- [x] Private balance updates after shield confirms
 
 **Key Files:**
 - `frontend/src/lib/railgun-clean/shield.js` (fix SDK types)
 - `frontend/src/components/railgun/PrivateFundsDrawer.jsx` (UI updates)
 
-**Acceptance:** User can shield WETH, sees side-by-side balances, gets Etherscan link in toast
+**Result:** User can shield WETH, sees side-by-side balances, gets Etherscan link in toast, pending balance displays correctly
 
 ---
 
@@ -129,20 +129,30 @@ Plans:
 
 **Goal:** Send private payment from buyer to seller's 0zk address
 
+**Status:** IN PROGRESS
+
+**Plans:** 2 plans
+
+Plans:
+- [ ] 05-01-PLAN.md — Create transfer.js with 3-step SDK flow (estimate, prove, populate)
+- [ ] 05-02-PLAN.md — Wire up UI with progress feedback and store transaction references
+
 **Why Fifth:** Core feature - the actual privacy-preserving payment
 
 **Deliverables:**
-- [ ] Implement private transfer to 0zk address
-- [ ] Handle POI (Proof of Innocence) verification
+- [ ] Implement private transfer to 0zk address using SDK 3-step flow
+- [ ] Handle POI (Proof of Innocence) verification (automatic in SDK 10.x)
 - [ ] Generate memoHash for transaction
-- [ ] Extract railgunTxRef from completed transfer
+- [ ] Extract railgunTxRef from nullifiers for on-chain recording
+- [ ] Show progress during 20-30 second proof generation
 - [ ] Handle transaction confirmation
 
 **Key Files:**
-- `frontend/src/components/railgun/PrivatePaymentModal.jsx`
-- `frontend/src/lib/railgun-clean/operations/transfer.js` (to create)
+- `frontend/src/lib/railgun-clean/operations/transfer.js` (create)
+- `frontend/src/lib/railgun-clean/payments.js` (update)
+- `frontend/src/components/railgun/PrivatePaymentModal.jsx` (update)
 
-**Acceptance:** User can send private payment, transaction completes on Sepolia
+**Acceptance:** User can send private payment, sees proof generation progress, transaction completes on Sepolia
 
 ---
 
