@@ -840,54 +840,14 @@ const PrivatePaymentModal = ({ product, isOpen, onClose, onSuccess, currentUser 
         console.log('✅ Using stored seller Railgun address:', product.sellerRailgunAddress);
         return product.sellerRailgunAddress;
       }
-      
-      // ✅ Fallback: Check if seller has connected their Railgun wallet
-      console.log('🔍 No stored Railgun address, checking if seller has connected...');
-      console.log('🔍 Seller EOA:', sellerEOA);
-      
-      // Try different seller properties if sellerEOA is undefined
-      const actualSellerEOA = sellerEOA || product?.owner || product?.creator;
-      console.log('🔍 Getting seller Railgun address for EOA:', actualSellerEOA);
-      console.log('🔍 Original sellerEOA:', sellerEOA);
-      console.log('🔍 Product owner:', product?.owner);
-      console.log('🔍 Product creator:', product?.creator);
-      console.log('🔍 API endpoint:', `${RAILGUN_API_BASE}/api/railgun/wallet-info?userAddress=${actualSellerEOA}`);
-      
-      // Get seller's wallet credentials
-      const response = await fetch(`${RAILGUN_API_BASE}/api/railgun/wallet-info?userAddress=${actualSellerEOA}`);
-      console.log('🔍 API response status:', response.status);
-      
-      const result = await response.json();
-      console.log('🔍 API response data:', result);
-      
-      if (result.success && result.data) {
-        console.log('✅ Seller wallet info retrieved:', result.data);
-        
-        // Now get the seller's credentials to derive Railgun address
-        const credentialsResponse = await fetch(`${RAILGUN_API_BASE}/api/railgun/wallet-credentials/${actualSellerEOA}`);
-        const credentialsResult = await credentialsResponse.json();
-        
-        if (credentialsResult.success && credentialsResult.data) {
-          console.log('✅ Seller credentials retrieved, deriving Railgun address...');
 
-          // Derive seller's Railgun address from mnemonic and encryption key
-          const sellerRailgunAddress = await getRailgunAddressFromCredentials(
-            credentialsResult.data.mnemonic,
-            credentialsResult.data.encryptionKey
-          );
-          
-          console.log('✅ Seller Railgun address derived:', sellerRailgunAddress);
-          return sellerRailgunAddress;
-      } else {
-          console.log('⚠️ Seller has no credentials yet - they need to connect first');
-          throw new Error('Seller has not connected their Railgun wallet yet');
-        }
-      } else {
-        console.log('❌ API response failed:', result);
-        throw new Error(result.error || 'Failed to get seller wallet info');
-      }
+      // TODO: In production, seller address should be stored with product
+      // For now, use test address for development
+      const TEST_SELLER_ADDRESS = '0zk1qype2m3jz0hrhs4n7cewckdr3a9762wy9aqlt5pzp5g8hfk9488lhrv7j6fe3z53la6cqrxkl9hx77x6uac8zdjc2z5494wyznmwnv97l8sc0nfkkm72vt8anxa';
+      console.log('⚠️ No stored seller address, using test address:', TEST_SELLER_ADDRESS);
+      return TEST_SELLER_ADDRESS;
     } catch (error) {
-      console.error('❌ Failed to get seller Railgun address:', error);
+      console.error('Failed to get seller Railgun address:', error);
       throw error;
     }
   };
@@ -1185,19 +1145,11 @@ const PrivatePaymentModal = ({ product, isOpen, onClose, onSuccess, currentUser 
   }, [isOpen]);
   
   // Check if Railgun engine is ready
+  // NOTE: Backend API no longer needed - SDK is initialized client-side
   const checkEngineStatus = async () => {
-    try {
-      const response = await fetch(`${RAILGUN_API_BASE}/api/railgun/status`);
-      const result = await response.json();
-      
-      if (!result?.data?.engineReady) {
-        toast.error('Private payments are temporarily unavailable (engine fallback).');
-        onClose(); // Close modal if engine not ready
-      }
-    } catch (error) {
-      console.warn('⚠️ Could not check engine status:', error);
-      // Don't block the modal if status check fails
-    }
+    // Client-side SDK handles initialization via initializeSDK()
+    // No backend status check needed
+    console.log('[PrivatePaymentModal] Skipping backend status check - using client-side SDK');
   };
 
   if (!isOpen) return null;
