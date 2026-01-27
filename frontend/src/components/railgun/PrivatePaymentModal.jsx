@@ -371,6 +371,9 @@ const PrivatePaymentModal = ({ product, isOpen, onClose, onSuccess, currentUser 
   const [privateBalance, setPrivateBalance] = useState(null);
   const [isRGConnected, setIsRGConnected] = useState(false);
 
+  // Transfer progress state for proof generation UI
+  const [transferProgress, setTransferProgress] = useState({ step: 'idle', message: '', progress: 0 });
+
   // Check balance when railgun wallet connects
   useEffect(() => {
     if (isRGConnected && railgun && railgun.walletID) {
@@ -962,31 +965,46 @@ const PrivatePaymentModal = ({ product, isOpen, onClose, onSuccess, currentUser 
         throw new Error(`Wallet not properly loaded in Railgun SDK. Please reconnect your wallet. State: ${JSON.stringify(walletState)}`);
       }
       
-      // Execute V2 unproven transfer
-      const { hash } = await paySellerV2({
-        walletID, // Pass raw string ID
-        tokenAddress,
-        amount,
-        sellerRailgunAddress,
-        useBroadcaster: true,
+      // Reset transfer progress
+      setTransferProgress({ step: 'idle', message: '', progress: 0 });
+
+      // Execute private transfer with progress callback
+      const result = await paySellerV2({
+        sellerRailgunAddress: sellerRailgunAddress,
+        amountWei: amount.toString(),
+        tokenAddress: tokenAddress,
+        productId: product.id,
+        onProgress: (state) => {
+          setTransferProgress(state);
+        }
       });
 
+      // Handle result
+      if (!result.success) {
+        throw new Error(result.error || 'Transfer failed');
+      }
+      const hash = result.txHash;
+
       console.log('✅ Private payment tx:', hash);
-        
-        // Store pending payment data for seller to see
-        const pendingPaymentData = {
+      console.log('✅ memoHash:', result.memoHash);
+      console.log('✅ railgunTxRef:', result.railgunTxRef);
+
+      // Store pending payment data for seller to see (includes memoHash and railgunTxRef for Phase 6)
+      const pendingPaymentData = {
         productId: product.id || '1',
         txHash: hash,
-          timestamp: Date.now(),
+        memoHash: result.memoHash,           // For Phase 6 on-chain recording
+        railgunTxRef: result.railgunTxRef,   // For Phase 6 on-chain recording
+        timestamp: Date.now(),
         productAddress: product.address || product.contractAddress
-        };
-        
+      };
+
       const pendingKey = `pending_private_payment_${product.address || product.contractAddress}`;
-        localStorage.setItem(pendingKey, JSON.stringify(pendingPaymentData));
-        console.log('💾 Stored pending payment data for seller:', pendingPaymentData);
-        
-        toast.success("🎉 Private payment completed! Your shielded tokens were transferred privately.");
-        setCurrentStep('complete');
+      localStorage.setItem(pendingKey, JSON.stringify(pendingPaymentData));
+      console.log('💾 Stored pending payment data for seller:', pendingPaymentData);
+
+      toast.success(`Private payment completed! Tx: ${hash.slice(0, 10)}...`);
+      setCurrentStep('complete');
       
     } catch (error) {
       console.error("Private payment failed:", error);
@@ -1434,21 +1452,41 @@ const PrivatePaymentModal = ({ product, isOpen, onClose, onSuccess, currentUser 
               </div>
             )}
             
-            <Button 
+            <Button
               onClick={handlePrivatePayment}
               disabled={paymentLoading || !paymentValidation.isValid}
               className="w-full bg-purple-600 hover:bg-purple-700 disabled:bg-gray-400"
             >
-              {paymentLoading ? (
+              {paymentLoading && transferProgress.step === 'proving' ? (
+                <div className="flex flex-col items-center space-y-2">
+                  <div className="flex items-center space-x-2">
+                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+                    <span className="text-sm">{transferProgress.message}</span>
+                  </div>
+                  {transferProgress.progress > 0 && (
+                    <div className="w-full bg-purple-400 rounded-full h-2">
+                      <div
+                        className="bg-white h-2 rounded-full transition-all duration-300"
+                        style={{ width: `${transferProgress.progress}%` }}
+                      />
+                    </div>
+                  )}
+                </div>
+              ) : paymentLoading ? (
                 <div className="flex items-center space-x-2">
                   <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
-                  <span>Processing Payment...</span>
+                  <span>{transferProgress.message || 'Processing Payment...'}</span>
                 </div>
               ) : (
-                '🔒 Complete Private Payment'
+                'Complete Private Payment'
               )}
             </Button>
-            
+
+            {/* Warning about proof generation time */}
+            <p className="text-xs text-yellow-600 mt-2 text-center">
+              Note: Proof generation takes 20-30 seconds. Please wait.
+            </p>
+
             {/* Helper Text */}
             <div className="text-xs text-gray-500 text-center">
               {paymentValidation.isValid ? (
