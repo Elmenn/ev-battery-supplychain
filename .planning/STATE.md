@@ -1,16 +1,16 @@
 # Project State
 
-**Updated:** 2026-01-27
+**Updated:** 2026-02-05
 
 ## Current Position
 
-- **Phase:** 5 of 6 (Private Transfer) - Plan 2 at checkpoint
-- **Plan:** 2 of 2 in phase (awaiting human verification)
-- **Status:** Phase 5 Plan 2 auto tasks complete, awaiting human verification
+- **Phase:** 6 of 6 (On-Chain Recording)
+- **Plan:** 1 of 2 in phase - COMPLETE
+- **Status:** Phase 6 Plan 1 complete, ready for Phase 6 Plan 2 (UI updates)
 
-Progress: [========================------] 5/6 phases in progress
+Progress: [██████████████████████████████████] 6/6 phases in progress (Plan 1/2 done)
 
-Last activity: 2026-01-27 - Phase 5 Plan 2 checkpoint (human verification needed)
+Last activity: 2026-02-05 - Completed 06-01-PLAN.md (recordPrivatePayment flow)
 
 ## Living Memory
 
@@ -32,6 +32,10 @@ Last activity: 2026-01-27 - Phase 5 Plan 2 checkpoint (human verification needed
 | signature-derived-key | Derive encryptionKey from signature (not stored in localStorage) | Better security - key only exists transiently during operations | 05-01 |
 | bigint-transfer-amounts | Use BigInt for transfer amounts (not string like shield) | SDK transfer functions expect BigInt, shield uses string | 05-01 |
 | memo-txref-return | Return memoHash and railgunTxRef from privateTransfer | Required for Phase 6 on-chain recording via recordPrivatePayment() | 05-01 |
+| quick-sync-empty-stubs | Quick-sync stubs return empty arrays instead of throwing | SDK falls back to on-chain scanning - slower but reliable | 05-02 |
+| immediate-recording | recordPrivatePayment called in same flow as privateTransfer | Single-step purchase flow for better UX | 06-01 |
+| preflight-static-call | Preflight check with staticCall before sending tx | Catches contract errors before gas is spent | 06-01 |
+| gas-headroom-20pct | Gas estimation with 20% buffer | Prevents out-of-gas failures on recording tx | 06-01 |
 
 ### Issues Log
 
@@ -41,36 +45,35 @@ Last activity: 2026-01-27 - Phase 5 Plan 2 checkpoint (human verification needed
 - ~~wrapETHtoWETH signer parameter required~~ RESOLVED (Phase 3 Plan 1 - now optional)
 - ~~SDK.getPrivateBalances not available~~ RESOLVED (Phase 4 - balance callback pattern)
 - ~~Shielding and private balances~~ RESOLVED (Phase 4 - full shield flow working)
+- ~~Quick-sync stub files throwing errors, breaking SDK sync~~ RESOLVED (Phase 5 - stubs now return empty arrays)
 
 ### Context
 
-**PHASE 5 PLAN 1 COMPLETE!**
+**PHASE 6 PLAN 1 COMPLETE!**
 
-Private transfer core function implemented:
-- 3-step SDK flow: gasEstimateForUnprovenTransfer -> generateTransferProof -> populateProvedTransfer
-- encryptionKey derived from MetaMask signature (not stored)
-- Progress callback for UI during 20-30 second proof generation
-- Returns memoHash and railgunTxRef for on-chain recording (Phase 6)
+On-chain recording flow implemented:
+- decodeContractError function handles all 9 ProductEscrow custom errors
+- recordPrivatePayment called immediately after privateTransfer succeeds
+- Preflight check with staticCall validates before sending transaction
+- Gas estimation with 20% headroom
+- localStorage status: pending -> recording -> confirmed
+- Success toast with Etherscan link
 
-Key pattern established: operations/ subdirectory for complex SDK operations.
-
-Next: UI integration to connect privateTransfer to PrivatePaymentModal.
+Next: Phase 6 Plan 2 - UI updates to show purchase status.
 
 ## Session Continuity
 
-- **Last session:** 2026-01-27
-- **Stopped at:** Phase 5 Plan 2 - Checkpoint (human verification)
-- **Resume file:** .planning/phases/05-private-transfer/05-02-PLAN.md
-- **Checkpoint:** Task 3 (human-verify) - awaiting user approval
+- **Last session:** 2026-02-05
+- **Stopped at:** Completed 06-01-PLAN.md
+- **Next:** Phase 6 Plan 2 (UI updates)
+- **Resume file:** .planning/phases/06-on-chain-recording/06-02-PLAN.md
 
 ## Commits This Session
 
 | Hash | Message |
 |------|---------|
-| fbd1b77d | feat(05-01): create transfer.js with 3-step SDK flow |
-| 23921d55 | feat(05-01): export privateTransfer from index.js |
-| 27ece566 | feat(05-02): update payments.js to delegate to privateTransfer |
-| 385c0935 | feat(05-02): add progress UI during proof generation |
+| 02cb7399 | feat(06-01): add decodeContractError for ProductEscrow errors |
+| c4110ee2 | feat(06-01): add recordPrivatePayment flow to PrivatePaymentModal |
 
 ## Phase 1 Summary
 
@@ -115,6 +118,15 @@ Next: UI integration to connect privateTransfer to PrivatePaymentModal.
 - Returns memoHash and railgunTxRef for Phase 6
 - operations/ subdirectory pattern established
 
+## Phase 6 Summary (In Progress)
+
+**On-Chain Recording:**
+- Plan 1 COMPLETE: recordPrivatePayment flow in PrivatePaymentModal
+- decodeContractError for user-friendly error messages
+- Preflight check with staticCall pattern
+- Gas estimation with 20% headroom
+- Success toast with Etherscan link
+
 ---
 
-*Last updated: 2026-01-27*
+*Last updated: 2026-02-05*
