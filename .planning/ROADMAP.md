@@ -125,27 +125,27 @@ Plans:
 
 ---
 
-## Phase 5: Private Payment Transfer
+## Phase 5: Private Payment Transfer ✓
 
 **Goal:** Send private payment from buyer to seller's 0zk address
 
-**Status:** IN PROGRESS
+**Status:** COMPLETE (2026-02-05)
 
-**Plans:** 2 plans
+**Plans:** 2/2 complete
 
 Plans:
-- [ ] 05-01-PLAN.md — Create transfer.js with 3-step SDK flow (estimate, prove, populate)
-- [ ] 05-02-PLAN.md — Wire up UI with progress feedback and store transaction references
+- [x] 05-01-PLAN.md — Create transfer.js with 3-step SDK flow (estimate, prove, populate)
+- [x] 05-02-PLAN.md — Wire up UI with progress feedback and store transaction references
 
 **Why Fifth:** Core feature - the actual privacy-preserving payment
 
 **Deliverables:**
-- [ ] Implement private transfer to 0zk address using SDK 3-step flow
-- [ ] Handle POI (Proof of Innocence) verification (automatic in SDK 10.x)
-- [ ] Generate memoHash for transaction
-- [ ] Extract railgunTxRef from nullifiers for on-chain recording
-- [ ] Show progress during 20-30 second proof generation
-- [ ] Handle transaction confirmation
+- [x] Implement private transfer to 0zk address using SDK 3-step flow
+- [x] Handle POI (Proof of Innocence) verification (automatic in SDK 10.x)
+- [x] Generate memoHash for transaction
+- [x] Extract railgunTxRef from nullifiers for on-chain recording
+- [x] Show progress during 20-30 second proof generation
+- [x] Handle transaction confirmation
 
 **Key Files:**
 - `frontend/src/lib/railgun-clean/operations/transfer.js` (create)
@@ -158,21 +158,34 @@ Plans:
 
 ## Phase 6: On-Chain Recording
 
-**Goal:** Record private payment reference on ProductEscrow contract
+**Goal:** Record private payment reference on ProductEscrow contract after Railgun transfer confirms
+
+**Status:** PLANNED
+
+**Plans:** 2 plans in 2 waves
+
+Plans:
+- [ ] 06-01-PLAN.md — Add recordPrivatePayment call and error decoding
+- [ ] 06-02-PLAN.md — Update UI with purchased badge and transaction display
 
 **Why Sixth:** Links privacy payment to supply chain product state
 
 **Deliverables:**
-- [ ] Call `recordPrivatePayment(memoHash, railgunTxRef)` after transfer
+- [ ] Call `recordPrivatePayment(productId, memoHash, railgunTxRef)` after transfer
 - [ ] Move product to Phase.Purchased with PurchaseMode.Private
-- [ ] Update UI to reflect purchased state
-- [ ] Test full flow end-to-end
+- [ ] Show specific error messages from contract reverts
+- [ ] Display "Purchased" badge on marketplace cards
+- [ ] Show "Already Purchased" disabled button on detail page
+- [ ] Display transaction references (txHash, memoHash) after purchase
+- [ ] Success toast with Etherscan link
 
 **Key Files:**
-- `contracts/ProductEscrow_Initializer.sol`
-- `frontend/src/components/marketplace/ProductDetail.jsx`
+- `frontend/src/utils/errorHandler.js` (add decodeContractError)
+- `frontend/src/components/railgun/PrivatePaymentModal.jsx` (add recording flow)
+- `frontend/src/components/marketplace/ProductCard.jsx` (update badge)
+- `frontend/src/components/marketplace/ProductDetail.jsx` (update UI)
 
-**Acceptance:** Product shows as "Purchased (Private)" after payment
+**Acceptance:** Product shows as "Purchased (Private)" after payment, user can see transaction references
 
 ---
 
