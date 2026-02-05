@@ -49,7 +49,9 @@ const VC_CHAIN =
 
 const rawRailgunApiBase = (process.env.REACT_APP_RAILGUN_API_URL || '').trim();
 const RAILGUN_API_BASE = rawRailgunApiBase.length > 0 ? rawRailgunApiBase : null;
-const IS_RAILGUN_API_CONFIGURED = !!RAILGUN_API_BASE;
+// Backend Railgun API is deprecated - all operations now use client-side SDK
+// Set to false to skip all backend calls
+const IS_RAILGUN_API_CONFIGURED = false;
 
 // Utility function for safe JSON serialization (handles BigInt)
 const safeJSON = (x) => JSON.parse(JSON.stringify(x, (_, v) =>
@@ -57,6 +59,8 @@ const safeJSON = (x) => JSON.parse(JSON.stringify(x, (_, v) =>
 ));
 
 const ZERO = "0x0000000000000000000000000000000000000000";
+const getPrivatePaymentHistoryKey = (productAddress) => `private_payment_history_${productAddress}`;
+const getPendingPrivatePaymentKey = (productAddress) => `pending_private_payment_${productAddress}`;
 
 const ProductDetail = ({ provider, currentUser, onConfirmDelivery }) => {
   // Client-side SDK is always ready after initialization
@@ -96,6 +100,7 @@ const ProductDetail = ({ provider, currentUser, onConfirmDelivery }) => {
   const [pendingPrivatePayments, setPendingPrivatePayments] = useState([]);
   const [confirmingPayment, setConfirmingPayment] = useState(false);
   const [deletingReceipt, setDeletingReceipt] = useState(false);
+  const [privatePaymentHistory, setPrivatePaymentHistory] = useState([]);
   
   // Separate state for buyer and seller addresses (fixes wallet display bug)
   const [buyerEOA, setBuyerEOA] = useState(null);
@@ -201,6 +206,64 @@ const ProductDetail = ({ provider, currentUser, onConfirmDelivery }) => {
     }
   }, [address, currentUser, provider]); // Remove deletingReceipt from dependencies
 
+  const loadPrivatePaymentHistory = useCallback(() => {
+    const productAddress = product?.address || address;
+    if (!productAddress) {
+      setPrivatePaymentHistory([]);
+      return;
+    }
+
+    let history = [];
+    const historyKey = getPrivatePaymentHistoryKey(productAddress);
+    const rawHistory = localStorage.getItem(historyKey);
+    if (rawHistory) {
+      try {
+        const parsed = JSON.parse(rawHistory);
+        history = Array.isArray(parsed) ? parsed : [];
+      } catch (error) {
+        history = [];
+      }
+    }
+
+    const pendingKey = getPendingPrivatePaymentKey(productAddress);
+    const pendingRaw = localStorage.getItem(pendingKey);
+    if (pendingRaw) {
+      try {
+        const pending = JSON.parse(pendingRaw);
+        if (pending && !history.some((entry) => entry?.txHash === pending?.txHash)) {
+          history = [...history, { ...pending, status: 'pending' }];
+        }
+      } catch (error) {
+        // ignore pending parse errors
+      }
+    }
+
+    const sorted = [...history].sort((a, b) => (b?.timestamp || 0) - (a?.timestamp || 0));
+    setPrivatePaymentHistory(sorted);
+  }, [address, product?.address]);
+
+  const markPrivatePaymentConfirmed = useCallback((productAddress, txHash, confirmTxHash) => {
+    if (!productAddress) {
+      return;
+    }
+    const historyKey = getPrivatePaymentHistoryKey(productAddress);
+    const rawHistory = localStorage.getItem(historyKey);
+    const parsedHistory = rawHistory ? JSON.parse(rawHistory) : [];
+    const historyList = Array.isArray(parsedHistory) ? parsedHistory : [];
+    const updated = historyList.map((entry) => {
+      if (entry?.txHash && entry.txHash === txHash) {
+        return {
+          ...entry,
+          status: 'confirmed',
+          confirmedAt: Date.now(),
+          confirmTxHash
+        };
+      }
+      return entry;
+    });
+    localStorage.setItem(historyKey, JSON.stringify(updated));
+  }, []);
+
   // Confirm private payment on-chain
   const confirmPrivatePayment = async (pendingPayment) => {
     if (!IS_RAILGUN_API_CONFIGURED) {
@@ -271,6 +334,11 @@ const ProductDetail = ({ provider, currentUser, onConfirmDelivery }) => {
           
           toast.success(`Private payment confirmed on-chain (tx: ${receipt.hash.slice(0, 10)}...)`);
           console.log('✅ Private payment confirmed:', receipt.hash);
+
+          if (pendingPayment?.txHash) {
+            markPrivatePaymentConfirmed(address, pendingPayment.txHash, receipt.hash);
+            loadPrivatePaymentHistory();
+          }
           
           // Dev seller-credit removed; escrow confirmation is complete.
           
@@ -409,7 +477,7 @@ const ProductDetail = ({ provider, currentUser, onConfirmDelivery }) => {
       publicPriceCommitment, // ✅ Store on-chain commitment
       commitmentFrozen, // ✅ Store commitment frozen status
       publicEnabled,   // <— persist
-      privateEnabled: privateEnabled && IS_RAILGUN_API_CONFIGURED,   // ⬅️ add this
+      privateEnabled,   // Client-side SDK handles private payments
       owner,
       buyer,
       purchased,
@@ -567,8 +635,7 @@ const ProductDetail = ({ provider, currentUser, onConfirmDelivery }) => {
     product?.phase === 0 &&
     !product?.purchased &&
     isUnrelated &&
-    product?.privateEnabled &&
-    IS_RAILGUN_API_CONFIGURED; // ⬅️ require API availability
+    product?.privateEnabled; // Client-side SDK handles private payments
 
 /* you’ll also need statusLabel for the header */
 const statusLabel = isDelivered
@@ -618,6 +685,7 @@ const statusLabel = isDelivered
     setStatusMessage("🔒 Private transfer initiated! Waiting for seller confirmation...");
     // Refresh product data to show updated status
     loadProductData();
+    loadPrivatePaymentHistory();
   };
 
   // ✅ Public purchase - bullet-proof handler for old/new clones
@@ -1540,6 +1608,7 @@ const statusLabel = isDelivered
     cleanupLegacyBuyerData();
     loadProductData();
     checkPendingPrivatePayments(); // it already has guards
+    loadPrivatePaymentHistory();
     
     // Release identity lock if we can read a non-zero buyer from chain
     if (identityLocked && product?.buyer && product.buyer !== ethers.ZeroAddress) {
@@ -1549,7 +1618,7 @@ const statusLabel = isDelivered
         setIdentityLocked(false);
       }
     }
-  }, [address, currentUser, loadProductData, checkPendingPrivatePayments, identityLocked, product?.buyer, product?.owner, sellerEOA]);
+  }, [address, currentUser, loadProductData, checkPendingPrivatePayments, loadPrivatePaymentHistory, identityLocked, product?.buyer, product?.owner, sellerEOA]);
 
   // Fetch VC for provenance display (if not already in vcStages)
   useEffect(() => {
@@ -1959,6 +2028,53 @@ return (
       </div>
     )}
 
+    {privatePaymentHistory.length > 0 && (
+      <div className="bg-gray-50 border border-gray-200 rounded-lg p-4 mb-6">
+        <h4 className="font-semibold text-gray-800 mb-2">🔒 Private Transfer History (Local)</h4>
+        <p className="text-xs text-gray-600 mb-3">
+          These entries are stored in this browser only. Use them for demo and audit trails.
+        </p>
+        <div className="space-y-3">
+          {privatePaymentHistory.map((entry, index) => {
+            const displayStatus = entry?.status || 'pending';
+            const timestamp = entry?.timestamp ? new Date(entry.timestamp).toLocaleString() : 'Unknown';
+            return (
+              <div key={`${entry?.txHash || entry?.memoHash || index}`} className="bg-white p-3 rounded border">
+                <div className="grid grid-cols-2 gap-2 text-xs text-gray-700">
+                  <div>
+                    <strong>Status:</strong> {displayStatus}
+                  </div>
+                  <div>
+                    <strong>Time:</strong> {timestamp}
+                  </div>
+                </div>
+                {entry?.txHash && (
+                  <div className="mt-2 text-xs text-gray-700">
+                    <strong>Public Tx Hash:</strong> <Copyable value={entry.txHash} />
+                  </div>
+                )}
+                {entry?.memoHash && (
+                  <div className="mt-1 text-xs text-gray-700">
+                    <strong>Memo Hash:</strong> <Copyable value={entry.memoHash} />
+                  </div>
+                )}
+                {entry?.railgunTxRef && (
+                  <div className="mt-1 text-xs text-gray-700">
+                    <strong>Railgun Tx Ref:</strong> <Copyable value={entry.railgunTxRef} />
+                  </div>
+                )}
+                {entry?.confirmTxHash && (
+                  <div className="mt-1 text-xs text-gray-700">
+                    <strong>Confirm Tx Hash:</strong> <Copyable value={entry.confirmTxHash} />
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    )}
+
       {/* ────────── Tabs: Credentials & Audit ───────── */}
       {vcStages.length > 0 && (
         <div className="mt-8">
@@ -2165,6 +2281,68 @@ return (
         </div>
       )}
       
+      {/* ────────── Already Purchased State ───────── */}
+      {product?.purchased && (
+        <div className="space-y-4">
+          <div className="space-y-2">
+            <h4 className="font-semibold">Purchase Status</h4>
+            <Button
+              disabled
+              className="w-full bg-gray-300 text-gray-600 cursor-not-allowed"
+            >
+              Already Purchased
+            </Button>
+          </div>
+
+          {/* Transaction References (show after private purchase) */}
+          {(() => {
+            const pendingKey = `pending_private_payment_${address}`;
+            const pendingRaw = localStorage.getItem(pendingKey);
+            if (!pendingRaw) return null;
+
+            try {
+              const pending = JSON.parse(pendingRaw);
+              if (pending.status !== 'confirmed') return null;
+
+              const transferUrl = pending.txHash ? `https://sepolia.etherscan.io/tx/${pending.txHash}` : null;
+              const recordUrl = pending.recordTxHash ? `https://sepolia.etherscan.io/tx/${pending.recordTxHash}` : null;
+
+              return (
+                <div className="p-4 bg-purple-50 rounded-lg border border-purple-200">
+                  <h4 className="font-semibold text-purple-800 mb-2">Private Payment Details</h4>
+                  <div className="space-y-2 text-sm">
+                    {pending.txHash && (
+                      <div>
+                        <span className="font-medium">Railgun Transfer:</span>{' '}
+                        <a href={transferUrl} target="_blank" rel="noreferrer" className="text-blue-600 hover:underline">
+                          {pending.txHash.slice(0, 10)}...{pending.txHash.slice(-8)}
+                        </a>
+                      </div>
+                    )}
+                    {pending.recordTxHash && (
+                      <div>
+                        <span className="font-medium">On-Chain Recording:</span>{' '}
+                        <a href={recordUrl} target="_blank" rel="noreferrer" className="text-blue-600 hover:underline">
+                          {pending.recordTxHash.slice(0, 10)}...{pending.recordTxHash.slice(-8)}
+                        </a>
+                      </div>
+                    )}
+                    {pending.memoHash && (
+                      <div>
+                        <span className="font-medium">Memo Hash:</span>{' '}
+                        <span className="font-mono text-xs">{pending.memoHash.slice(0, 18)}...</span>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              );
+            } catch (e) {
+              return null;
+            }
+          })()}
+        </div>
+      )}
+
       {/* ────────── Seller Actions ───────── */}
       {isSeller && !product.purchased && (
         <div className="space-y-2">
@@ -2238,15 +2416,13 @@ return (
       )}
 
       {/* ────────── Private Payment Modal ───────── */}
-      {IS_RAILGUN_API_CONFIGURED && (
-        <PrivatePaymentModal
-          product={product}
-          isOpen={showPrivatePaymentModal}
-          onClose={() => setShowPrivatePaymentModal(false)}
-          onSuccess={handlePrivatePurchaseSuccess}
-          currentUser={currentUser}
-        />
-      )}
+      <PrivatePaymentModal
+        product={product}
+        isOpen={showPrivatePaymentModal}
+        onClose={() => setShowPrivatePaymentModal(false)}
+        onSuccess={handlePrivatePurchaseSuccess}
+        currentUser={currentUser}
+      />
     </div>
   );
 };
