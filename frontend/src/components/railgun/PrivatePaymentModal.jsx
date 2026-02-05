@@ -5,6 +5,8 @@ import toast from 'react-hot-toast';
 import ProductEscrowABI from '../../abis/ProductEscrow_Initializer.json';
 import PrivateFundsDrawer from './PrivateFundsDrawer';
 import { fmt18 } from '../../helpers/format';
+import { NetworkName, NETWORK_CONFIG } from '@railgun-community/shared-models';
+import { getExplorerUrl, decodeContractError } from '../../utils/errorHandler';
 
 import {
   connectRailgun,
@@ -16,6 +18,10 @@ import {
   getRailgunAddressFromCredentials,
   checkWalletState
 } from '../../lib/railgun-clean';
+
+// Get WETH address from SDK config (must match what shield.js uses)
+const SEPOLIA_WETH_ADDRESS = NETWORK_CONFIG[NetworkName.EthereumSepolia]?.baseToken?.wrappedAddress
+  || '0xfFf9976782d46CC05630D1f6eBAb18b2324d6B14';
 
 // Alias for backward compatibility in this file
 const paySellerV2 = privateTransfer;
@@ -319,8 +325,8 @@ const PrivatePaymentModal = ({ product, isOpen, onClose, onSuccess, currentUser 
     }
     
     try {
-      // Use official Sepolia WETH address
-      const tokenAddress = '0x7b79995e5f793A07Bc00c21412e50Ecae098E7f9';
+      // Use WETH address from SDK config (must match shield.js)
+      const tokenAddress = SEPOLIA_WETH_ADDRESS;
 
       // Try to refresh balances (debounced to prevent spam)
       console.log('🔄 Attempting to refresh balances...');
@@ -868,10 +874,9 @@ const PrivatePaymentModal = ({ product, isOpen, onClose, onSuccess, currentUser 
     try {
       console.log("🔄 Starting private payment process...");
       setPaymentLoading(true);
-      
-      // Import the new V2 unproven transfer functions
-      // Use official Sepolia WETH address
-      const tokenAddress = '0x7b79995e5f793A07Bc00c21412e50Ecae098E7f9';
+
+      // Use WETH address from SDK config (must match shield.js)
+      const tokenAddress = SEPOLIA_WETH_ADDRESS;
       const amount = BigInt(product.publicPriceWei || '0');
 
       console.log("💰 Amount:", amount.toString(), "wei");
@@ -885,17 +890,22 @@ const PrivatePaymentModal = ({ product, isOpen, onClose, onSuccess, currentUser 
       }
       
       const railgunBalances = balanceResult.data.railgun;
-      // weth is already testnet-adjusted (includes pending on Sepolia)
-      const spendableWeth = railgunBalances.weth;
-      
-      console.log("💰 Spendable WETH (testnet-adjusted):", spendableWeth.toString());
+      // On Sepolia testnet, include pending balance as spendable
+      // (proof generation takes 20-30s, pending UTXOs will confirm by then)
+      const spendableWeth = BigInt(railgunBalances.weth || 0n);
+      const pendingWeth = BigInt(railgunBalances.pendingWeth || 0n);
+      const totalAvailable = spendableWeth + pendingWeth;
+
+      console.log("💰 Spendable WETH:", spendableWeth.toString());
+      console.log("💰 Pending WETH:", pendingWeth.toString());
+      console.log("💰 Total available:", totalAvailable.toString());
       console.log("💰 Required amount:", amount.toString());
-      
-      // Balance is already adjusted for testnet in getRailgunBalances
-      if (spendableWeth < amount) {
-        const availableEth = ethers.formatEther(spendableWeth);
+
+      // Use total (spendable + pending) for testnet balance check
+      if (totalAvailable < amount) {
+        const availableEth = ethers.formatEther(totalAvailable);
         const requiredEth = ethers.formatEther(amount);
-        throw new Error(`Insufficient private balance. Available: ${availableEth} WETH, Required: ${requiredEth} WETH. On Sepolia testnet, ShieldPending balances are treated as spendable.`);
+        throw new Error(`Insufficient private balance. Available: ${availableEth} WETH (including pending), Required: ${requiredEth} WETH.`);
       }
       
       // Get seller's Railgun address
@@ -920,19 +930,29 @@ const PrivatePaymentModal = ({ product, isOpen, onClose, onSuccess, currentUser 
       console.log("🔍 Checking wallet state before transfer...");
       const walletState = await checkWalletState(walletID);
       console.log("🔍 Wallet state:", walletState);
-      
-      if (!walletState.exists || !walletState.loaded) {
-        throw new Error(`Wallet not properly loaded in Railgun SDK. Please reconnect your wallet. State: ${JSON.stringify(walletState)}`);
+
+      // checkWalletState now returns { success, data: { walletID, railgunAddress } }
+      if (!walletState.success || !walletState.data?.walletID) {
+        throw new Error(`Wallet not properly loaded. Please reconnect your wallet. Error: ${walletState.error || 'Unknown'}`);
       }
       
       // Reset transfer progress
       setTransferProgress({ step: 'idle', message: '', progress: 0 });
 
-      // Execute private transfer with progress callback
-      const result = await paySellerV2({
-        sellerRailgunAddress: sellerRailgunAddress,
+      // Debug: Log the exact params being passed
+      console.log("🔍 About to call privateTransfer with:", {
+        toRailgunAddress: sellerRailgunAddress,
         amountWei: amount.toString(),
-        tokenAddress: tokenAddress,
+        tokenAddress,
+        productId: product.id
+      });
+
+      // Execute private transfer with progress callback
+      // Note: privateTransfer expects toRailgunAddress (not sellerRailgunAddress)
+      const result = await paySellerV2({
+        toRailgunAddress: sellerRailgunAddress,
+        amountWei: amount.toString(),
+        tokenAddress,
         productId: product.id,
         onProgress: (state) => {
           setTransferProgress(state);
@@ -963,12 +983,97 @@ const PrivatePaymentModal = ({ product, isOpen, onClose, onSuccess, currentUser 
       localStorage.setItem(pendingKey, JSON.stringify(pendingPaymentData));
       console.log('💾 Stored pending payment data for seller:', pendingPaymentData);
 
-      toast.success(`Private payment completed! Tx: ${hash.slice(0, 10)}...`);
+      // Phase 6: Record payment on-chain immediately after private transfer
+      pendingPaymentData.status = 'recording';
+      localStorage.setItem(pendingKey, JSON.stringify(pendingPaymentData));
+
+      setTransferProgress({ step: 'recording', message: 'Recording payment on-chain...', progress: 80 });
+
+      // Get signer and create contract
+      const provider = new ethers.BrowserProvider(window.ethereum);
+      const signer = await provider.getSigner();
+      const productAddress = product.address || product.contractAddress;
+      const contract = new ethers.Contract(productAddress, ESCROW_ABI, signer);
+
+      // Get product ID from contract (not from product object - may be stale)
+      const contractProductId = await contract.id();
+
+      // Preflight check with staticCall (catches errors early)
+      try {
+        await contract.recordPrivatePayment.staticCall(
+          contractProductId,
+          result.memoHash,
+          result.railgunTxRef
+        );
+      } catch (preflightError) {
+        const userMessage = decodeContractError(preflightError);
+        throw new Error(`Recording will fail: ${userMessage}`);
+      }
+
+      // Estimate gas with 20% headroom
+      const estimatedGas = await contract.recordPrivatePayment.estimateGas(
+        contractProductId,
+        result.memoHash,
+        result.railgunTxRef
+      );
+      const gasLimit = (estimatedGas * 120n) / 100n;
+
+      // Send transaction
+      const recordTx = await contract.recordPrivatePayment(
+        contractProductId,
+        result.memoHash,
+        result.railgunTxRef,
+        { gasLimit }
+      );
+
+      setTransferProgress({ step: 'confirming', message: 'Waiting for on-chain confirmation...', progress: 90 });
+      const recordReceipt = await recordTx.wait();
+
+      // Update localStorage with confirmed status
+      pendingPaymentData.status = 'confirmed';
+      pendingPaymentData.recordTxHash = recordReceipt.hash;
+      localStorage.setItem(pendingKey, JSON.stringify(pendingPaymentData));
+
+      // Update history as well
+      const historyKey = `private_payment_history_${product.address || product.contractAddress}`;
+      const rawHistory = localStorage.getItem(historyKey);
+      const parsedHistory = rawHistory ? JSON.parse(rawHistory) : [];
+      const historyList = Array.isArray(parsedHistory) ? parsedHistory : [];
+      const historyEntry = {
+        ...pendingPaymentData,
+        status: 'confirmed'
+      };
+      const exists = historyList.some((entry) => entry?.txHash === historyEntry.txHash);
+      const nextHistory = exists ? historyList : [...historyList, historyEntry];
+      const trimmedHistory = nextHistory.slice(-20);
+      localStorage.setItem(historyKey, JSON.stringify(trimmedHistory));
+
+      // Show success toast with Etherscan link
+      const chainId = (await provider.getNetwork()).chainId;
+      const explorerUrl = getExplorerUrl(recordReceipt.hash, Number(chainId));
+
+      toast.success(
+        <div>
+          <p>Private payment recorded on-chain!</p>
+          {explorerUrl && (
+            <a
+              href={explorerUrl}
+              target="_blank"
+              rel="noreferrer"
+              className="text-blue-500 underline text-sm"
+            >
+              View on Etherscan
+            </a>
+          )}
+        </div>,
+        { duration: 5000 }
+      );
       setCurrentStep('complete');
-      
+
     } catch (error) {
       console.error("Private payment failed:", error);
-      toast.error("Private payment failed: " + error.message);
+      const userMessage = decodeContractError(error);
+      toast.error("Private payment failed: " + userMessage);
     } finally {
       setPaymentLoading(false);
     }
@@ -1041,9 +1146,9 @@ const PrivatePaymentModal = ({ product, isOpen, onClose, onSuccess, currentUser 
             memo: params.memo
           });
           
-          // ✅ FIX: Use WETH token address for Sepolia (same as used for shielding)
-          const tokenAddress = params.tokenAddress === '0x0000000000000000000000000000000000000000' 
-            ? '0x7b79995e5f793A07Bc00c21412e50Ecae098E7f9' // Official Sepolia WETH
+          // ✅ FIX: Use WETH token address from SDK config (same as used for shielding)
+          const tokenAddress = params.tokenAddress === '0x0000000000000000000000000000000000000000'
+            ? SEPOLIA_WETH_ADDRESS
             : params.tokenAddress;
           
           console.log('🔧 Using token address:', tokenAddress, '(was:', params.tokenAddress, ')');
