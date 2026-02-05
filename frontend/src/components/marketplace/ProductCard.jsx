@@ -24,8 +24,8 @@ const ProductCard = ({ product, myAddress, provider, onPurchased }) => {
     badge = { text: "In Delivery", cls: "bg-blue-100 text-blue-700" };
   else if (product.purchased)
     badge = {
-      text: "Awaiting Transporter",
-      cls: "bg-yellow-100 text-yellow-800",
+      text: "Purchased",
+      cls: "bg-purple-100 text-purple-700",
     };
   else if (hasBuyer)
     badge = { text: "Awaiting Confirm", cls: "bg-orange-100 text-orange-800" };
