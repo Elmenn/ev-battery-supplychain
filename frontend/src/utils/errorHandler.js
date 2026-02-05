@@ -182,3 +182,37 @@ export function isContractRevert(error) {
   return message.includes('revert') || message.includes('execution reverted');
 }
 
+/**
+ * ProductEscrow contract error map for user-friendly messages
+ */
+const CONTRACT_ERRORS = {
+  'WrongProductId': 'Wrong product ID - check contract address',
+  'ZeroMemoHash': 'Invalid memo hash - payment may have failed',
+  'ZeroTxRef': 'Invalid transaction reference',
+  'AlreadyPurchased': 'Product already purchased',
+  'PrivateDisabled': 'Private payments are disabled for this product',
+  'AlreadyPaid': 'Payment already recorded',
+  'MemoAlreadyUsed': 'This payment was already used',
+  'PaymentAlreadyRecorded': 'Payment already confirmed on-chain',
+  'NotParticipant': 'Only buyer or seller can record payment'
+};
+
+/**
+ * Decode ProductEscrow contract errors to user-friendly messages
+ * @param {Error} error - The error object from contract call
+ * @returns {string} - User-friendly error message
+ */
+export function decodeContractError(error) {
+  const errorStr = String(error);
+
+  // Check for known ProductEscrow contract errors
+  for (const [errorName, userMessage] of Object.entries(CONTRACT_ERRORS)) {
+    if (errorStr.includes(errorName)) {
+      return userMessage;
+    }
+  }
+
+  // Fall back to extractErrorMessage for generic error handling
+  return extractErrorMessage(error);
+}
+
