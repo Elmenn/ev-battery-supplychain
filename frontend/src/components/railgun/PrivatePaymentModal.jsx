@@ -840,22 +840,15 @@ const PrivatePaymentModal = ({ product, isOpen, onClose, onSuccess, currentUser 
 
   // Helper function to get seller's Railgun address
   const getSellerRailgunAddress = async (sellerEOA) => {
-    try {
-      // ✅ Use stored Railgun address from product data
-      if (product?.sellerRailgunAddress) {
-        console.log('✅ Using stored seller Railgun address:', product.sellerRailgunAddress);
-        return product.sellerRailgunAddress;
-      }
-
-      // TODO: In production, seller address should be stored with product
-      // For now, use test address for development
-      const TEST_SELLER_ADDRESS = '0zk1qype2m3jz0hrhs4n7cewckdr3a9762wy9aqlt5pzp5g8hfk9488lhrv7j6fe3z53la6cqrxkl9hx77x6uac8zdjc2z5494wyznmwnv97l8sc0nfkkm72vt8anxa';
-      console.log('⚠️ No stored seller address, using test address:', TEST_SELLER_ADDRESS);
-      return TEST_SELLER_ADDRESS;
-    } catch (error) {
-      console.error('Failed to get seller Railgun address:', error);
-      throw error;
+    // Use stored Railgun address from product data
+    if (product?.sellerRailgunAddress) {
+      console.log('✅ Using stored seller Railgun address:', product.sellerRailgunAddress);
+      return product.sellerRailgunAddress;
     }
+
+    // No fallback - seller must have connected their Railgun wallet when creating the product
+    console.error('❌ Seller has not connected their Railgun wallet for this product');
+    throw new Error('Seller has not enabled private payments for this product. The seller must connect their Railgun wallet when listing the product.');
   };
 
   // Step 3: Execute Private Payment
