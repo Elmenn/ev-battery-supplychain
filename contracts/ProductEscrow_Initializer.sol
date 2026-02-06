@@ -742,8 +742,9 @@ contract ProductEscrow_Initializer is ReentrancyGuard {
         if (usedMemoHash[_memoHash]) revert MemoAlreadyUsed();
         if (privatePayments[_memoHash]) revert PaymentAlreadyRecorded();
         
-        // Restrict to buyer or seller only (no transporter)
-        if (msg.sender != buyer && msg.sender != owner) revert NotParticipant();
+        // If buyer already set, only that buyer or owner can record
+        // If buyer not set (address(0)), allow anyone to become buyer via private payment
+        if (buyer != address(0) && msg.sender != buyer && msg.sender != owner) revert NotParticipant();
         
         buyer = payable(msg.sender);
         purchaseMode = PurchaseMode.Private;
