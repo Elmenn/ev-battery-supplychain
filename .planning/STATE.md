@@ -1,16 +1,16 @@
 # Project State
 
-**Updated:** 2026-02-16
+**Updated:** 2026-02-17
 
 ## Current Position
 
-- **Phase:** 7 of 10 (Smart Contract Redesign)
-- **Plan:** 2 of ? in phase
-- **Status:** Plan 07-02 complete (contract tests). Migration/deployment still needed.
+- **Phase:** 8 of 10 (Single VC Architecture)
+- **Plan:** 1 of 4 in phase
+- **Status:** In progress (08-01 complete, 08-02 next)
 
-Progress: [█████████████████████░░░░░░░░░░░░░] ~68% (Phase 7 Plan 2 done)
+Progress: [██████████████████████░░░░░░░░░░░░] ~78% (08-01 complete)
 
-Last activity: 2026-02-16 - Completed 07-02-PLAN.md (contract tests)
+Last activity: 2026-02-17 - Completed 08-01-PLAN.md (VC builder rewrite)
 
 ## Living Memory
 
@@ -42,6 +42,10 @@ Last activity: 2026-02-16 - Completed 07-02-PLAN.md (contract tests)
 | bond-forwarding-pattern | Factory createProduct{value} -> clone initialize{value} -> sellerBond | Clean ETH forwarding through factory to clone at creation time | 07-01 |
 | per-clone-memo-replay | usedMemoHash is per-clone storage; cross-product replay relies on separate contracts | Each escrow clone has its own storage so memo hashes don't collide | 07-02 |
 | reentrancy-trycatch-pattern | MaliciousReentrant uses try/catch so outer call succeeds while re-entry blocked | Verifies ReentrancyGuard works without failing the entire transaction | 07-02 |
+| fcfs-buyer | First non-seller caller of recordPrivatePayment becomes buyer (no pre-designation) | Open marketplace pattern — cleaner than requiring seller to designate buyer | 07-FCFS |
+| vc-schema-v2 | schemaVersion "2.0" for append-only VCs vs old "1.0" stage-based | Clear distinction between old and new VC formats | 08-01 |
+| zero-addr-holder | Unknown buyer uses ZeroAddress in holder DID at listing time | FCFS pattern means buyer unknown at listing | 08-01 |
+| throw-on-deprecated | Deprecated stubs throw descriptive errors (not silent no-ops) | Developers immediately know which new function to use | 08-01 |
 
 ### Issues Log
 
@@ -54,35 +58,34 @@ Last activity: 2026-02-16 - Completed 07-02-PLAN.md (contract tests)
 - ~~Quick-sync stub files throwing errors, breaking SDK sync~~ RESOLVED (Phase 5 - stubs now return empty arrays)
 - ~~MaliciousReentrant.sol references old interface~~ RESOLVED (Phase 7 Plan 2 - updated for new contract)
 - Existing test files (SimpleProductEscrow.test.js) reference old interface and will fail
-- Migration script needs updating for new createProduct signature and setBondAmount
+- ~~Migration script needs updating for new createProduct signature and setBondAmount~~ RESOLVED (07-03)
 
 ### Context
 
-**PHASE 7 PLAN 2 COMPLETE!**
+**PHASE 8 IN PROGRESS (plan 1 of 4 complete)**
 
-Contract test suite done:
-- 82 tests across 2 files (EscrowRedesign + EscrowBonds)
-- Full lifecycle, bond mechanics, access control, reentrancy, timeouts all verified
-- MaliciousReentrant.sol updated for new interface
-- All tests pass on Ganache
+Phase 7 done. Phase 8 started:
+- 08-01 COMPLETE: vcBuilder.mjs rewritten with append-only single-VC pattern
+  - createListingVC, appendPaymentProof, appendDeliveryProof
+  - vcBuilder.js CJS duplicate deleted (145 lines)
+  - Deprecated stubs for buildStage2VC/buildStage3VC
+  - Note: createProduct.js Express route still uses old CJS require (Phase 9 cleanup)
 
-Next: Phase 7 Plan 3 (if exists) or Phase 8 (migration/deployment).
+Next: 08-02 (IPFS fetchJson, EIP-712 signing type updates)
 
 ## Session Continuity
 
-- **Last session:** 2026-02-16
-- **Stopped at:** Completed 07-02-PLAN.md
-- **Next:** Phase 7 Plan 3 or Phase 8
+- **Last session:** 2026-02-17
+- **Stopped at:** Completed 08-01-PLAN.md
+- **Next:** 08-02-PLAN.md
 - **Resume file:** None
 
 ## Commits This Session
 
 | Hash | Message |
 |------|---------|
-| 026b9c68 | feat(07-01): rewrite ProductEscrow_Initializer for private-only escrow |
-| 4df762f6 | feat(07-01): update ProductFactory with bond configuration and payable createProduct |
-| 48969fa7 | test(07-02): full lifecycle and phase transition tests for redesigned escrow |
-| 7b910a22 | test(07-02): bond mechanics, access control, and reentrancy tests |
+| 0755ab60 | feat(08-01): rewrite vcBuilder.mjs with append-only single-VC pattern |
+| a224901e | chore(08-01): delete vcBuilder.js CJS duplicate |
 
 ## Phase 1 Summary
 
@@ -137,16 +140,23 @@ Next: Phase 7 Plan 3 (if exists) or Phase 8 (migration/deployment).
 - Gas estimation with 20% headroom
 - Success toast with Etherscan link
 
-## Phase 7 Summary (In Progress)
+## Phase 7 Summary
 
 **Smart Contract Redesign:**
 - Plan 1 COMPLETE: Contract rewrite (private-only, bonds, hash delivery, timeouts)
 - Plan 2 COMPLETE: Contract tests (82 tests, full lifecycle, bonds, access control, reentrancy)
-- ProductEscrow_Initializer.sol: 347 lines (was 782)
-- ProductFactory.sol: payable createProduct, bondAmount config
-- Both compile with Solidity 0.8.21
-- MaliciousReentrant.sol updated for new interface
+- Plan 3 COMPLETE: Timeout tests (27 tests) + migration script
+- Total: ~112 contract tests, all passing on Ganache
+
+## Phase 8 Summary (In Progress)
+
+**Single VC Architecture:**
+- Plan 1 COMPLETE: vcBuilder.mjs rewritten with append-only pattern (410 -> 126 lines)
+- createListingVC, appendPaymentProof, appendDeliveryProof
+- vcBuilder.js CJS duplicate deleted
+- Deprecated stubs for backward compat
 
 ---
 
-*Last updated: 2026-02-16*
+*Last updated: 2026-02-17*
+
