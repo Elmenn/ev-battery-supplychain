@@ -8,7 +8,7 @@ import { TypedDataEncoder, BrowserProvider } from "ethers";
  * - Serializing price as string
  * - Ensuring schemaVersion is set (defaults to "1.0" if not present)
  */
-function preparePayloadForSigning(vc) {
+export function preparePayloadForSigning(vc) {
   const clone = JSON.parse(JSON.stringify(vc));
 
   delete clone.proofs;
@@ -28,6 +28,28 @@ function preparePayloadForSigning(vc) {
     delete clone.credentialSubject.purchaseTxHashCommitment;
   }
 
+  // v2.0: Strip mutable sections (payment, delivery, previousVersion)
+  // These are appended after listing signature, so must not be part of signed payload
+  if (clone.credentialSubject?.payment !== undefined) {
+    delete clone.credentialSubject.payment;
+  }
+  if (clone.credentialSubject?.delivery !== undefined) {
+    delete clone.credentialSubject.delivery;
+  }
+  if (clone.previousVersion !== undefined) {
+    delete clone.previousVersion;
+  }
+
+  // v2.0: Serialize priceCommitment object to price string for EIP-712 compatibility
+  if (clone.credentialSubject?.priceCommitment && typeof clone.credentialSubject.priceCommitment === 'object') {
+    try {
+      clone.credentialSubject.price = JSON.stringify(clone.credentialSubject.priceCommitment);
+    } catch {
+      clone.credentialSubject.price = String(clone.credentialSubject.priceCommitment);
+    }
+    delete clone.credentialSubject.priceCommitment;
+  }
+
   if (clone.credentialSubject?.price && typeof clone.credentialSubject.price !== "string") {
     try {
       clone.credentialSubject.price = JSON.stringify(clone.credentialSubject.price);
@@ -41,6 +63,15 @@ function preparePayloadForSigning(vc) {
     clone.credentialSubject = {};
   }
   
+  // v2.0: Flatten listing sub-object for EIP-712 compatibility
+  // v2.0 nests certificateCredential and componentCredentials under listing;
+  // flattening makes them compatible with existing EIP-712 types
+  if (clone.credentialSubject?.listing) {
+    clone.credentialSubject.certificateCredential = clone.credentialSubject.listing.certificateCredential || { name: "", cid: "" };
+    clone.credentialSubject.componentCredentials = clone.credentialSubject.listing.componentCredentials || [];
+    delete clone.credentialSubject.listing;
+  }
+
   // Ensure certificateCredential is present (required by EIP-712 types)
   if (!clone.credentialSubject.certificateCredential) {
     clone.credentialSubject.certificateCredential = {
