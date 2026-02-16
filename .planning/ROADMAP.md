@@ -1,20 +1,31 @@
-# Roadmap: Railgun Integration Fix
+# Roadmap: Railgun Integration Fix + Escrow Redesign
 
 **Milestone:** v1.0-railgun-fix
 **Created:** 2026-01-20
+**Updated:** 2026-02-16
 
 ## Goal
 
-Fix the broken Railgun integration to enable private payments where buyers can pay sellers with hidden transaction amounts.
+Fix the broken Railgun integration and redesign the escrow flow for private-only payments with proper incentive design, transporter-confirmed delivery, and a single consolidated VC.
 
 ## Success Criteria
 
+### Phases 1-6 (Railgun Foundation)
 1. User can connect Railgun wallet in browser
 2. User can wrap ETH to WETH
 3. User can shield WETH (public to private balance)
 4. User can make private payment transfer to seller's 0zk address
 5. Payment is recorded on-chain via `recordPrivatePayment()`
 6. No console errors during the flow
+
+### Phases 7-10 (Escrow Redesign)
+7. Contract supports private-only purchases (no public path)
+8. Seller deposits collateral when creating product
+9. Seller assigns transporter directly in `confirmOrder` (no bidding)
+10. Transporter confirms delivery via hash verification
+11. Escrow releases sellerDeposit → seller, transporterFee → transporter
+12. Single consolidated VC (not 3 stages) with hash-only on-chain storage
+13. End-to-end private flow works on Sepolia
 
 ---
 
@@ -156,63 +167,157 @@ Plans:
 
 ---
 
-## Phase 6: On-Chain Recording
+## Phase 6: On-Chain Recording ✓
 
 **Goal:** Record private payment reference on ProductEscrow contract after Railgun transfer confirms
 
-**Status:** PLANNED
+**Status:** COMPLETE (2026-02-05)
 
-**Plans:** 2 plans in 2 waves
+**Plans:** 2/2 complete
 
 Plans:
-- [ ] 06-01-PLAN.md — Add recordPrivatePayment call and error decoding
-- [ ] 06-02-PLAN.md — Update UI with purchased badge and transaction display
+- [x] 06-01-PLAN.md — Add recordPrivatePayment call and error decoding
+- [x] 06-02-PLAN.md — Update UI with purchased badge and transaction display
 
-**Why Sixth:** Links privacy payment to supply chain product state
+**Result:** recordPrivatePayment flow working, error decoding, purchased badge, transaction references displayed
+
+---
+
+## Phase 7: Smart Contract Redesign
+
+**Goal:** Rewrite ProductEscrow contract for private-only flow with seller deposit, direct transporter assignment, and transporter-confirmed delivery
+
+**Status:** NOT STARTED
+
+**Why Seventh:** Foundation for all subsequent UI work — contract must be right first
+
+**Key Changes:**
+- Private-only purchases (remove `purchasePublic`, `depositPurchase`, `depositPurchasePrivate`)
+- Add `sellerDeposit` collateral held in escrow
+- `confirmOrder(vcHash)` — seller confirms order after purchase
+- Keep transporter bidding (`createTransporter`, seller selects via `setTransporter`)
+- Seller deposits transporterFee when selecting transporter
+- `confirmDelivery(hash)` — called by **transporter** (not buyer) after hash verification
+- Store `keccak256(vcCID)` on-chain, emit full CID in events only (gas optimization)
+- Fix double-payment bug in `_timeout()`
+- Clean up redundant purchase paths
 
 **Deliverables:**
-- [ ] Call `recordPrivatePayment(productId, memoHash, railgunTxRef)` after transfer
-- [ ] Move product to Phase.Purchased with PurchaseMode.Private
-- [ ] Show specific error messages from contract reverts
-- [ ] Display "Purchased" badge on marketplace cards
-- [ ] Show "Already Purchased" disabled button on detail page
-- [ ] Display transaction references (txHash, memoHash) after purchase
-- [ ] Success toast with Etherscan link
+- [ ] New ProductEscrow_Initializer.sol with redesigned flow
+- [ ] Updated ProductFactory.sol (if initialize params change)
+- [ ] Deployment script for Sepolia
+- [ ] Contract tests for new flow
 
-**Key Files:**
-- `frontend/src/utils/errorHandler.js` (add decodeContractError)
-- `frontend/src/components/railgun/PrivatePaymentModal.jsx` (add recording flow)
-- `frontend/src/components/marketplace/ProductCard.jsx` (update badge)
-- `frontend/src/components/marketplace/ProductDetail.jsx` (update UI)
+---
 
-**Acceptance:** Product shows as "Purchased (Private)" after payment, user can see transaction references
+## Phase 8: Single VC Architecture
+
+**Goal:** Consolidate 3-stage VC chain into a single append-only Verifiable Credential
+
+**Status:** NOT STARTED
+
+**Why Eighth:** VC structure affects both contract events and UI — design before wiring
+
+**Key Changes:**
+- One VC document that accumulates proofs over its lifecycle
+- Seller creates VC at product listing (initial state)
+- Proofs appended: seller signature, buyer payment proof (memoHash), delivery confirmation
+- Single IPFS upload per mutation (new version replaces old, linked via `previousVersion`)
+- Hash-only on-chain storage (`bytes32` instead of `string vcCid`)
+- VC contains Pedersen commitment + ZKP range proof for price verification
+
+**Deliverables:**
+- [ ] Redesigned VC schema (single document with proof chain)
+- [ ] Updated vcBuilder.mjs
+- [ ] Updated IPFS upload/fetch utilities
+- [ ] VC verification logic for consolidated format
+
+---
+
+## Phase 9: UI Rework
+
+**Goal:** Update all UI flows to match new contract and VC architecture
+
+**Status:** NOT STARTED
+
+**Why Ninth:** UI builds on top of finalized contract + VC design
+
+**Key Changes:**
+- Remove public purchase UI (keep private-only)
+- Seller flow: create product with deposit → confirm order → select transporter from bids + deposit fee
+- Buyer flow: Railgun transfer → recordPrivatePayment → view VC
+- Transporter flow: bid on delivery → receive Hash from seller → verify Hash' from buyer → confirmDelivery on-chain
+- Update ProductDetail.jsx, ProductCard.jsx, PrivatePaymentModal.jsx
+
+**Deliverables:**
+- [ ] Updated seller product creation (with sellerDeposit)
+- [ ] Updated seller order confirmation + transporter selection from bids
+- [ ] Private-only purchase flow (remove public buttons)
+- [ ] Transporter delivery confirmation UI (hash verification)
+- [ ] Buyer hash presentation UX
+
+---
+
+## Phase 10: Cleanup & E2E Integration
+
+**Goal:** Remove dead code from old flow, verify end-to-end on Sepolia
+
+**Status:** NOT STARTED
+
+**Why Tenth:** Final integration after all pieces are in place
+
+**Key Changes:**
+- Delete old contract code (ProductEscrow.sol if superseded)
+- Remove dead UI paths (public purchase, bidding, buyer delivery confirmation)
+- E2E test: product creation → private payment → order confirmation → delivery → fund release
+- Gas comparison: old vs. new contract (for thesis)
+- Verify VC chain integrity end-to-end
+
+**Deliverables:**
+- [ ] Dead code removal
+- [ ] E2E flow verified on Sepolia
+- [ ] Gas optimization report
+- [ ] No console errors in full flow
 
 ---
 
 ## Phase Dependencies
 
 ```
-Phase 1 (Cleanup)
+Phase 1-6 (Railgun Foundation) ✓
     |
-Phase 2 (Wallet Connection)
+Phase 7 (Contract Redesign)
     |
-Phase 3 (Wrap ETH)
+Phase 8 (Single VC Architecture)
     |
-Phase 4 (Shield WETH)
+Phase 9 (UI Rework)
     |
-Phase 5 (Private Transfer)
-    |
-Phase 6 (On-Chain Recording)
+Phase 10 (Cleanup & E2E)
 ```
+
+Note: Phase 8 (VC) could partially overlap with Phase 7 (Contract) since VC schema design is independent of contract implementation. Details during planning.
+
+---
+
+## Agreed Design Decisions (2026-02-16)
+
+1. **Transporter confirms delivery** (not buyer) — 3-party hash verification
+2. **Seller deposits collateral** — skin in the game, returned on successful delivery
+3. **Keep transporter bidding** — transporters bid fees, seller selects winner
+4. **Transporter paid from escrow** — not off-chain, trustless
+5. **VC hash on-chain, CID in events** — gas optimization
+6. **Private-only purchases** — no public purchase path, Railgun is the only payment method
 
 ---
 
 ## Known Risks
 
-1. **SDK 50% scan reset bug** - ~~Workaround exists in codebase (serve-html.ts:128-176)~~ Note: serve-html.ts deleted in Phase 1 - workaround may need reimplementation if issue recurs
-2. **Browser compatibility** - Railgun SDK designed for Node, may need polyfills
-3. **Sepolia testnet** - Need to ensure Railgun infrastructure available on Sepolia
+1. **SDK 50% scan reset bug** — workaround may need reimplementation if issue recurs
+2. **Browser compatibility** — Railgun SDK designed for Node, may need polyfills
+3. **Sepolia testnet** — Need to ensure Railgun infrastructure available on Sepolia
+4. **Contract migration** — Existing deployed products will use old contract; new products use new contract
+5. **Single VC complexity** — Append-only VC needs careful schema design to avoid bloat
 
 ---
 
-*Created: 2026-01-20 | Milestone: v1.0-railgun-fix*
+*Created: 2026-01-20 | Updated: 2026-02-16 | Milestone: v1.0-railgun-fix*

@@ -1,16 +1,16 @@
 # Project State
 
-**Updated:** 2026-02-05
+**Updated:** 2026-02-16
 
 ## Current Position
 
-- **Phase:** 6 of 6 (On-Chain Recording)
-- **Plan:** 1 of 2 in phase - COMPLETE
-- **Status:** Phase 6 Plan 1 complete, ready for Phase 6 Plan 2 (UI updates)
+- **Phase:** 7 of 10 (Smart Contract Redesign) — NOT STARTED
+- **Plan:** 0 of ? in phase — needs planning
+- **Status:** Phases 1-6 complete. Escrow redesign agreed (private-only, seller deposit, transporter confirms delivery, single VC)
 
-Progress: [██████████████████████████████████] 6/6 phases in progress (Plan 1/2 done)
+Progress: [████████████████████░░░░░░░░░░░░░░] 6/10 phases complete
 
-Last activity: 2026-02-05 - Completed 06-01-PLAN.md (recordPrivatePayment flow)
+Last activity: 2026-02-16 - Agreed on escrow redesign, added Phases 7-10 to roadmap
 
 ## Living Memory
 
