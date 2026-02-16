@@ -2,7 +2,7 @@
 
 **Milestone:** v1.0-railgun-fix
 **Created:** 2026-01-20
-**Updated:** 2026-02-16
+**Updated:** 2026-02-17
 
 ## Goal
 
@@ -183,18 +183,18 @@ Plans:
 
 ---
 
-## Phase 7: Smart Contract Redesign
+## Phase 7: Smart Contract Redesign ✓
 
 **Goal:** Rewrite ProductEscrow contract for private-only flow with seller/transporter bond staking, transporter-confirmed delivery via hash verification, and bytes32 vcHash storage
 
-**Status:** NOT STARTED
+**Status:** COMPLETE (2026-02-16)
 
 **Plans:** 3 plans
 
 Plans:
-- [ ] 07-01-PLAN.md — Rewrite ProductEscrow_Initializer.sol and update ProductFactory.sol
-- [ ] 07-02-PLAN.md — Core tests: lifecycle, phase transitions, bond mechanics, access control, reentrancy
-- [ ] 07-03-PLAN.md — Timeout/slash tests and deployment migration script
+- [x] 07-01-PLAN.md — Rewrite ProductEscrow_Initializer.sol and update ProductFactory.sol
+- [x] 07-02-PLAN.md — Core tests: lifecycle, phase transitions, bond mechanics, access control, reentrancy
+- [x] 07-03-PLAN.md — Timeout/slash tests and deployment migration script
 
 **Why Seventh:** Foundation for all subsequent UI work — contract must be right first
 
@@ -210,10 +210,10 @@ Plans:
 - Clean up redundant purchase paths
 
 **Deliverables:**
-- [ ] New ProductEscrow_Initializer.sol with redesigned flow
-- [ ] Updated ProductFactory.sol (if initialize params change)
-- [ ] Deployment script for Sepolia
-- [ ] Contract tests for new flow
+- [x] New ProductEscrow_Initializer.sol with redesigned flow
+- [x] Updated ProductFactory.sol (if initialize params change)
+- [x] Deployment script for Sepolia
+- [x] Contract tests for new flow
 
 ---
 
@@ -221,7 +221,14 @@ Plans:
 
 **Goal:** Consolidate 3-stage VC chain into a single append-only Verifiable Credential
 
-**Status:** NOT STARTED
+**Status:** NOT YET COMPLETE
+
+**Plans:** 3 plans
+
+Plans:
+- [ ] 08-01-PLAN.md — Rewrite vcBuilder.mjs with append-only VC functions, delete CJS duplicate
+- [ ] 08-02-PLAN.md — Add IPFS fetchJson utility with caching/retry, update EIP-712 signing types
+- [ ] 08-03-PLAN.md — Create vcVerifier.js with consolidated verification logic
 
 **Why Eighth:** VC structure affects both contract events and UI — design before wiring
 
@@ -245,7 +252,7 @@ Plans:
 
 **Goal:** Update all UI flows to match new contract and VC architecture
 
-**Status:** NOT STARTED
+**Status:** COMPLETE (2026-02-16)
 
 **Why Ninth:** UI builds on top of finalized contract + VC design
 
@@ -269,7 +276,7 @@ Plans:
 
 **Goal:** Remove dead code from old flow, verify end-to-end on Sepolia
 
-**Status:** NOT STARTED
+**Status:** COMPLETE (2026-02-16)
 
 **Why Tenth:** Final integration after all pieces are in place
 
@@ -327,4 +334,4 @@ Note: Phase 8 (VC) could partially overlap with Phase 7 (Contract) since VC sche
 
 ---
 
-*Created: 2026-01-20 | Updated: 2026-02-16 | Milestone: v1.0-railgun-fix*
+*Created: 2026-01-20 | Updated: 2026-02-17 | Milestone: v1.0-railgun-fix*
