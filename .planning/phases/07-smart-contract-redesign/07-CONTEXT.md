@@ -1,7 +1,7 @@
 # Phase 7: Smart Contract Redesign - Context
 
 **Gathered:** 2026-02-16
-**Status:** Ready for planning (pending supervisor input on seller deposit)
+**Status:** Ready for planning
 
 <domain>
 ## Phase Boundary
@@ -14,9 +14,10 @@ Rewrite ProductEscrow contract for private-only purchases. Remove all public pur
 ## Implementation Decisions
 
 ### Escrow Economics
-- **Seller bond:** Fixed amount, price-independent (does NOT reveal product price)
-  - PENDING SUPERVISOR INPUT: exact mechanism (fixed bond vs private deposit vs no deposit)
-  - Current working assumption: fixed bond staked when creating product
+- **Seller bond:** Fixed amount, price-independent, **configurable by factory owner** (does NOT reveal product price)
+  - Supervisor approved: fixed bond with configurable amount
+  - Private Railgun deposit explored but infeasible (Railgun is wallet-to-wallet, contracts can't receive private transfers)
+  - Thesis will discuss private deposits as future work / limitation
 - **Transporter bond:** Same fixed bond model as seller, staked when bidding
 - **Transporter fee:** Seller deposits transporter fee into escrow when selecting winning bid
 - **Buyer funds:** Zero ETH from buyer touches the contract. Payment is entirely via Railgun
@@ -60,7 +61,7 @@ Rewrite ProductEscrow contract for private-only purchases. Remove all public pur
 
 ### Claude's Discretion
 - Hash exchange UX details (visual comparison in app)
-- Exact bond amount (suggest something sensible for Sepolia testnet)
+- Default bond amount for Sepolia testnet (configurable by factory owner)
 - Event naming and parameter design
 - Internal function structure and gas optimizations
 - Error message wording for custom errors
@@ -71,7 +72,7 @@ Rewrite ProductEscrow contract for private-only purchases. Remove all public pur
 ## Specific Ideas
 
 - Flow matches the figure provided by user: deploy -> depositFunds -> VRC to IPFS -> confirmOrder -> deliver -> verify hash -> confirmDelivery -> release
-- Seller deposit mechanism awaiting supervisor decision (3 options presented: fixed bond, private Railgun deposit, or no deposit)
+- Seller deposit: supervisor approved fixed configurable bond (private Railgun deposit infeasible due to wallet-to-wallet limitation)
 - The strongest incentive model for real industry use is the goal
 - Price must NEVER appear on-chain in any form (not as msg.value, not derivable from any public data)
 
@@ -82,15 +83,14 @@ Rewrite ProductEscrow contract for private-only purchases. Remove all public pur
 
 - QR code for hash exchange at delivery (nice UX but adds scope — Phase 9 or later)
 - On-chain ZKP verifier for amount proof (too complex for current scope, noted for future)
+- Private Railgun deposit for seller collateral (infeasible with current Railgun architecture — thesis limitation / future work)
 - Configurable timeout windows per product (keep 2-day fixed for now)
 
 </deferred>
 
 ## Open Questions
 
-- **BLOCKING:** Supervisor input on seller deposit mechanism (fixed bond vs private deposit vs none)
-  - Question sent, awaiting response
-  - If fixed bond: bond amount needs to be decided (hardcoded vs configurable)
+- None — all blocking decisions resolved
 
 ---
 
