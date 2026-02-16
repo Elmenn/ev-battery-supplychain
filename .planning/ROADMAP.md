@@ -185,9 +185,16 @@ Plans:
 
 ## Phase 7: Smart Contract Redesign
 
-**Goal:** Rewrite ProductEscrow contract for private-only flow with seller deposit, direct transporter assignment, and transporter-confirmed delivery
+**Goal:** Rewrite ProductEscrow contract for private-only flow with seller/transporter bond staking, transporter-confirmed delivery via hash verification, and bytes32 vcHash storage
 
 **Status:** NOT STARTED
+
+**Plans:** 3 plans
+
+Plans:
+- [ ] 07-01-PLAN.md — Rewrite ProductEscrow_Initializer.sol and update ProductFactory.sol
+- [ ] 07-02-PLAN.md — Core tests: lifecycle, phase transitions, bond mechanics, access control, reentrancy
+- [ ] 07-03-PLAN.md — Timeout/slash tests and deployment migration script
 
 **Why Seventh:** Foundation for all subsequent UI work — contract must be right first
 
