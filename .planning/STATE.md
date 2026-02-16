@@ -5,12 +5,12 @@
 ## Current Position
 
 - **Phase:** 7 of 10 (Smart Contract Redesign)
-- **Plan:** 1 of ? in phase
-- **Status:** Plan 07-01 complete (contract rewrite). Tests and deployment still needed.
+- **Plan:** 2 of ? in phase
+- **Status:** Plan 07-02 complete (contract tests). Migration/deployment still needed.
 
-Progress: [████████████████████░░░░░░░░░░░░░░] ~65% (Phase 7 Plan 1 done)
+Progress: [█████████████████████░░░░░░░░░░░░░] ~68% (Phase 7 Plan 2 done)
 
-Last activity: 2026-02-16 - Completed 07-01-PLAN.md (contract rewrite)
+Last activity: 2026-02-16 - Completed 07-02-PLAN.md (contract tests)
 
 ## Living Memory
 
@@ -40,6 +40,8 @@ Last activity: 2026-02-16 - Completed 07-01-PLAN.md (contract rewrite)
 | transporter-bond-at-bid | Transporter stakes bond in createTransporter (combined bid + bond) | One transaction instead of two separate calls | 07-01 |
 | withdrawbid-in-expired | withdrawBid allowed in both OrderConfirmed and Expired phases | Simplest, safest approach for transporters to reclaim bonds after timeout | 07-01 |
 | bond-forwarding-pattern | Factory createProduct{value} -> clone initialize{value} -> sellerBond | Clean ETH forwarding through factory to clone at creation time | 07-01 |
+| per-clone-memo-replay | usedMemoHash is per-clone storage; cross-product replay relies on separate contracts | Each escrow clone has its own storage so memo hashes don't collide | 07-02 |
+| reentrancy-trycatch-pattern | MaliciousReentrant uses try/catch so outer call succeeds while re-entry blocked | Verifies ReentrancyGuard works without failing the entire transaction | 07-02 |
 
 ### Issues Log
 
@@ -50,28 +52,27 @@ Last activity: 2026-02-16 - Completed 07-01-PLAN.md (contract rewrite)
 - ~~SDK.getPrivateBalances not available~~ RESOLVED (Phase 4 - balance callback pattern)
 - ~~Shielding and private balances~~ RESOLVED (Phase 4 - full shield flow working)
 - ~~Quick-sync stub files throwing errors, breaking SDK sync~~ RESOLVED (Phase 5 - stubs now return empty arrays)
-- MaliciousReentrant.sol references old interface (revealAndConfirmDelivery, timeout, securityDeposit) - needs updating for Phase 7 tests
-- Existing test files need significant rewrites for new contract interface
+- ~~MaliciousReentrant.sol references old interface~~ RESOLVED (Phase 7 Plan 2 - updated for new contract)
+- Existing test files (SimpleProductEscrow.test.js) reference old interface and will fail
 - Migration script needs updating for new createProduct signature and setBondAmount
 
 ### Context
 
-**PHASE 7 PLAN 1 COMPLETE!**
+**PHASE 7 PLAN 2 COMPLETE!**
 
-Smart contract redesign (contract rewrite) done:
-- ProductEscrow_Initializer.sol rewritten: private-only, bond staking, hash delivery, 3 timeouts
-- ProductFactory.sol updated: bondAmount config, payable createProduct, ETH forwarding
-- Both contracts compile cleanly with Solidity 0.8.21
-- No productPrice, no vcCid string, no public purchase functions
-- 347 lines (down from 782) - removed ~60% of old code
+Contract test suite done:
+- 82 tests across 2 files (EscrowRedesign + EscrowBonds)
+- Full lifecycle, bond mechanics, access control, reentrancy, timeouts all verified
+- MaliciousReentrant.sol updated for new interface
+- All tests pass on Ganache
 
-Next: Phase 7 Plan 2 - comprehensive contract tests for new interface.
+Next: Phase 7 Plan 3 (if exists) or Phase 8 (migration/deployment).
 
 ## Session Continuity
 
 - **Last session:** 2026-02-16
-- **Stopped at:** Completed 07-01-PLAN.md
-- **Next:** Phase 7 Plan 2 (contract tests)
+- **Stopped at:** Completed 07-02-PLAN.md
+- **Next:** Phase 7 Plan 3 or Phase 8
 - **Resume file:** None
 
 ## Commits This Session
@@ -80,6 +81,8 @@ Next: Phase 7 Plan 2 - comprehensive contract tests for new interface.
 |------|---------|
 | 026b9c68 | feat(07-01): rewrite ProductEscrow_Initializer for private-only escrow |
 | 4df762f6 | feat(07-01): update ProductFactory with bond configuration and payable createProduct |
+| 48969fa7 | test(07-02): full lifecycle and phase transition tests for redesigned escrow |
+| 7b910a22 | test(07-02): bond mechanics, access control, and reentrancy tests |
 
 ## Phase 1 Summary
 
@@ -138,9 +141,11 @@ Next: Phase 7 Plan 2 - comprehensive contract tests for new interface.
 
 **Smart Contract Redesign:**
 - Plan 1 COMPLETE: Contract rewrite (private-only, bonds, hash delivery, timeouts)
+- Plan 2 COMPLETE: Contract tests (82 tests, full lifecycle, bonds, access control, reentrancy)
 - ProductEscrow_Initializer.sol: 347 lines (was 782)
 - ProductFactory.sol: payable createProduct, bondAmount config
 - Both compile with Solidity 0.8.21
+- MaliciousReentrant.sol updated for new interface
 
 ---
 
