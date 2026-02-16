@@ -4,13 +4,13 @@
 
 ## Current Position
 
-- **Phase:** 7 of 10 (Smart Contract Redesign) — NOT STARTED
-- **Plan:** 0 of ? in phase — needs planning
-- **Status:** Phases 1-6 complete. Escrow redesign agreed (private-only, seller deposit, transporter confirms delivery, single VC)
+- **Phase:** 7 of 10 (Smart Contract Redesign)
+- **Plan:** 1 of ? in phase
+- **Status:** Plan 07-01 complete (contract rewrite). Tests and deployment still needed.
 
-Progress: [████████████████████░░░░░░░░░░░░░░] 6/10 phases complete
+Progress: [████████████████████░░░░░░░░░░░░░░] ~65% (Phase 7 Plan 1 done)
 
-Last activity: 2026-02-16 - Agreed on escrow redesign, added Phases 7-10 to roadmap
+Last activity: 2026-02-16 - Completed 07-01-PLAN.md (contract rewrite)
 
 ## Living Memory
 
@@ -36,6 +36,10 @@ Last activity: 2026-02-16 - Agreed on escrow redesign, added Phases 7-10 to road
 | immediate-recording | recordPrivatePayment called in same flow as privateTransfer | Single-step purchase flow for better UX | 06-01 |
 | preflight-static-call | Preflight check with staticCall before sending tx | Catches contract errors before gas is spent | 06-01 |
 | gas-headroom-20pct | Gas estimation with 20% buffer | Prevents out-of-gas failures on recording tx | 06-01 |
+| bond-at-creation | Seller bond deposited during factory.createProduct (single tx) | Better UX: one transaction for product creation + bond staking | 07-01 |
+| transporter-bond-at-bid | Transporter stakes bond in createTransporter (combined bid + bond) | One transaction instead of two separate calls | 07-01 |
+| withdrawbid-in-expired | withdrawBid allowed in both OrderConfirmed and Expired phases | Simplest, safest approach for transporters to reclaim bonds after timeout | 07-01 |
+| bond-forwarding-pattern | Factory createProduct{value} -> clone initialize{value} -> sellerBond | Clean ETH forwarding through factory to clone at creation time | 07-01 |
 
 ### Issues Log
 
@@ -46,34 +50,36 @@ Last activity: 2026-02-16 - Agreed on escrow redesign, added Phases 7-10 to road
 - ~~SDK.getPrivateBalances not available~~ RESOLVED (Phase 4 - balance callback pattern)
 - ~~Shielding and private balances~~ RESOLVED (Phase 4 - full shield flow working)
 - ~~Quick-sync stub files throwing errors, breaking SDK sync~~ RESOLVED (Phase 5 - stubs now return empty arrays)
+- MaliciousReentrant.sol references old interface (revealAndConfirmDelivery, timeout, securityDeposit) - needs updating for Phase 7 tests
+- Existing test files need significant rewrites for new contract interface
+- Migration script needs updating for new createProduct signature and setBondAmount
 
 ### Context
 
-**PHASE 6 PLAN 1 COMPLETE!**
+**PHASE 7 PLAN 1 COMPLETE!**
 
-On-chain recording flow implemented:
-- decodeContractError function handles all 9 ProductEscrow custom errors
-- recordPrivatePayment called immediately after privateTransfer succeeds
-- Preflight check with staticCall validates before sending transaction
-- Gas estimation with 20% headroom
-- localStorage status: pending -> recording -> confirmed
-- Success toast with Etherscan link
+Smart contract redesign (contract rewrite) done:
+- ProductEscrow_Initializer.sol rewritten: private-only, bond staking, hash delivery, 3 timeouts
+- ProductFactory.sol updated: bondAmount config, payable createProduct, ETH forwarding
+- Both contracts compile cleanly with Solidity 0.8.21
+- No productPrice, no vcCid string, no public purchase functions
+- 347 lines (down from 782) - removed ~60% of old code
 
-Next: Phase 6 Plan 2 - UI updates to show purchase status.
+Next: Phase 7 Plan 2 - comprehensive contract tests for new interface.
 
 ## Session Continuity
 
-- **Last session:** 2026-02-05
-- **Stopped at:** Completed 06-01-PLAN.md
-- **Next:** Phase 6 Plan 2 (UI updates)
-- **Resume file:** .planning/phases/06-on-chain-recording/06-02-PLAN.md
+- **Last session:** 2026-02-16
+- **Stopped at:** Completed 07-01-PLAN.md
+- **Next:** Phase 7 Plan 2 (contract tests)
+- **Resume file:** None
 
 ## Commits This Session
 
 | Hash | Message |
 |------|---------|
-| 02cb7399 | feat(06-01): add decodeContractError for ProductEscrow errors |
-| c4110ee2 | feat(06-01): add recordPrivatePayment flow to PrivatePaymentModal |
+| 026b9c68 | feat(07-01): rewrite ProductEscrow_Initializer for private-only escrow |
+| 4df762f6 | feat(07-01): update ProductFactory with bond configuration and payable createProduct |
 
 ## Phase 1 Summary
 
@@ -118,15 +124,24 @@ Next: Phase 6 Plan 2 - UI updates to show purchase status.
 - Returns memoHash and railgunTxRef for Phase 6
 - operations/ subdirectory pattern established
 
-## Phase 6 Summary (In Progress)
+## Phase 6 Summary
 
 **On-Chain Recording:**
-- Plan 1 COMPLETE: recordPrivatePayment flow in PrivatePaymentModal
+- Plan 1: recordPrivatePayment flow in PrivatePaymentModal
+- Plan 2: UI updates to show purchase status
 - decodeContractError for user-friendly error messages
 - Preflight check with staticCall pattern
 - Gas estimation with 20% headroom
 - Success toast with Etherscan link
 
+## Phase 7 Summary (In Progress)
+
+**Smart Contract Redesign:**
+- Plan 1 COMPLETE: Contract rewrite (private-only, bonds, hash delivery, timeouts)
+- ProductEscrow_Initializer.sol: 347 lines (was 782)
+- ProductFactory.sol: payable createProduct, bondAmount config
+- Both compile with Solidity 0.8.21
+
 ---
 
-*Last updated: 2026-02-05*
+*Last updated: 2026-02-16*
