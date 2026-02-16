@@ -2,85 +2,79 @@
 pragma solidity ^0.8.0;
 
 interface IProductEscrow {
-    function revealAndConfirmDelivery(uint revealedValue, bytes32 blinding, string calldata vcCID) external;
+    function confirmDelivery(bytes32 hash) external;
     function withdrawBid() external;
-    function timeout() external;
-    function createTransporter(uint _feeInWei) external;
-    function securityDeposit() external payable;
+    function deliveryTimeout() external;
+    function sellerTimeout() external;
+    function bidTimeout() external;
+    function createTransporter(uint256 _feeInWei) external payable;
     function setTransporter(address payable _transporter) external payable;
 }
 
 contract MaliciousReentrant {
     IProductEscrow public escrow;
     bool public attackInProgress;
-    uint public attackType; // 1 = reenter reveal, 2 = call timeout, 3 = reenter withdrawBid
-    uint public value;
-    bytes32 public blinding;
-    string public vcCID;
+    uint public attackType; // 1 = reenter confirmDelivery, 2 = reenter withdrawBid, 3 = reenter deliveryTimeout
+    bytes32 public deliveryHash;
 
     constructor(address _escrow) {
         escrow = IProductEscrow(_escrow);
     }
 
-    // Set up for reveal reentrancy
-    function attackReveal(uint _value, bytes32 _blinding, string calldata _vcCID) external {
-        value = _value;
-        blinding = _blinding;
-        vcCID = _vcCID;
+    // Set up for confirmDelivery reentrancy
+    function attackDelivery(bytes32 _hash) external {
+        deliveryHash = _hash;
         attackType = 1;
         attackInProgress = true;
         // This should revert if reentrancy is blocked
-        escrow.revealAndConfirmDelivery(_value, _blinding, _vcCID);
+        escrow.confirmDelivery(_hash);
         attackInProgress = false;
     }
 
     // Set up for withdrawBid reentrancy
     function attackWithdrawBid() external {
-        attackType = 3;
+        attackType = 2;
         attackInProgress = true;
         escrow.withdrawBid();
         attackInProgress = false;
     }
 
-    // Helper functions to register this contract as a transporter
-    // These are called from an EOA to set up the malicious contract
-    function registerAsTransporter(uint _feeInWei) external {
-        escrow.createTransporter(_feeInWei);
+    // Set up for deliveryTimeout reentrancy
+    function attackDeliveryTimeout() external {
+        attackType = 3;
+        attackInProgress = true;
+        escrow.deliveryTimeout();
+        attackInProgress = false;
     }
 
-    function makeSecurityDeposit() external payable {
-        escrow.securityDeposit{value: msg.value}();
+    // Helper: register this contract as a transporter
+    function registerAsTransporter(uint _feeInWei) external payable {
+        escrow.createTransporter{value: msg.value}(_feeInWei);
     }
 
-    // Fallback to attempt reentrancy
+    // Fallback to attempt reentrancy when receiving ETH
     fallback() external payable {
         if (attackInProgress) {
             if (attackType == 1) {
-                // Try to re-enter revealAndConfirmDelivery
-                try escrow.revealAndConfirmDelivery(value, blinding, vcCID) {} catch {}
+                try escrow.confirmDelivery(deliveryHash) {} catch {}
             } else if (attackType == 2) {
-                // Try to call timeout
-                try escrow.timeout() {} catch {}
-            } else if (attackType == 3) {
-                // Try to re-enter withdrawBid
                 try escrow.withdrawBid() {} catch {}
+            } else if (attackType == 3) {
+                try escrow.deliveryTimeout() {} catch {}
             }
         }
     }
-    
+
     // Receive function to attempt reentrancy when receiving ETH
     receive() external payable {
         if (attackInProgress) {
             if (attackType == 1) {
-                // Try to re-enter revealAndConfirmDelivery
-                try escrow.revealAndConfirmDelivery(value, blinding, vcCID) {} catch {}
+                try escrow.confirmDelivery(deliveryHash) {} catch {}
             } else if (attackType == 2) {
-                // Try to call timeout
-                try escrow.timeout() {} catch {}
-            } else if (attackType == 3) {
-                // Try to re-enter withdrawBid
                 try escrow.withdrawBid() {} catch {}
+            } else if (attackType == 3) {
+                try escrow.deliveryTimeout() {} catch {}
             }
         }
     }
-} 
+}
