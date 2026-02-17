@@ -4,13 +4,13 @@
 
 ## Current Position
 
-- **Phase:** 8 of 10 (Single VC Architecture)
-- **Plan:** 3 of 3 in phase
-- **Status:** Phase 8 complete
+- **Phase:** 9 of 10 (UI Rework)
+- **Plan:** 3 of 6 in phase
+- **Status:** In progress
 
-Progress: [████████████████████████████░░░░░░] ~88% (15/17 plans complete)
+Progress: [██████████████████████████████░░░░] ~90% (16/18 plans complete)
 
-Last activity: 2026-02-17 - Completed 08-03-PLAN.md (VC verifier utility)
+Last activity: 2026-02-17 - Completed 09-03-PLAN.md (Seller flow + web3Utils)
 
 ## Living Memory
 
@@ -52,6 +52,9 @@ Last activity: 2026-02-17 - Completed 08-03-PLAN.md (VC verifier utility)
 | warnings-dont-fail | WARNING:-prefixed errors don't fail schema validation | v1.0 VCs with price field instead of priceCommitment are still valid | 08-03 |
 | structure-only-proofs | verifyProofChain validates structure, not cryptographic signatures | Crypto verification requires server-side endpoint | 08-03 |
 | delegate-normalization | verifyPriceCommitment delegates 0x normalization to verifyCommitmentMatch | Avoids duplicating normalization logic | 08-03 |
+| bond-fetch-on-mount | Fetch bondAmount via read-only provider on component mount | User sees bond before deciding to proceed | 09-03 |
+| confirmation-modal-pattern | Two-step deployment: button shows modal, modal triggers transaction | Prevents accidental ETH locking | 09-03 |
+| v2-proof-array | Store issuer proof in VC proof array instead of proofs.issuerProof object | v2.0 schema uses proof array for append-only proofs | 09-03 |
 
 ### Issues Log
 
@@ -68,41 +71,28 @@ Last activity: 2026-02-17 - Completed 08-03-PLAN.md (VC verifier utility)
 
 ### Context
 
-**PHASE 8 COMPLETE**
+**PHASE 9 IN PROGRESS** (Plan 3 of 6 complete)
 
-Phase 8 done (all 3 plans):
-- 08-01 COMPLETE: vcBuilder.mjs rewritten with append-only single-VC pattern
-  - createListingVC, appendPaymentProof, appendDeliveryProof
-  - vcBuilder.js CJS duplicate deleted (145 lines)
-  - Deprecated stubs for buildStage2VC/buildStage3VC
-  - Note: createProduct.js Express route still uses old CJS require (Phase 9 cleanup)
+- 09-03 COMPLETE: Seller flow + web3Utils
+  - ProductFormStep3: bond disclosure card, confirmation modal, createListingVC v2.0
+  - web3Utils: simplified confirmOrder(addr, vcCID), ethers-only (Web3.js removed)
+  - Note: ProductDetail.jsx still passes stale 3rd arg to confirmOrder (harmless, future cleanup)
 
-- 08-02 COMPLETE: IPFS fetchJson with caching + retry, EIP-712 v2.0 signing updates
-  - fetchJson(cid) with localStorage cache, retry, ipfs:// prefix stripping
-  - uploadJson wrapped in retry logic
-  - preparePayloadForSigning strips payment/delivery/previousVersion, flattens listing
-  - Backward compatible with v1.0 VCs
-
-- 08-03 COMPLETE: vcVerifier.js with 5 pure verification functions
-  - verifyVcSchema, verifyProofChain, verifyOnChainHash, verifyPriceCommitment, verifyVcIntegrity
-  - Backward compatible with v1.0 VCs (warnings don't fail validation)
-  - Ready for Phase 9 UI integration
-
-Next: Phase 9
+Next: 09-04
 
 ## Session Continuity
 
 - **Last session:** 2026-02-17
-- **Stopped at:** Completed 08-03-PLAN.md (Phase 8 complete)
-- **Next:** Phase 9
+- **Stopped at:** Completed 09-03-PLAN.md (Seller flow + web3Utils)
+- **Next:** 09-04
 - **Resume file:** None
 
 ## Commits This Session
 
 | Hash | Message |
 |------|---------|
-| 0755ab60 | feat(08-01): rewrite vcBuilder.mjs with append-only single-VC pattern |
-| a224901e | chore(08-01): delete vcBuilder.js CJS duplicate |
+| b5a98942 | feat(09-03): add bond disclosure and v2.0 VC to ProductFormStep3 |
+| ea503b8e | feat(09-03): simplify web3Utils for new contract interface |
 
 ## Phase 1 Summary
 
@@ -174,7 +164,12 @@ Next: Phase 9
 - Deprecated stubs for backward compat
 - Full v1.0/v2.0 backward compatibility throughout
 
+## Phase 9 Summary (in progress)
+
+**UI Rework:**
+- Plan 3 COMPLETE: ProductFormStep3 bond disclosure + createListingVC v2.0, web3Utils ethers-only
+
 ---
 
-*Last updated: 2026-02-17T06:46Z*
+*Last updated: 2026-02-17T16:16Z*
 
