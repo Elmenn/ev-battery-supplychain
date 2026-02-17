@@ -52,6 +52,7 @@ Last activity: 2026-02-17 - Completed 09-03-PLAN.md (Seller flow + web3Utils)
 | warnings-dont-fail | WARNING:-prefixed errors don't fail schema validation | v1.0 VCs with price field instead of priceCommitment are still valid | 08-03 |
 | structure-only-proofs | verifyProofChain validates structure, not cryptographic signatures | Crypto verification requires server-side endpoint | 08-03 |
 | delegate-normalization | verifyPriceCommitment delegates 0x normalization to verifyCommitmentMatch | Avoids duplicating normalization logic | 08-03 |
+| centralized-escrow-helpers | Single escrowHelpers.js for all contract reads | Eliminates scattered ethers.Contract instantiation across components | 09-01 |
 | bond-fetch-on-mount | Fetch bondAmount via read-only provider on component mount | User sees bond before deciding to proceed | 09-03 |
 | confirmation-modal-pattern | Two-step deployment: button shows modal, modal triggers transaction | Prevents accidental ETH locking | 09-03 |
 | v2-proof-array | Store issuer proof in VC proof array instead of proofs.issuerProof object | v2.0 schema uses proof array for append-only proofs | 09-03 |
@@ -71,7 +72,12 @@ Last activity: 2026-02-17 - Completed 09-03-PLAN.md (Seller flow + web3Utils)
 
 ### Context
 
-**PHASE 9 IN PROGRESS** (Plan 3 of 6 complete)
+**PHASE 9 IN PROGRESS** (Plans 1, 3 of 6 complete)
+
+- 09-01 COMPLETE: Shared components and escrow helpers
+  - escrowHelpers.js: Phase enum, getProductState (with memoHash/railgunTxRef), detectRole
+  - PhaseTimeline, HashDisplay (QR), CountdownTimer, BondCard shared components
+  - qrcode.react installed
 
 - 09-03 COMPLETE: Seller flow + web3Utils
   - ProductFormStep3: bond disclosure card, confirmation modal, createListingVC v2.0
@@ -93,6 +99,8 @@ Next: 09-04
 |------|---------|
 | b5a98942 | feat(09-03): add bond disclosure and v2.0 VC to ProductFormStep3 |
 | ea503b8e | feat(09-03): simplify web3Utils for new contract interface |
+| 70e8f112 | feat(09-01): create escrowHelpers.js and install qrcode.react |
+| 25960e53 | feat(09-01): create shared UI components (PhaseTimeline, HashDisplay, CountdownTimer, BondCard) |
 
 ## Phase 1 Summary
 
@@ -167,9 +175,10 @@ Next: 09-04
 ## Phase 9 Summary (in progress)
 
 **UI Rework:**
+- Plan 1 COMPLETE: escrowHelpers.js + shared components (PhaseTimeline, HashDisplay, CountdownTimer, BondCard)
 - Plan 3 COMPLETE: ProductFormStep3 bond disclosure + createListingVC v2.0, web3Utils ethers-only
 
 ---
 
-*Last updated: 2026-02-17T16:16Z*
+*Last updated: 2026-02-17T16:21Z*
 
