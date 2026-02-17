@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import toast from "react-hot-toast";
 import { ethers, getAddress, isAddress, ZeroAddress } from "ethers";
 import { uploadJson } from "../../utils/ipfs";
@@ -6,19 +6,20 @@ import ProductFactoryABI from "../../abis/ProductFactory.json";
 import ProductEscrowABI from "../../abis/ProductEscrow_Initializer.json";
 import { signVcAsSeller } from "../../utils/signVcWithMetamask";
 import { generateCommitmentWithBindingTag } from "../../utils/commitmentUtils";
+import { createListingVC } from "../../utils/vcBuilder.mjs";
 
 // Copyable component for CIDs
 function truncate(text, length = 12) {
   if (!text || text.length <= length) return text;
   const start = text.slice(0, 6);
   const end = text.slice(-4);
-  return `${start}…${end}`;
+  return `${start}...${end}`;
 }
 
 function Copyable({ value }) {
   return (
     <span
-      className="copyable"
+      className="cursor-pointer font-mono text-sm text-blue-600 hover:text-blue-800 underline"
       title={value}
       onClick={() => navigator.clipboard.writeText(value)}
     >
@@ -32,7 +33,7 @@ function Copyable({ value }) {
 const factoryAddress = process.env.REACT_APP_FACTORY_ADDRESS;
 if (!factoryAddress || !isAddress(factoryAddress)) {
   throw new Error(`Invalid factory address: ${factoryAddress}. Set REACT_APP_FACTORY_ADDRESS in .env`);
-} 
+}
 
 const VC_CHAIN =
   process.env.REACT_APP_CHAIN_ID ||
@@ -43,6 +44,33 @@ const VC_CHAIN =
 const ProductFormStep3 = ({ onNext, productData, backendUrl }) => {
   const [loading, setLoading] = useState(false);
   const [showFullVC, setShowFullVC] = useState(false);
+  const [showBondConfirm, setShowBondConfirm] = useState(false);
+  const [bondAmount, setBondAmount] = useState(null);
+  const [bondLoading, setBondLoading] = useState(true);
+
+  // Fetch bond amount from factory on mount
+  useEffect(() => {
+    let cancelled = false;
+    async function fetchBondAmount() {
+      try {
+        const provider = new ethers.JsonRpcProvider(process.env.REACT_APP_RPC_URL);
+        const validatedFactoryAddress = getAddress(factoryAddress);
+        const factory = new ethers.Contract(validatedFactoryAddress, ProductFactoryABI.abi, provider);
+        const amount = await factory.bondAmount();
+        if (!cancelled) {
+          setBondAmount(amount);
+          setBondLoading(false);
+        }
+      } catch (err) {
+        console.error("Failed to fetch bond amount:", err);
+        if (!cancelled) {
+          setBondLoading(false);
+        }
+      }
+    }
+    fetchBondAmount();
+    return () => { cancelled = true; };
+  }, []);
 
   // Helper function to validate addresses
   const mustAddress = (input, label) => {
@@ -55,45 +83,26 @@ const ProductFormStep3 = ({ onNext, productData, backendUrl }) => {
     return getAddress(input); // normalize to checksum address
   };
 
-  const vcPreview = {
-    "@context": ["https://www.w3.org/2018/credentials/v1"],
-    id: "https://example.edu/credentials/uuid-placeholder",
-    type: ["VerifiableCredential"],
-            issuer: {
-          id: `did:ethr:${VC_CHAIN}:${productData.issuerAddress ? mustAddress(productData.issuerAddress, 'productData.issuerAddress') : ZeroAddress}`,
-          name: "Seller",
-        },
-    holder: {
-      id: `did:ethr:${VC_CHAIN}:${ZeroAddress}`,
-      name: "T.B.D.",
+  // Build a preview VC for the collapsible developer view (pre-deployment)
+  const vcPreviewData = {
+    schemaVersion: "2.0",
+    productName: productData.productName,
+    batch: productData.batch || "",
+    quantity: productData.quantity || 1,
+    issuer: productData.issuerAddress || "(connected wallet)",
+    chainId: VC_CHAIN,
+    certificateCredential: {
+      name: productData.certificateName || "",
+      cid: productData.certificateCid || "",
     },
-    issuanceDate: new Date().toISOString(),
-    credentialSubject: {
-      id: `did:ethr:${VC_CHAIN}:${ZeroAddress}`,
-      productName: productData.productName,
-      batch: productData.batch || "",
-      quantity: productData.quantity,
-      subjectDetails: {
-        productContract: "", // backend will fill
-      },
-      previousCredential: null,
-      componentCredentials: productData.componentCredentials || [],
-      certificateCredential: {
-        name: productData.certificateName || "",
-        cid: productData.certificateCid || "",
-      },
-    },
-    proofs: {
-      issuerProof: {},
-      holderProof: {},
-    },
+    componentCredentials: productData.componentCredentials || [],
   };
 
   const handleConfirm = async () => {
     try {
       console.log('[Flow][Seller] Step 1: Seller confirming product listing and preparing VC.');
       setLoading(true);
-      toast("🔐 Connecting to MetaMask...");
+      toast("Connecting to MetaMask...");
 
       // Ensure MetaMask pops up for account access
       await window.ethereum.request({ method: "eth_requestAccounts" });
@@ -101,160 +110,131 @@ const ProductFormStep3 = ({ onNext, productData, backendUrl }) => {
       const provider = new ethers.BrowserProvider(window.ethereum);
       const signer = await provider.getSigner();
       const sellerAddr = await signer.getAddress();
-      console.log('[Flow][Seller] Step 1 → MetaMask connected, seller address:', sellerAddr);
-      
+      console.log('[Flow][Seller] Step 1 -> MetaMask connected, seller address:', sellerAddr);
+
       // Validate seller address
       if (!isAddress(sellerAddr)) {
         throw new Error(`Invalid seller address: ${sellerAddr}`);
       }
-      
-      // MetaMask connected
-      const price = ethers.parseEther(productData.price); // price in wei
 
-      toast("🚀 Deploying ProductEscrow via Factory...");
+      // MetaMask connected
+      const price = ethers.parseEther(productData.price); // stored for VC/local display only
+
+      toast("Deploying ProductEscrow via Factory...");
       console.log('[Flow][Seller] Step 2: Deploying ProductEscrow through factory.');
-      
+
       // Ensure factory address is valid hex
       const validatedFactoryAddress = getAddress(factoryAddress);
       const factory = new ethers.Contract(validatedFactoryAddress, ProductFactoryABI.abi, signer);
-      
+
       // Test if contract is responsive
-      try {
-        // Test contract responsiveness
-        const code = await provider.getCode(factoryAddress);
-        
-        if (code === "0x") {
-          throw new Error("No contract deployed at this address");
-        }
-        
-        // Try to get contract info
-        try {
-          await factory.productCount(); // Test contract responsiveness
-          console.log('[Flow][Seller] Step 2 → Factory contract responsive.');
-          // Contract is responsive
-        } catch (funcError) {
-          // Contract functions failed
-          
-          throw new Error("Contract exists but doesn't have ProductFactory functions: " + funcError.message);
-        }
-      } catch (error) {
-        console.error("❌ Contract test failed:", error);
-        throw new Error("Contract at " + factoryAddress + " is not responsive: " + error.message);
+      const code = await provider.getCode(factoryAddress);
+      if (code === "0x") {
+        throw new Error("No contract deployed at this address");
       }
-      
+
+      try {
+        await factory.productCount(); // Test contract responsiveness
+        console.log('[Flow][Seller] Step 2 -> Factory contract responsive.');
+      } catch (funcError) {
+        throw new Error("Contract exists but doesn't have ProductFactory functions: " + funcError.message);
+      }
+
       // Use a placeholder commitment for initialization (will be replaced with real Pedersen commitment)
-      // The contract requires a non-zero commitment, so we use a deterministic placeholder
       const placeholderCommitment = ethers.keccak256(
         ethers.solidityPacked(["string", "address"], [productData.productName, sellerAddr])
       );
-      
-      // Call with correct argument order: (string name, bytes32 priceCommitment, uint256 price)
-      const tx = await factory.createProduct(productData.productName, placeholderCommitment, price);
-      const receipt = await tx.wait();
-      console.log('[Flow][Seller] Step 2 → ProductEscrow deployed, tx hash:', receipt.hash);
 
-      // Transaction receipt received
-      
+      // New factory flow: createProduct(name, commitment) payable with seller bond.
+      const currentBondAmount = bondAmount || await factory.bondAmount();
+      if (currentBondAmount <= 0n) {
+        throw new Error("Factory bond amount is not configured.");
+      }
+      const tx = await factory.createProduct(productData.productName, placeholderCommitment, {
+        value: currentBondAmount,
+      });
+      const receipt = await tx.wait();
+      console.log('[Flow][Seller] Step 2 -> ProductEscrow deployed, tx hash:', receipt.hash);
+
       const event = receipt.logs.map(log => {
         try {
-          const parsed = factory.interface.parseLog(log);
-          return parsed;
-        } catch (error) {
+          return factory.interface.parseLog(log);
+        } catch {
           return null;
         }
       }).find(e => e && e.name === "ProductCreated");
 
       const productAddress = event?.args?.product ?? event?.args?.productAddress;
-      
-      if (!productAddress) throw new Error("❌ Missing product address from event");
-      
-      // Validate product address is a proper hex address
+
+      if (!productAddress) throw new Error("Missing product address from event");
+
       if (!isAddress(productAddress)) {
-        throw new Error(`❌ Invalid product address from event: ${productAddress}`);
+        throw new Error(`Invalid product address from event: ${productAddress}`);
       }
 
-      console.log('[Flow][Seller] Step 2 → ProductEscrow deployed at:', productAddress);
-
-      // Ensure product address is valid hex for all contract interactions
+      console.log('[Flow][Seller] Step 2 -> ProductEscrow deployed at:', productAddress);
       const validatedProductAddress = getAddress(productAddress);
 
-      // ✅ Fetch product ID from contract
-      toast("📋 Fetching product ID...");
+      // Fetch product ID from contract
+      toast("Fetching product ID...");
       let productId;
       try {
         const escrow = new ethers.Contract(validatedProductAddress, ProductEscrowABI.abi, provider);
         productId = await escrow.id();
-        console.log("✅ Product ID:", productId.toString());
+        console.log("Product ID:", productId.toString());
       } catch (error) {
-        console.error("❌ Failed to fetch product ID:", error);
+        console.error("Failed to fetch product ID:", error);
         toast.error("Failed to fetch product ID: " + error.message);
         throw error;
       }
 
       console.log('[Flow][Seller] Step 3: Generating binding commitment via ZKP backend.');
-      // ✅ Generate Pedersen commitment with binding tag (Stage 0: Product Listing)
-      toast("🔐 Generating Pedersen commitment with binding tag...");
+      toast("Generating Pedersen commitment with binding tag...");
       let pedersenCommitment;
       let pedersenProof;
       let bindingTag;
       try {
         const zkpBackendUrl = process.env.REACT_APP_ZKP_BACKEND_URL || 'http://localhost:5010';
         const commitmentData = await generateCommitmentWithBindingTag(
-          price.toString(), // Convert BigInt to string for the API
+          price.toString(),
           validatedProductAddress,
           sellerAddr,
-          VC_CHAIN, // Chain ID
-          productId, // Product ID from contract
+          VC_CHAIN,
+          productId,
           0, // Stage 0: Product Listing
-          "1.0", // Schema version
+          "1.0",
           null, // No previous VC CID for Stage 0
           zkpBackendUrl
         );
         pedersenCommitment = commitmentData.commitment;
         pedersenProof = commitmentData.proof;
         bindingTag = commitmentData.bindingTag;
-        
+
         if (!commitmentData.verified) {
-          console.warn("⚠️ Commitment proof did not verify locally, but continuing...");
+          console.warn("Commitment proof did not verify locally, but continuing...");
         }
-        console.log('[Flow][Seller] Step 3 → Commitment + proof ready. Binding tag:', bindingTag);
+        console.log('[Flow][Seller] Step 3 -> Commitment + proof ready. Binding tag:', bindingTag);
       } catch (error) {
-        console.error("❌ Failed to generate Pedersen commitment with binding tag:", error);
+        console.error("Failed to generate Pedersen commitment with binding tag:", error);
         toast.error("Failed to generate commitment: " + error.message);
         throw error;
       }
 
-      console.log('[Flow][Seller] Step 4: Writing public price + commitment to escrow.');
-      // ✅ Set public price and commitment on-chain
-      toast("💰 Setting public price and commitment on-chain...");
-      try {
-        const escrow = new ethers.Contract(validatedProductAddress, ProductEscrowABI.abi, signer);
-        // Pedersen commitment is 32 bytes (64 hex chars). Ensure it's properly formatted.
-        // The ZKP backend returns hex without 0x prefix, so we add it and ensure it's exactly 64 chars
-        const commitmentHex = pedersenCommitment.replace(/^0x/, '');
-        if (commitmentHex.length !== 64) {
-          throw new Error(`Invalid commitment length: expected 64 hex chars, got ${commitmentHex.length}`);
-        }
-        const commitmentBytes32 = "0x" + commitmentHex;
-        const setPriceTx = await escrow.setPublicPriceWithCommitment(price, commitmentBytes32);
-        await setPriceTx.wait(); // Wait for transaction confirmation
-        console.log('[Flow][Seller] Step 4 → Public price + commitment stored on-chain.');
-      } catch (error) {
-        console.error("❌ Failed to set public price with commitment:", error);
-        toast.error("Failed to set public price: " + error.message);
-        throw error;
-      }
+      console.log('[Flow][Seller] Step 4: Skipping public price write (private-only contract).');
 
-      console.log('[Flow][Seller] Step 5: Preparing Stage 0 VC payload.');
-      // Build the price object for stage 0/1 with ZKP commitment and binding tag
-      const priceObj = {
-        hidden: true,
-        zkpProof: {
+      console.log('[Flow][Seller] Step 5: Building v2.0 listing VC.');
+      // Build VC using v2.0 createListingVC
+      const vcToUpload = createListingVC({
+        sellerAddr,
+        productContract: validatedProductAddress,
+        productName: productData.productName,
+        chainId: VC_CHAIN,
+        productId: productId.toString(),
+        priceCommitment: {
           commitment: pedersenCommitment,
           proof: pedersenProof,
-          protocol: "bulletproofs-pedersen",
           proofType: "zkRangeProof-v1",
-          bindingTag: bindingTag, // ✅ Store binding tag in VC
+          bindingTag: bindingTag,
           bindingContext: {
             chainId: VC_CHAIN,
             escrowAddr: validatedProductAddress,
@@ -263,92 +243,34 @@ const ProductFormStep3 = ({ onNext, productData, backendUrl }) => {
             schemaVersion: "1.0",
           },
         },
-      };
-
-      // Inject contract address and price into VC
-      const vcToUpload = {
-        ...vcPreview,
-        schemaVersion: "1.0", // ✅ Add schemaVersion to Stage 0 VC
-        issuer: {
-          id: `did:ethr:${VC_CHAIN}:${mustAddress(sellerAddr, 'sellerAddr')}`,
-          name: "Seller",
+        batch: productData.batch || "",
+        quantity: productData.quantity || 1,
+        certificateCredential: {
+          name: productData.certificateName || "",
+          cid: productData.certificateCid || "",
         },
-        credentialSubject: {
-          ...vcPreview.credentialSubject,
-          subjectDetails: {
-            ...vcPreview.credentialSubject.subjectDetails,
-            productContract: productAddress,
-          },
-          price: priceObj,
-          // ✅ Preserve componentCredentials from Step 2
-          componentCredentials: productData.componentCredentials || [],
-        },
-      };
-
-      // Normalize all string fields to non-null strings
-      const cs = vcToUpload.credentialSubject;
-      const stringFields = [
-        "id", "productName", "batch", "previousCredential"
-      ];
-      stringFields.forEach(field => {
-        if (cs[field] == null) cs[field] = "";
+        componentCredentials: productData.componentCredentials || [],
       });
-      // ✅ Ensure componentCredentials is an array
-      if (!Array.isArray(cs.componentCredentials)) {
-        cs.componentCredentials = [];
-      }
-      if (cs.certificateCredential) {
-        if (cs.certificateCredential.name == null) cs.certificateCredential.name = "";
-        if (cs.certificateCredential.cid == null) cs.certificateCredential.cid = "";
-      }
-      
-      // ✅ Log component credentials for debugging
-      if (cs.componentCredentials.length > 0) {
-        console.log('[Flow][Seller] Step 3 → VC includes component credentials:', cs.componentCredentials);
-      }
 
-      // Serialize price as string for EIP-712 and IPFS
-      if (vcToUpload.credentialSubject.price == null) {
-        vcToUpload.credentialSubject.price = JSON.stringify({});
-      } else if (typeof vcToUpload.credentialSubject.price !== "string") {
-        vcToUpload.credentialSubject.price = JSON.stringify(vcToUpload.credentialSubject.price);
-      }
-      // VC prepared for signing
-
-      console.log('[Flow][Seller] Step 6: Signing Stage 0 VC as seller.');
+      console.log('[Flow][Seller] Step 6: Signing v2.0 VC as seller.');
       // Sign the VC as issuer (with contract address for verifyingContract binding)
       const issuerProof = await signVcAsSeller(vcToUpload, signer, validatedProductAddress);
-      vcToUpload.proofs = { issuerProof };
-      // Issuer proof created
-      console.log('[Flow][Seller] Step 6 → VC signed. Uploading to IPFS next.');
+      vcToUpload.proof = [issuerProof];
+      console.log('[Flow][Seller] Step 6 -> VC signed. Uploading to IPFS next.');
 
-      toast("📤 Uploading VC to IPFS...");
+      toast("Uploading VC to IPFS...");
       const cid = await uploadJson(vcToUpload);
-      console.log('[Flow][Seller] Step 7: Stage 0 VC uploaded to IPFS, CID:', cid);
+      console.log('[Flow][Seller] Step 7: v2.0 VC uploaded to IPFS, CID:', cid);
 
-      toast("📡 Storing CID on-chain...");
-      try {
-        // Use the already validated product address
-        const pc = new ethers.Contract(validatedProductAddress, ProductEscrowABI.abi, signer);
-        const updateCidTx = await pc.updateVcCid(cid);
-        await updateCidTx.wait(); // Wait for transaction confirmation
-        console.log('[Flow][Seller] Step 7 → VC CID stored on-chain. Listing complete.');
-      } catch (error) {
-        console.error("❌ Failed to store CID on-chain:", error);
-        toast.error("Failed to store CID: " + error.message);
-        throw error;
-      }
-
-      toast.success("🎉 Product created & VC issued!");
+      toast.success("Product created & VC issued!");
       onNext({
         productData: {
           ...productData,
           cid,
           productContract: productAddress,
           vcPreview: vcToUpload,
-          priceWei: price.toString(), // store price in wei for later use
-          priceCommitment: pedersenCommitment, // store commitment for verification
-          // ✅ Include Railgun data for private payments
+          priceWei: price.toString(),
+          priceCommitment: pedersenCommitment,
           sellerRailgunAddress: productData.sellerRailgunAddress,
           sellerWalletID: productData.sellerWalletID,
           sellerEOA: productData.sellerEOA,
@@ -357,25 +279,24 @@ const ProductFormStep3 = ({ onNext, productData, backendUrl }) => {
       });
 
       console.log('[Flow][Seller] Step 8: Caching price and Railgun metadata locally for reuse.');
-      // Store price and commitment for later use (blinding is deterministic, no need to store)
       localStorage.setItem(`priceWei_${productAddress}`, price.toString());
       localStorage.setItem(`priceCommitment_${productAddress}`, pedersenCommitment);
-      
-      // ✅ Store Railgun data for private payments
+      localStorage.setItem(`vcCid_${productAddress}`, cid);
+
       if (productData.sellerRailgunAddress) {
         localStorage.setItem(`sellerRailgunAddress_${productAddress}`, productData.sellerRailgunAddress);
         localStorage.setItem(`sellerWalletID_${productAddress}`, productData.sellerWalletID || '');
-        console.log('[Flow][Seller] Step 8 → Railgun metadata saved for product:', {
+        console.log('[Flow][Seller] Step 8 -> Railgun metadata saved for product:', {
           productAddress,
           sellerRailgunAddress: productData.sellerRailgunAddress,
           sellerWalletID: productData.sellerWalletID
         });
       } else {
-        console.log('[Flow][Seller] Step 8 → No Railgun metadata provided for product:', productAddress);
+        console.log('[Flow][Seller] Step 8 -> No Railgun metadata provided for product:', productAddress);
       }
 
     } catch (err) {
-      console.error("❌ handleConfirm:", err);
+      console.error("handleConfirm:", err);
       toast.error(err.message || "Failed to issue VC");
     } finally {
       setLoading(false);
@@ -390,54 +311,48 @@ const ProductFormStep3 = ({ onNext, productData, backendUrl }) => {
 
   return (
     <div className="form-step">
-      <h3>Step 3: Review & Confirm</h3>
-      
+      <h3 className="text-xl font-semibold mb-4">Step 3: Review & Confirm</h3>
+
       {/* Clean Summary */}
-      <div style={{ 
-        backgroundColor: "#f8f9fa", 
-        border: "1px solid #dee2e6", 
-        borderRadius: "8px", 
-        padding: "1.5rem",
-        marginBottom: "1.5rem"
-      }}>
-        <h4 style={{ marginTop: 0, marginBottom: "1rem", color: "#333" }}>📋 Product Summary</h4>
-        
-        <div style={{ display: "grid", gap: "0.75rem" }}>
+      <div className="bg-gray-50 border border-gray-200 rounded-lg p-6 mb-6">
+        <h4 className="mt-0 mb-4 text-gray-800 font-semibold">Product Summary</h4>
+
+        <div className="grid gap-3">
           <div>
             <strong>Product Name:</strong> {productData.productName || "-"}
           </div>
-          
+
           <div>
             <strong>Price:</strong> {productData.price} ETH
           </div>
-          
+
           <div>
             <strong>Quantity:</strong> {productData.quantity || 1}
           </div>
-          
+
           {productData.batch && productData.batch.trim() !== "" && (
             <div>
               <strong>Batch ID:</strong> {productData.batch}
             </div>
           )}
-          
+
           {hasComponents && (
             <div>
               <strong>Component Products:</strong> {componentCredentials.length}
-              <div style={{ marginLeft: "1rem", marginTop: "0.25rem", fontSize: "0.9em" }}>
+              <div className="ml-4 mt-1 text-sm">
                 {componentCredentials.map((cid, idx) => (
-                  <div key={idx} style={{ marginBottom: "0.25rem" }}>
-                    • <Copyable value={cid} />
+                  <div key={idx} className="mb-1">
+                    &bull; <Copyable value={cid} />
                   </div>
                 ))}
               </div>
             </div>
           )}
-          
+
           {hasCertification && (
             <div>
               <strong>Certification:</strong> {productData.certificateName || "Unnamed"}
-              <div style={{ marginLeft: "1rem", marginTop: "0.25rem", fontSize: "0.9em" }}>
+              <div className="ml-4 mt-1 text-sm">
                 CID: <Copyable value={productData.certificateCid} />
               </div>
             </div>
@@ -445,43 +360,108 @@ const ProductFormStep3 = ({ onNext, productData, backendUrl }) => {
         </div>
       </div>
 
+      {/* Bond Disclosure Card */}
+      <div className="bg-amber-50 border border-amber-300 rounded-lg p-5 mb-6">
+        <div className="flex items-start gap-3">
+          <svg
+            xmlns="http://www.w3.org/2000/svg"
+            width="24"
+            height="24"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            className="text-amber-600 mt-0.5 flex-shrink-0"
+          >
+            <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
+          </svg>
+          <div>
+            <h4 className="font-semibold text-amber-800 mt-0 mb-2">Protocol Collateral</h4>
+            {bondLoading ? (
+              <div className="h-6 w-32 bg-amber-200 rounded animate-pulse" />
+            ) : bondAmount !== null ? (
+              <>
+                <p className="text-2xl font-bold text-amber-900 mb-2">
+                  {ethers.formatEther(bondAmount)} ETH
+                </p>
+                <p className="text-sm text-amber-700 m-0">
+                  You will lock {ethers.formatEther(bondAmount)} ETH as seller bond. This is
+                  refundable upon successful delivery completion. Bond will be forfeited if you
+                  fail to confirm the order within the timeout window.
+                </p>
+              </>
+            ) : (
+              <p className="text-sm text-amber-700 m-0">
+                Unable to fetch bond amount. Deployment may still proceed.
+              </p>
+            )}
+          </div>
+        </div>
+      </div>
+
       {/* Optional: Full VC Structure (collapsible) */}
-      <div style={{ marginBottom: "1.5rem" }}>
+      <div className="mb-6">
         <button
           onClick={() => setShowFullVC(!showFullVC)}
-          style={{
-            background: "none",
-            border: "1px solid #dee2e6",
-            borderRadius: "4px",
-            padding: "0.5rem 1rem",
-            cursor: "pointer",
-            color: "#666",
-            fontSize: "0.9em"
-          }}
+          className="bg-transparent border border-gray-200 rounded px-4 py-2 cursor-pointer text-gray-500 text-sm hover:bg-gray-50"
         >
-          {showFullVC ? "▼ Hide" : "▶ Show"} Full VC Structure (for developers)
+          {showFullVC ? "Hide" : "Show"} Full VC Structure (for developers)
         </button>
-        
+
         {showFullVC && (
-          <pre 
-            className="vc-preview" 
-            style={{ 
-              marginTop: "0.5rem",
-              maxHeight: "400px",
-              overflow: "auto",
-              fontSize: "0.85em"
-            }}
+          <pre
+            className="vc-preview mt-2 max-h-96 overflow-auto text-sm bg-gray-100 p-4 rounded border border-gray-200"
           >
-            {JSON.stringify(vcPreview, null, 2)}
+            {JSON.stringify(vcPreviewData, null, 2)}
           </pre>
         )}
       </div>
 
-      <div style={{ marginTop: "1em" }}>
-        <button className="button" disabled={loading} onClick={handleConfirm}>
-          {loading ? "Processing…" : "Confirm & Deploy"}
+      <div className="mt-4">
+        <button
+          className="button bg-blue-600 text-white px-6 py-3 rounded-lg font-semibold hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
+          disabled={loading}
+          onClick={() => setShowBondConfirm(true)}
+        >
+          {loading ? "Processing..." : "Confirm & Deploy"}
         </button>
       </div>
+
+      {/* Bond Confirmation Modal */}
+      {showBondConfirm && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-xl p-6 max-w-md w-full mx-4 shadow-xl">
+            <h3 className="text-lg font-bold mb-4">Confirm Bond Deposit</h3>
+            <p className="text-gray-600 mb-4">
+              You are about to lock{" "}
+              <strong>
+                {bondAmount ? ethers.formatEther(bondAmount) : "..."} ETH
+              </strong>{" "}
+              as seller bond and deploy a new product escrow. This bond is
+              refundable after successful delivery.
+            </p>
+            <div className="flex gap-3 justify-end">
+              <button
+                className="px-4 py-2 rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-50"
+                onClick={() => setShowBondConfirm(false)}
+              >
+                Cancel
+              </button>
+              <button
+                className="px-4 py-2 rounded-lg bg-blue-600 text-white font-semibold hover:bg-blue-700"
+                onClick={() => {
+                  setShowBondConfirm(false);
+                  handleConfirm();
+                }}
+              >
+                Confirm & Lock Bond
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
