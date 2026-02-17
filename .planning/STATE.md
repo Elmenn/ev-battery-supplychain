@@ -5,12 +5,12 @@
 ## Current Position
 
 - **Phase:** 8 of 10 (Single VC Architecture)
-- **Plan:** 1 of 4 in phase
-- **Status:** In progress (08-01 complete, 08-02 next)
+- **Plan:** 3 of 3 in phase
+- **Status:** Phase 8 complete
 
-Progress: [██████████████████████░░░░░░░░░░░░] ~78% (08-01 complete)
+Progress: [████████████████████████████░░░░░░] ~88% (15/17 plans complete)
 
-Last activity: 2026-02-17 - Completed 08-01-PLAN.md (VC builder rewrite)
+Last activity: 2026-02-17 - Completed 08-03-PLAN.md (VC verifier utility)
 
 ## Living Memory
 
@@ -46,6 +46,12 @@ Last activity: 2026-02-17 - Completed 08-01-PLAN.md (VC builder rewrite)
 | vc-schema-v2 | schemaVersion "2.0" for append-only VCs vs old "1.0" stage-based | Clear distinction between old and new VC formats | 08-01 |
 | zero-addr-holder | Unknown buyer uses ZeroAddress in holder DID at listing time | FCFS pattern means buyer unknown at listing | 08-01 |
 | throw-on-deprecated | Deprecated stubs throw descriptive errors (not silent no-ops) | Developers immediately know which new function to use | 08-01 |
+| ipfs-cache-prefix | Use vc_cache_ prefix for localStorage IPFS cache keys | Namespaced to avoid collisions with other localStorage usage | 08-02 |
+| no-retry-4xx | Skip retry on 4xx errors, only retry network/5xx | 4xx errors are deterministic - retrying wastes time | 08-02 |
+| flatten-listing-for-eip712 | Flatten v2.0 listing sub-object before EIP-712 signing | Reuses existing EIP-712 types without modification | 08-02 |
+| warnings-dont-fail | WARNING:-prefixed errors don't fail schema validation | v1.0 VCs with price field instead of priceCommitment are still valid | 08-03 |
+| structure-only-proofs | verifyProofChain validates structure, not cryptographic signatures | Crypto verification requires server-side endpoint | 08-03 |
+| delegate-normalization | verifyPriceCommitment delegates 0x normalization to verifyCommitmentMatch | Avoids duplicating normalization logic | 08-03 |
 
 ### Issues Log
 
@@ -62,22 +68,33 @@ Last activity: 2026-02-17 - Completed 08-01-PLAN.md (VC builder rewrite)
 
 ### Context
 
-**PHASE 8 IN PROGRESS (plan 1 of 4 complete)**
+**PHASE 8 COMPLETE**
 
-Phase 7 done. Phase 8 started:
+Phase 8 done (all 3 plans):
 - 08-01 COMPLETE: vcBuilder.mjs rewritten with append-only single-VC pattern
   - createListingVC, appendPaymentProof, appendDeliveryProof
   - vcBuilder.js CJS duplicate deleted (145 lines)
   - Deprecated stubs for buildStage2VC/buildStage3VC
   - Note: createProduct.js Express route still uses old CJS require (Phase 9 cleanup)
 
-Next: 08-02 (IPFS fetchJson, EIP-712 signing type updates)
+- 08-02 COMPLETE: IPFS fetchJson with caching + retry, EIP-712 v2.0 signing updates
+  - fetchJson(cid) with localStorage cache, retry, ipfs:// prefix stripping
+  - uploadJson wrapped in retry logic
+  - preparePayloadForSigning strips payment/delivery/previousVersion, flattens listing
+  - Backward compatible with v1.0 VCs
+
+- 08-03 COMPLETE: vcVerifier.js with 5 pure verification functions
+  - verifyVcSchema, verifyProofChain, verifyOnChainHash, verifyPriceCommitment, verifyVcIntegrity
+  - Backward compatible with v1.0 VCs (warnings don't fail validation)
+  - Ready for Phase 9 UI integration
+
+Next: Phase 9
 
 ## Session Continuity
 
 - **Last session:** 2026-02-17
-- **Stopped at:** Completed 08-01-PLAN.md
-- **Next:** 08-02-PLAN.md
+- **Stopped at:** Completed 08-03-PLAN.md (Phase 8 complete)
+- **Next:** Phase 9
 - **Resume file:** None
 
 ## Commits This Session
@@ -148,15 +165,16 @@ Next: 08-02 (IPFS fetchJson, EIP-712 signing type updates)
 - Plan 3 COMPLETE: Timeout tests (27 tests) + migration script
 - Total: ~112 contract tests, all passing on Ganache
 
-## Phase 8 Summary (In Progress)
+## Phase 8 Summary
 
 **Single VC Architecture:**
 - Plan 1 COMPLETE: vcBuilder.mjs rewritten with append-only pattern (410 -> 126 lines)
-- createListingVC, appendPaymentProof, appendDeliveryProof
-- vcBuilder.js CJS duplicate deleted
+- Plan 2 COMPLETE: IPFS fetchJson with caching + retry, EIP-712 v2.0 signing
+- Plan 3 COMPLETE: vcVerifier.js with 5 pure verification functions (312 lines)
 - Deprecated stubs for backward compat
+- Full v1.0/v2.0 backward compatibility throughout
 
 ---
 
-*Last updated: 2026-02-17*
+*Last updated: 2026-02-17T06:46Z*
 
