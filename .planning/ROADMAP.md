@@ -254,7 +254,17 @@ Plans:
 
 **Goal:** Update all UI flows to match new contract and VC architecture
 
-**Status:** COMPLETE (2026-02-16)
+**Status:** PLANNED
+
+**Plans:** 6 plans
+
+Plans:
+- [ ] 09-01-PLAN.md — Contract interaction layer (escrowHelpers.js) + shared components (PhaseTimeline, HashDisplay, CountdownTimer, BondCard)
+- [ ] 09-02-PLAN.md — MarketplaceView transporter filter tabs + ProductCard dual badges
+- [ ] 09-03-PLAN.md — ProductFormStep3 bond disclosure + web3Utils simplification
+- [ ] 09-04-PLAN.md — ProductDetail.jsx rewrite (seller/buyer panels, dead code removal)
+- [ ] 09-05-PLAN.md — Transporter flow (bid modal, delivery confirm modal, payout card)
+- [ ] 09-06-PLAN.md — PrivatePaymentModal.jsx rewrite (stepped drawer)
 
 **Why Ninth:** UI builds on top of finalized contract + VC design
 
@@ -278,7 +288,7 @@ Plans:
 
 **Goal:** Remove dead code from old flow, verify end-to-end on Sepolia
 
-**Status:** COMPLETE (2026-02-16)
+**Status:** PLANNED
 
 **Why Tenth:** Final integration after all pieces are in place
 
