@@ -217,18 +217,18 @@ Plans:
 
 ---
 
-## Phase 8: Single VC Architecture
+## Phase 8: Single VC Architecture ✓
 
 **Goal:** Consolidate 3-stage VC chain into a single append-only Verifiable Credential
 
-**Status:** NOT YET COMPLETE
+**Status:** COMPLETE (2026-02-17)
 
-**Plans:** 3 plans
+**Plans:** 3/3 complete
 
 Plans:
-- [ ] 08-01-PLAN.md — Rewrite vcBuilder.mjs with append-only VC functions, delete CJS duplicate
-- [ ] 08-02-PLAN.md — Add IPFS fetchJson utility with caching/retry, update EIP-712 signing types
-- [ ] 08-03-PLAN.md — Create vcVerifier.js with consolidated verification logic
+- [x] 08-01-PLAN.md — Rewrite vcBuilder.mjs with append-only VC functions, delete CJS duplicate
+- [x] 08-02-PLAN.md — Add IPFS fetchJson utility with caching/retry, update EIP-712 signing types
+- [x] 08-03-PLAN.md — Create vcVerifier.js with consolidated verification logic
 
 **Why Eighth:** VC structure affects both contract events and UI — design before wiring
 
@@ -241,10 +241,12 @@ Plans:
 - VC contains Pedersen commitment + ZKP range proof for price verification
 
 **Deliverables:**
-- [ ] Redesigned VC schema (single document with proof chain)
-- [ ] Updated vcBuilder.mjs
-- [ ] Updated IPFS upload/fetch utilities
-- [ ] VC verification logic for consolidated format
+- [x] Redesigned VC schema (single document with proof chain)
+- [x] Updated vcBuilder.mjs
+- [x] Updated IPFS upload/fetch utilities
+- [x] VC verification logic for consolidated format
+
+**Result:** Append-only VC (schemaVersion 2.0) with createListingVC/appendPaymentProof/appendDeliveryProof, IPFS fetchJson with caching, EIP-712 v2.0 signing, 5-function verifier
 
 ---
 
