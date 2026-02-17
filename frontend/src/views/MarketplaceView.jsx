@@ -1,18 +1,24 @@
 import React, { useEffect, useState } from "react";
-import { ethers } from "ethers";
 import ProductCard from "../components/marketplace/ProductCard";
 import ProductFormWizard from "../components/marketplace/ProductFormWizard";
 import PrivateFundsDrawer from "../components/railgun/PrivateFundsDrawer";
 import RailgunConnectionButton from "../components/railgun/RailgunConnectionButton";
 import { Button } from "../../src/components/ui/button";
-
-
+import { getProductState, getEscrowContract, Phase } from "../utils/escrowHelpers";
+import { ethers } from "ethers";
 
 import ProductFactoryABI from "../abis/ProductFactory.json";
-import ProductEscrowABI from "../abis/ProductEscrow_Initializer.json";
 
+const ZERO = "0x0000000000000000000000000000000000000000";
 
-
+const filters = [
+  { id: "all", label: "All" },
+  { id: "my", label: "My Listings" },
+  { id: "purchased", label: "My Purchases" },
+  { id: "needs-transporter", label: "Needs Transporter" },
+  { id: "my-bids", label: "My Bids" },
+  { id: "assigned", label: "Assigned to Me" },
+];
 
 const MarketplaceView = ({ myAddress, provider, backendUrl }) => {
   const factoryAddress = process.env.REACT_APP_FACTORY_ADDRESS || '0x0000000000000000000000000000000000000000';
@@ -23,12 +29,7 @@ const MarketplaceView = ({ myAddress, provider, backendUrl }) => {
   const [showPrivateFunds, setShowPrivateFunds] = useState(false);
   const [loading, setLoading] = useState(true);
 
-
-
-
-
-
-  /* ─── fetch products ───────────────────────────────────────── */
+  /* --- fetch products ---------------------------------------------------- */
   useEffect(() => {
     const load = async () => {
       if (!myAddress || !provider) return;
@@ -41,128 +42,78 @@ const MarketplaceView = ({ myAddress, provider, backendUrl }) => {
           signer
         );
 
-        // Fetching products from factory
+        // Fetch product addresses from factory
         let addresses = [];
-        
-        // First try the getProducts() method
         try {
           addresses = await factory.getProducts();
-          // Product addresses loaded
-          
-          // Check if addresses array is empty or contains only zero addresses
-          if (!addresses || addresses.length === 0 || addresses.every(addr => addr === "0x0000000000000000000000000000000000000000")) {
-            // No valid products found, trying counter approach
-            addresses = []; // Set empty array instead of throwing error
+          if (!addresses || addresses.length === 0 || addresses.every(addr => addr === ZERO)) {
+            addresses = [];
           }
         } catch (err) {
-          // getProducts() returned empty data, trying counter approach
-          
-          // Try alternative approach - get product counter and iterate
+          // getProducts() failed, try counter approach
           try {
             const counter = await factory.productCount();
-            // Product counter loaded
-            
             if (counter > 0) {
               addresses = [];
               for (let i = 0; i < counter; i++) {
                 try {
                   const addr = await factory.products(i);
-                  // Product address loaded
-                  
-                  // Only add non-zero addresses
-                  if (addr && addr !== "0x0000000000000000000000000000000000000000") {
+                  if (addr && addr !== ZERO) {
                     addresses.push(addr);
                   }
                 } catch (e) {
-                  // Skipping invalid product
+                  // Skip invalid product index
                 }
               }
-              // Product addresses loaded from counter
-            } else {
-              // No products found
-              addresses = []; // Ensure addresses is an empty array
             }
           } catch (counterErr) {
-            // Counter approach failed, assuming no products
-            addresses = []; // Set empty array instead of throwing error
+            addresses = [];
           }
         }
+
         const items = await Promise.all(
           addresses.map(async (addr) => {
             try {
-              // Loading product details
-              const pc = new ethers.Contract(addr, ProductEscrowABI.abi, provider);
-              
-              // ✅ Read public price from contract (new dual-mode approach)
-              let price;
-              let publicPriceWei;
+              // Use getProductState from escrowHelpers for all scalar reads
+              const state = await getProductState(addr, provider);
+
+              // Read transporter list for filter support
+              let transporterAddresses = [];
+              let transporterFees = [];
               try {
-                publicPriceWei = await pc.publicPriceWei();
-                // Public price loaded
-                
-                if (publicPriceWei && publicPriceWei !== 0n) {
-                  price = ethers.formatEther(publicPriceWei); // shown in card
-                  // Public price displayed
-                } else {
-                  price = "Price hidden 🔒";
-                  // No public price set
-                }
-              } catch (err) {
-                                  // Public price read failed
-                price = "Price hidden 🔒";
-                publicPriceWei = 0n;
+                const escrow = getEscrowContract(addr, provider);
+                const [addrs, fees] = await escrow.getAllTransporters();
+                transporterAddresses = Array.from(addrs);
+                transporterFees = Array.from(fees);
+              } catch (e) {
+                // getAllTransporters may not exist on older contracts
               }
-              
-              // Get all other product details with better error handling
-              const [name, owner, purchased, buyer, vcCid, transporter] =
-                await Promise.all([
-                  pc.name().catch(() => "Unknown Product"),
-                  pc.owner().catch(() => "0x0000000000000000000000000000000000000000"),
-                  pc.purchased().catch(() => false),
-                  pc.buyer().catch(() => "0x0000000000000000000000000000000000000000"),
-                  pc.vcCid().catch(() => ""),
-                  pc.transporter().catch(() => "0x0000000000000000000000000000000000000000"),
-                ]);
-              
-              // Get stored price data from localStorage
-              const priceWei = localStorage.getItem(`priceWei_${addr}`);
-              const priceBlinding = localStorage.getItem(`priceBlinding_${addr}`);
-              
-              // ✅ Get stored Railgun data from localStorage
+
+              // Get stored Railgun data from localStorage
               const sellerRailgunAddress = localStorage.getItem(`sellerRailgunAddress_${addr}`);
               const sellerWalletID = localStorage.getItem(`sellerWalletID_${addr}`);
-              
-              const product = {
-                name,
-                price,
-                priceWei,
-                priceBlinding,
-                publicPriceWei, // ✅ Store public price for accurate purchase values
-                owner: owner.toLowerCase(),
-                seller: owner.toLowerCase(), // ✅ Add seller field (same as owner for consistency)
-                buyer: buyer.toLowerCase(),
-                purchased,
-                transporter,
-                vcCid,
-                address: addr,
-                // ✅ Include Railgun data for private payments
+
+              return {
+                ...state,
+                price: "Private",
+                owner: state.owner?.toLowerCase(),
+                seller: state.owner?.toLowerCase(),
+                buyer: state.buyer?.toLowerCase(),
+                transporter: state.transporter,
+                transporterAddresses,
+                transporterFees,
                 sellerRailgunAddress,
                 sellerWalletID,
-                privatePaymentsEnabled: !!sellerRailgunAddress, // Boolean flag for easy checking
               };
-              
-                             // Product loaded successfully
-              return product;
             } catch (err) {
-              console.error("❌ Skipping invalid contract at", addr, err);
+              console.error("Skipping invalid contract at", addr, err);
               return null;
             }
           })
         );
         setProducts(items.filter(Boolean));
       } catch (err) {
-        // Error loading products, continuing with empty list
-        setProducts([]); // Set empty products array on error
+        setProducts([]);
       } finally {
         setLoading(false);
       }
@@ -170,43 +121,40 @@ const MarketplaceView = ({ myAddress, provider, backendUrl }) => {
     load();
   }, [myAddress, provider, factoryAddress]);
 
-
-
-
-
-
-  /* ─── filter helpers ──────────────────────────────────────── */
+  /* --- filter helpers ---------------------------------------------------- */
   const filtered = products.filter((p) => {
-    if (filter === "my") return p.owner === myAddress?.toLowerCase();
-    if (filter === "purchased") return p.buyer === myAddress?.toLowerCase();
+    const me = myAddress?.toLowerCase();
+    if (filter === "my") return p.owner === me;
+    if (filter === "purchased") return p.buyer && p.buyer !== ZERO.toLowerCase() && p.buyer === me;
+    if (filter === "needs-transporter") return p.phase === Phase.OrderConfirmed;
+    if (filter === "my-bids") return p.transporterAddresses?.some(addr => addr.toLowerCase() === me);
+    if (filter === "assigned") return p.transporter && p.transporter.toLowerCase() !== ZERO.toLowerCase() && p.transporter.toLowerCase() === me;
     return true;
   });
 
-  /* ─── render ──────────────────────────────────────────────── */
+  /* --- render ------------------------------------------------------------ */
   return (
     <div className="max-w-7xl mx-auto px-4 py-8 space-y-6">
       {/* header bar */}
       <div className="flex flex-wrap items-center justify-between gap-4">
         <h2 className="text-2xl font-bold">
-          🔍 EV Battery Marketplace
+          EV Battery Marketplace
         </h2>
 
         <div className="flex items-center gap-3">
           <RailgunConnectionButton currentUser={myAddress} />
-          <Button 
+          <Button
             onClick={() => setShowPrivateFunds(true)}
             variant="outline"
             className="bg-purple-50 border-purple-200 text-purple-700 hover:bg-purple-100"
           >
-            🛡️ Private Funds
+            Private Funds
           </Button>
           <Button onClick={() => setShowForm((s) => !s)}>
-            {showForm ? "Close Form" : "➕ Add Product"}
+            {showForm ? "Close Form" : "Add Product"}
           </Button>
         </div>
       </div>
-
-
 
       {/* new-product wizard */}
       {showForm && (
@@ -217,11 +165,7 @@ const MarketplaceView = ({ myAddress, provider, backendUrl }) => {
 
       {/* filter pills */}
       <div className="flex flex-wrap gap-2">
-        {[
-          { id: "all", label: "All" },
-          { id: "my", label: "My Listings" },
-          { id: "purchased", label: "Purchased" },
-        ].map(({ id, label }) => (
+        {filters.map(({ id, label }) => (
           <button
             key={id}
             onClick={() => setFilter(id)}
@@ -238,7 +182,7 @@ const MarketplaceView = ({ myAddress, provider, backendUrl }) => {
 
       {/* product grid */}
       {loading ? (
-        <p>Loading products…</p>
+        <p>Loading products...</p>
       ) : filtered.length === 0 ? (
         <p>No products to show.</p>
       ) : (
@@ -250,9 +194,9 @@ const MarketplaceView = ({ myAddress, provider, backendUrl }) => {
       )}
 
       {/* Private Funds Drawer */}
-      <PrivateFundsDrawer 
-        open={showPrivateFunds} 
-        onClose={() => setShowPrivateFunds(false)} 
+      <PrivateFundsDrawer
+        open={showPrivateFunds}
+        onClose={() => setShowPrivateFunds(false)}
       />
     </div>
   );
