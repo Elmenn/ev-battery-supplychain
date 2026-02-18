@@ -5,12 +5,12 @@
 ## Current Position
 
 - **Phase:** 9 of 10 (UI Rework)
-- **Plan:** 3 of 6 in phase
-- **Status:** In progress
+- **Plan:** 6 of 6 in phase
+- **Status:** Phase 9 complete (all 6 plans verified)
 
-Progress: [██████████████████████████████░░░░] ~90% (16/18 plans complete)
+Progress: [████████████████████████████████░░] ~95% (21/22 plans complete)
 
-Last activity: 2026-02-17 - Completed 09-03-PLAN.md (Seller flow + web3Utils)
+Last activity: 2026-02-18 - Phase 9 verified complete (27/27 must-haves)
 
 ## Living Memory
 
@@ -42,7 +42,7 @@ Last activity: 2026-02-17 - Completed 09-03-PLAN.md (Seller flow + web3Utils)
 | bond-forwarding-pattern | Factory createProduct{value} -> clone initialize{value} -> sellerBond | Clean ETH forwarding through factory to clone at creation time | 07-01 |
 | per-clone-memo-replay | usedMemoHash is per-clone storage; cross-product replay relies on separate contracts | Each escrow clone has its own storage so memo hashes don't collide | 07-02 |
 | reentrancy-trycatch-pattern | MaliciousReentrant uses try/catch so outer call succeeds while re-entry blocked | Verifies ReentrancyGuard works without failing the entire transaction | 07-02 |
-| fcfs-buyer | First non-seller caller of recordPrivatePayment becomes buyer (no pre-designation) | Open marketplace pattern — cleaner than requiring seller to designate buyer | 07-FCFS |
+| fcfs-buyer | First non-seller caller of recordPrivatePayment becomes buyer (FCFS) | Open marketplace pattern with automatic buyer assignment at payment time | 07-FCFS |
 | vc-schema-v2 | schemaVersion "2.0" for append-only VCs vs old "1.0" stage-based | Clear distinction between old and new VC formats | 08-01 |
 | zero-addr-holder | Unknown buyer uses ZeroAddress in holder DID at listing time | FCFS pattern means buyer unknown at listing | 08-01 |
 | throw-on-deprecated | Deprecated stubs throw descriptive errors (not silent no-ops) | Developers immediately know which new function to use | 08-01 |
@@ -181,4 +181,3 @@ Next: 09-04
 ---
 
 *Last updated: 2026-02-17T16:21Z*
-
