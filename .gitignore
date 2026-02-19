@@ -28,6 +28,8 @@ railgun-ecosystem-analysis.mjs
 frontend/.env
 frontend/.env.ganache
 frontend/.env.sepolia
+frontend/.env.ganache.backup
+frontend/.env.*.backup
 backend/**/.env
 subsquid/**/.env
 
