@@ -9,6 +9,21 @@ This guide explains how to set up and run the frontend using Docker, so you don'
 
 ## Quick Start
 
+### Fastest Path (Supervisor Demo)
+
+If `frontend/.env` is already present and valid in this repo, the fastest run path is:
+
+```bash
+docker compose up --build
+```
+
+Then open:
+```
+http://localhost:3000
+```
+
+No Node.js or npm installation is required on the host.
+
 ### 1. Configure Environment Variables
 
 Before building the Docker image, you need to create a `.env` file in the `frontend` directory:
