@@ -108,10 +108,10 @@ module.exports = function override(config, env) {
   // CRITICAL: Exclude TypeScript files in railgun directory from ALL processing
   // This must come BEFORE any other rules that might process TS files
   // Add this rule at the beginning with high priority
-  if (!config.module.rules.find(rule => rule.test && rule.test.toString().includes('railgun'))) {
+    if (!config.module.rules.find(rule => rule.test && rule.test.toString().includes('railgun'))) {
     config.module.rules.unshift({
       test: /\.ts$/,
-      include: [path.resolve(__dirname, 'src/lib/railgun')],
+      include: [path.resolve(__dirname, 'src/lib/railgun-clean')],
       use: {
         loader: path.resolve(__dirname, 'scripts/null-loader.js')
       },
@@ -133,7 +133,15 @@ module.exports = function override(config, env) {
   config.ignoreWarnings = [
     /Failed to parse source map/,
     /json-canonicalize/,
-    /src\//
+    /src\//,
+    {
+      module: /@graphql-mesh[\\/]utils[\\/]cjs[\\/]defaultImportFn\.js/,
+      message: /Critical dependency: the request of a dependency is an expression/,
+    },
+    {
+      module: /@graphql-tools[\\/]url-loader[\\/]cjs[\\/]index\.js/,
+      message: /Critical dependency: the request of a dependency is an expression/,
+    },
   ];
 
   // CRITICAL: Exclude TypeScript files in railgun directory from being processed during build
@@ -197,7 +205,7 @@ module.exports = function override(config, env) {
     config.plugins.push(
       new webpack.NormalModuleReplacementPlugin(
         new RegExp(`^.*lib/railgun/${file}\\.ts$`),
-        path.resolve(__dirname, 'src/lib/railgun-stub.js')
+        path.resolve(__dirname, 'src/lib/railgun-clean/stub.js')
       )
     );
   });

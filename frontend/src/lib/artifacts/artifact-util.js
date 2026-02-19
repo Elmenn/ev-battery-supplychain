@@ -1,9 +1,13 @@
-/**
- * Artifact Utilities
- * 
- * Minimal stub implementation converted from TypeScript.
- * Full implementation will be added later.
- */
+import { ArtifactName } from '@railgun-community/shared-models';
+import brotliDecompress from 'brotli/decompress';
+
+const IPFS_GATEWAY = 'https://ipfs-lb.com';
+
+const MASTER_IPFS_HASH_ARTIFACTS =
+  'QmUsmnK4PFc7zDp2cmC4wBZxYLjNyRgWfs5GNcJJ2uLcpU';
+
+const IPFS_HASH_ARTIFACTS_POI =
+  'QmZrP9zaZw2LwErT2yA6VpMWm65UdToQiKj4DtStVsUJHr';
 
 export const ARTIFACT_VARIANT_STRING_POI_PREFIX = 'POI';
 
@@ -11,6 +15,7 @@ export const artifactDownloadsDir = (artifactVariantString) => {
   if (artifactVariantString.startsWith(ARTIFACT_VARIANT_STRING_POI_PREFIX)) {
     return `artifacts-v2.1/poi-nov-2-23/${artifactVariantString}`;
   }
+
   return `artifacts-v2.1/${artifactVariantString}`;
 };
 
@@ -23,22 +28,94 @@ export const getArtifactVariantStringPOI = (maxInputs, maxOutputs) => {
 };
 
 export const artifactDownloadsPath = (artifactName, artifactVariantString) => {
-  // Minimal implementation - will be expanded later
-  return `${artifactDownloadsDir(artifactVariantString)}/${artifactName}`;
-};
-
-export const getArtifactUrl = (artifactName, artifactVariantString) => {
-  // Minimal implementation - will be expanded later
-  throw new Error('getArtifactUrl not yet fully implemented');
+  switch (artifactName) {
+    case ArtifactName.WASM:
+      return `${artifactDownloadsDir(artifactVariantString)}/wasm`;
+    case ArtifactName.ZKEY:
+      return `${artifactDownloadsDir(artifactVariantString)}/zkey`;
+    case ArtifactName.VKEY:
+      return `${artifactDownloadsDir(artifactVariantString)}/vkey.json`;
+    case ArtifactName.DAT:
+      return `${artifactDownloadsDir(artifactVariantString)}/dat`;
+    default:
+      return `${artifactDownloadsDir(artifactVariantString)}/${artifactName}`;
+  }
 };
 
 export const getArtifactDownloadsPaths = (artifactVariantString) => {
-  // Minimal implementation - will be expanded later
-  throw new Error('getArtifactDownloadsPaths not yet fully implemented');
+  return {
+    [ArtifactName.ZKEY]: artifactDownloadsPath(
+      ArtifactName.ZKEY,
+      artifactVariantString,
+    ),
+    [ArtifactName.WASM]: artifactDownloadsPath(
+      ArtifactName.WASM,
+      artifactVariantString,
+    ),
+    [ArtifactName.VKEY]: artifactDownloadsPath(
+      ArtifactName.VKEY,
+      artifactVariantString,
+    ),
+    [ArtifactName.DAT]: artifactDownloadsPath(
+      ArtifactName.DAT,
+      artifactVariantString,
+    ),
+  };
 };
 
-export const decompressArtifact = (compressedData) => {
-  // Minimal implementation - will be expanded later
-  throw new Error('decompressArtifact not yet fully implemented');
+export const decompressArtifact = (arrayBuffer) => {
+  const decompress = brotliDecompress;
+  return decompress(Buffer.from(arrayBuffer));
+};
+
+const getArtifactIPFSFilepath = (artifactName, artifactVariantString) => {
+  switch (artifactName) {
+    case ArtifactName.ZKEY:
+      return `circuits/${artifactVariantString}/zkey.br`;
+    case ArtifactName.WASM:
+      return `prover/snarkjs/${artifactVariantString}.wasm.br`;
+    case ArtifactName.VKEY:
+      return `circuits/${artifactVariantString}/vkey.json`;
+    case ArtifactName.DAT:
+      return `prover/native/${artifactVariantString}.dat.br`;
+    default:
+      throw new Error('Invalid artifact.');
+  }
+};
+
+const getArtifactIPFSFilepathPOI = (artifactName) => {
+  switch (artifactName) {
+    case ArtifactName.ZKEY:
+      return 'zkey.br';
+    case ArtifactName.WASM:
+      return 'wasm.br';
+    case ArtifactName.VKEY:
+      return 'vkey.json';
+    case ArtifactName.DAT:
+      return 'dat.br';
+    default:
+      throw new Error('Invalid artifact.');
+  }
+};
+
+export const getArtifactUrl = (artifactName, artifactVariantString) => {
+  if (artifactVariantString.startsWith(ARTIFACT_VARIANT_STRING_POI_PREFIX)) {
+    if (
+      artifactVariantString === getArtifactVariantStringPOI(3, 3) ||
+      artifactVariantString === getArtifactVariantStringPOI(13, 13)
+    ) {
+      return `${IPFS_GATEWAY}/ipfs/${IPFS_HASH_ARTIFACTS_POI}/${artifactVariantString}/${getArtifactIPFSFilepathPOI(
+        artifactName,
+      )}`;
+    }
+    throw new Error(`Invalid POI artifact: ${artifactVariantString}.`);
+  }
+
+  const artifactFilepath = getArtifactIPFSFilepath(
+    artifactName,
+    artifactVariantString,
+  );
+
+  return `${IPFS_GATEWAY}/ipfs/${MASTER_IPFS_HASH_ARTIFACTS}/${artifactFilepath}`;
 };
 

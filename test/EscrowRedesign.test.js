@@ -26,6 +26,7 @@ contract("EscrowRedesign – Full Lifecycle", accounts => {
     const ev = tx.logs.find(l => l.event === "ProductCreated");
     escAddr = ev.args.product;
     esc = await ProductEscrow_Initializer.at(escAddr);
+    await esc.designateBuyer(buyer, { from: seller });
   }
 
   // Helper: advance to OrderConfirmed phase
@@ -130,6 +131,11 @@ contract("EscrowRedesign – Full Lifecycle", accounts => {
       );
     });
 
+    it("allows any non-seller address to be first buyer (FCFS)", async () => {
+      await esc.recordPrivatePayment(1, randomHex(32), randomHex(32), { from: anyone });
+      assert.equal(await esc.buyer(), anyone);
+    });
+
     it("reverts if memoHash is zero", async () => {
       const zero = "0x0000000000000000000000000000000000000000000000000000000000000000";
       await truffleAssert.reverts(
@@ -220,6 +226,13 @@ contract("EscrowRedesign – Full Lifecycle", accounts => {
         esc.confirmOrder(VCID, { from: seller })
       );
     });
+
+    it("reverts if seller confirmation window expired", async () => {
+      await advanceTime(2 * 24 * 3600 + 1);
+      await truffleAssert.reverts(
+        esc.confirmOrder(VCID, { from: seller })
+      );
+    });
   });
 
   // ─────────────────────────────────────────────────────────────────────
@@ -276,6 +289,12 @@ contract("EscrowRedesign – Full Lifecycle", accounts => {
       await esc.createTransporter(FEE, { from: transporter, value: BOND });
       await truffleAssert.reverts(
         esc.createTransporter(FEE, { from: transporter, value: BOND })
+      );
+    });
+
+    it("reverts if transporter fee is zero", async () => {
+      await truffleAssert.reverts(
+        esc.createTransporter("0", { from: transporter, value: BOND })
       );
     });
   });

@@ -1,6 +1,7 @@
 const BetterSqlite3 = require('better-sqlite3');
 const path = require('path');
 const fs = require('fs');
+const crypto = require('crypto');
 
 class Database {
     constructor(dbPath = null) {
@@ -121,6 +122,29 @@ class Database {
         } catch (err) {
             console.error('❌ Audit logging error:', err);
             // Don't throw - audit logging failure shouldn't break main operations
+        }
+    }
+
+    // Store a receipt for a private payment (simple implementation for wallet-mode)
+    // Returns a generated receiptId
+    async storeReceipt(productId, memoHash, memo, escrowAddress, railgunTxRef) {
+        try {
+            const id = `${Date.now()}-${crypto.randomBytes(8).toString('hex')}`;
+            const key = `receipt_${id}`;
+            const payload = {
+                id,
+                productId: String(productId),
+                memoHash,
+                memo,
+                escrowAddress,
+                railgunTxRef,
+                createdAt: new Date().toISOString()
+            };
+            await this.setConfig(key, JSON.stringify(payload));
+            return id;
+        } catch (err) {
+            console.error('❌ storeReceipt error:', err);
+            throw err;
         }
     }
 }

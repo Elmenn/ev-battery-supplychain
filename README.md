@@ -26,11 +26,9 @@ Install the following before you begin:
 ## 2. Clone the Repository
 
 ```bash
-git clone https://github.com/<your-org>/ev-battery-supplychain.git
+git clone https://github.com/Elmenn/ev-battery-supplychain
 cd ev-battery-supplychain
 ```
-
-> Replace `<your-org>` with the correct GitHub org or username.
 
 ---
 
@@ -256,7 +254,39 @@ The app will open at `http://localhost:3000`. Confirm the browser can reach:
 - **Sepolia:** Ensure MetaMask is connected to Sepolia network (Chain ID: 11155111)
 
 ---
+## Docker (Frontend Only, for Evaluators)
 
+If you want to run only the frontend without installing Node, npm, or the React toolchain, you can use the provided Docker setup.
+
+1. In the `frontend` folder, create a `.env` file from the Sepolia example:
+
+   **Windows:**
+   ```bash
+   cd frontend
+   copy .env.sepolia.example .env
+   cd ..
+macOS / Linux:
+
+cd frontend
+cp .env.sepolia.example .env
+cd ..
+
+
+From the repository root, build and start the Dockerized frontend:
+
+docker compose up --build
+
+
+Open the app in your browser at:
+
+http://localhost:3000
+
+
+The Docker container builds the existing React app and serves the static bundle.
+For full functionality (ZKP backend + REST API), the existing services still need to be started separately:
+
+cd zkp-backend && cargo run
+cd backend/api && npm start
 ## 7. Automated Tests
 
 ### Smart contract tests (Truffle)

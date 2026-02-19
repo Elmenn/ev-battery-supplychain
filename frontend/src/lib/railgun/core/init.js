@@ -8,24 +8,16 @@
 import {
   RailgunEngine,
   EngineEvent,
-  MerkletreeHistoryScanEventData,
   POIList,
   POIListType,
-  UTXOScanDecryptBalancesCompleteEventData,
-  AbstractWallet,
-  POIMerklerootsValidator,
 } from '@railgun-community/engine';
-import {
-  MerkletreeScanUpdateEvent,
-  isDefined,
-} from '@railgun-community/shared-models';
+import { isDefined } from '@railgun-community/shared-models';
 import { sendErrorMessage, sendMessage } from '../../../utils/logger.js';
 import {
   artifactGetterDownloadJustInTime,
   setArtifactStore,
   setUseNativeArtifacts,
 } from './artifacts.js';
-import { ArtifactStore } from '../../artifacts/artifact-store.js';
 import { reportAndSanitizeError } from '../../../utils/error.js';
 import { quickSyncEventsGraph } from '../quick-sync/quick-sync-events.js';
 import { quickSyncRailgunTransactionsV2 } from '../railgun-txids/railgun-txid-sync-graph-v2.js';
@@ -61,7 +53,10 @@ const createEngineDebugger = (verboseScanLogging) => {
         errorMessage.includes('Failed to scan V2 events') ||
         errorMessage.includes('invalid block range params') ||
         errorMessage.includes('eth_getLogs') ||
-        errorString.includes('invalid block range params');
+        errorMessage.includes('Under the Free tier plan') ||
+        errorString.includes('invalid block range params') ||
+        errorString.includes('Under the Free tier plan') ||
+        errorString.includes('up to a 10 block range');
       
       if (isSlowSyncError) {
         console.warn(`[SDK-ERROR] ⚠️  Slow-sync error detected (suppressing to prevent scan reset):`);

@@ -49,6 +49,7 @@
  *
  * Shielding:
  *   - shieldWETH(amount, signer)        - Wrap ETH and record shield
+ *   - unshieldWETH(params)              - Unshield private WETH to public EOA
  *   - getWETHBalance(address, provider) - Get WETH balance
  *   - wrapETHtoWETH(amount, signer)     - Wrap ETH to WETH only
  *   - estimateShieldWETH(amount)        - Estimate gas for shielding
@@ -94,6 +95,7 @@ import { paySellerV2, checkWalletState } from './payments';
 
 // Private Transfer (SDK implementation)
 import { privateTransfer as sdkPrivateTransfer } from './operations/transfer';
+import { unshieldWETH as sdkUnshieldWETH } from './operations/unshield';
 
 // Shield
 import { shieldWETH, getWETHBalance, wrapETHtoWETH, estimateShieldWETH } from './shield';
@@ -143,6 +145,7 @@ export const getRailgunAddressFromCredentials = async (mnemonic, encryptionKey) 
  * Replaces legacy paySellerV2 alias
  */
 export const privateTransfer = sdkPrivateTransfer;
+export const unshieldWETH = sdkUnshieldWETH;
 
 /**
  * Alias for bootstrap - RailgunSimple.tsx imports as initRailgunEngine
@@ -246,7 +249,7 @@ export { shieldWETH, getWETHBalance, wrapETHtoWETH, estimateShieldWETH };
 // DEFAULT EXPORT
 // ==========================================
 
-export default {
+const railgunCleanApi = {
   // Bootstrap
   bootstrap,
   initRailgunForBrowser,
@@ -270,6 +273,7 @@ export default {
   // Payments
   paySellerV2,
   privateTransfer: sdkPrivateTransfer,
+  unshieldWETH: sdkUnshieldWETH,
   checkWalletState,
 
   // Shield
@@ -288,3 +292,5 @@ export default {
   setRailgunIdentity,
   getRailgunAddressFromCredentials,
 };
+
+export default railgunCleanApi;

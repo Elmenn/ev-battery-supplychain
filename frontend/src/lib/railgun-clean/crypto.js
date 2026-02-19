@@ -145,8 +145,10 @@ export async function decryptMnemonic(encryptedPayload, signature) {
   }
 }
 
-export default {
+const railgunCryptoApi = {
   deriveKeyFromSignature,
   encryptMnemonic,
   decryptMnemonic
 };
+
+export default railgunCryptoApi;

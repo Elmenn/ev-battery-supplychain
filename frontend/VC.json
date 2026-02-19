@@ -1,0 +1,85 @@
+{
+  "@context": [
+    "https://www.w3.org/2018/credentials/v1"
+  ],
+  "credentialSubject": {
+    "batch": "",
+    "certificateCredential": {
+      "cid": "",
+      "name": ""
+    },
+    "componentCredentials": [],
+    "id": "did:ethr:11155111:0x90DD9aBf619f63494B3711120A309a6573d4ACeA",
+    "previousCredential": "QmdrnVVcsXbfKHRg18cSH7dbZN4CvoGBdKt1FEiHAQ5wJM",
+    "price": "{\"hidden\":true,\"zkpProof\":{\"protocol\":\"bulletproofs-pedersen\",\"version\":\"1.0\",\"commitment\":\"74039e7cc8e49b25a4b74b52bcfa1c8e8c741cf97ced07841962ef187121b777\",\"proof\":\"ca47e8619253af4e3846924e2311c666d7f2cdfa7c223466027d91c9f470ec2c2c1bc9900512a354af87a488d107738384c1d39c7c56b02c29911db1239345539ce3ed8ea7756d936c3161899f204f4ba8bfd6b1b1e85553751df3a5a33f403046e1e65cdab99c229c2fa8e175466d3f73c1a76391026f4b6f5997014c98231ca01f2fbf4736a680fc7fbdea290ce0cc378ebc7b5d11f7e8b8de25ccfa467000f8a6017f33832637310aef92bb18dea568ecd5fda6d1e05bfa32626b94c5fc02bcf6273c2abba0d7cf2c29ad83108449a9beb253e0e1335b6702d78508ce24071262ff1d5d9d412cbd973c7a6d7dae415aec299e970c672b5786bfc10611926f644de70e97099601e347d283ebd487f3d9a6f25151a364410b9310b603e0696d0c3ac4a188a11ae4c87ef9fc1bc95c90d901457f4ebb979c521df788da5a887f78bb2edfbdcacda1bb441cae83184d877fe38cf0b6991a4729946b1af4aa137b604960e1defd9f24f57aca3254d3bd7b49c820615d23b089450afcd9c5be87239a269606375a14dae96f8d5240d88802da8ce7c11b37c9ebdecfe04e280a11170af2581b0bcecd8dac1879f582372c046d40fbaba0c93d6bf36f03856a98155ce89055e6761444c60f768bcf542ef9d57aa8afdc54bbbf2b5bf701c627028c6aa2a5383f7f427dcf69f0f343b6a7519628130c5ce4e3ebf5374bfae7f1fa5142f677099765c967f3f809a03093a0e6ff46df17dcef0a6e8a39a69c1e8c48a8186c090923876ce752f7faa74140b12e61827be5e62d77d508de9ab9906956084f34c2c91249dd5d825039f57d6e175d515ab79c2e7ae6008c51e7f8a744a09e25ffce5f66241dd0cb79a11a910965a191d5935a8912adecb70fe535fa30288b0cf68e1749eddbd4068167bb29a6366f22d03aaa7f1b0b8f0b38ca2df6e82fd40d\",\"encoding\":\"hex\",\"verified\":true,\"description\":\"This ZKP proves the price is in the allowed range without revealing it.\",\"proofType\":\"zkRangeProof-v1\",\"bindingTag\":\"0x6ba47b03cc0c4736ddb95f59d71fcaa591cb96e50f689c4aba567500290d4b29\",\"bindingContext\":{\"chainId\":\"11155111\",\"escrowAddr\":\"0x124d63B836955Ff50a81AAc3e4CEa76E6ec5b68D\",\"productId\":\"1\",\"stage\":2,\"schemaVersion\":\"1.0\",\"previousVCCid\":\"QmdrnVVcsXbfKHRg18cSH7dbZN4CvoGBdKt1FEiHAQ5wJM\"}}}",
+    "productName": "Test_anode",
+    "purchaseTxHashCommitment": {
+      "bindingTag": "0xb57f73e6921e99d3ffb1a2b13ca408c435c2cfd28e6e5d3444a17c2e535ea9b3",
+      "commitment": "9c237b9e766dfaf15c42e1380481532c75b8644c635cd9719dda1edbb9d91270",
+      "encoding": "hex",
+      "proof": "0094f016474a2fb9c1fad397a6faf29f26607e20c24f875839e6c66d357c252820eca838675d84adc786ac005bf0698d7e484fd16d89184a5aeb0ee65e8ae1b040f2bdb890df4765b0a8404045b680f3905e8023f12df9bf29154572f08cde182ba29975a059aafe8d02a5cf6e213efac37ee604d307027b25352d993ec8188b1b68b35243b49f8bc5ac11344bc7bac6910daa94325c129471cdd0806def9d9e4eca645830931ef00c94866e3598cbb4d4cdb8ec05cc262a0b0ead155efe8b4d6890d1a50300d84d695ac073f3e906678ca3fcf771f29c8d5ae29db10496d56a6666f910a0465581a36e2cc33d9b9230817c3947d185dea096627e67734f631f6500000000000000000000000000000000000000000000000000000000000000007086f3554b70b7c0e418a64fd0de5158330a1cbcf302dcc22fcee06c0e374d04b10d6954912827df31fa9098bd25ffc27418d801a440c7b4c1a8952f28b4f8080000000000000000000000000000000000000000000000000000000000000000ecd3f55c1a631258d69cf7a2def9de1400000000000000000000000000000010",
+      "protocol": "bulletproofs-pedersen",
+      "version": "1.0"
+    },
+    "quantity": 1,
+    "subjectDetails": {
+      "onChainCommitment": "0x74039e7cc8e49b25a4b74b52bcfa1c8e8c741cf97ced07841962ef187121b777",
+      "productContract": "0x124d63B836955Ff50a81AAc3e4CEa76E6ec5b68D",
+      "transporter": "0xD60005BeA69DD099e11c98c6eea9C24a954468f6"
+    },
+    "txHashCommitment": {
+      "bindingTag": "0xb57f73e6921e99d3ffb1a2b13ca408c435c2cfd28e6e5d3444a17c2e535ea9b3",
+      "commitment": "b083a1abef599ed0d7038e5defc86da45ba28cded4f1b03ba9ebca52636ba15b",
+      "encoding": "hex",
+      "proof": "00203f16d39b4c399e7d64a45aebb558ee947cbfd50ee1d281f497c5461f266f1838df6ecf77192915f2a752d389f82e110b7b67929a73235c29f1376d9e493934b431108e9173099f6fed9e976f7a1dcbc00a6e27e9a50b8acdcf770253de6113a8ad4c107a7f33bf74e872ca6b8aec35c4994e48a2b48d0d145db2e7ba28cb37a2f0deb277411bf5ccdd5b5e772aabaa0a5269fb2a5d807b9de4a0f2236ae50d50dac6add0f45c5075f70dac97981a48dee91278d915fc1a6cfc9a638a31d46e1ac58a162f1c25e68cd2ca3b91f077e6499e662772ad4a8419e1c0880f008e0296dfd6dc8548e30c8ad1a08f7101abb7f8758b372ed10ec6a29b5b344f07876600000000000000000000000000000000000000000000000000000000000000005273d6ccd0199408ce5ed99e920c2415045f11c01f3ced9fa32ed9e2a190ec07df64a0161b360c263c2a23a36de1978ad45497594f4340d000c56686320e0e080000000000000000000000000000000000000000000000000000000000000000ecd3f55c1a631258d69cf7a2def9de1400000000000000000000000000000010",
+      "protocol": "bulletproofs-pedersen",
+      "version": "1.0"
+    },
+    "vcHash": "0x24ba65f349a424a82d51db265f3fbf4b6c505587745cc99c479f38ce07ca1432"
+  },
+  "holder": {
+    "id": "did:ethr:11155111:0x90DD9aBf619f63494B3711120A309a6573d4ACeA",
+    "name": "Buyer"
+  },
+  "id": "https://example.edu/credentials/uuid-placeholder",
+  "issuanceDate": "2025-11-24T17:48:35.115Z",
+  "issuer": {
+    "id": "did:ethr:11155111:0x88dcDCfB5e330049597003D41eF8E744Fa613E68",
+    "name": "Seller"
+  },
+  "proof": [
+    {
+      "created": "2025-11-24T18:01:22.621Z",
+      "jws": "0x791c67d8cfc659244a0ef5b951f806dcd851ba830273ad4f70acab8af57d443e6cdb9e57af2781fe0d2cd974d6320c2bfeecf395159d8f45ca100b0a5cecdad61c",
+      "payloadHash": "0x24ba65f349a424a82d51db265f3fbf4b6c505587745cc99c479f38ce07ca1432",
+      "proofPurpose": "assertionMethod",
+      "role": "seller",
+      "type": "EcdsaSecp256k1Signature2019",
+      "verificationMethod": "did:ethr:11155111:0x88dcdcfb5e330049597003d41ef8e744fa613e68"
+    },
+    {
+      "created": "2025-11-24T18:01:38.239Z",
+      "jws": "0x12824a1af82e8c88427c214fe5f91e7fdecd9537870f2b6be28cd49eadc3c67c1a1d8cf5dcf363714480b99746ad4c35e6655cbbadf596a928c8cfa697c020c81c",
+      "payloadHash": "0x24ba65f349a424a82d51db265f3fbf4b6c505587745cc99c479f38ce07ca1432",
+      "proofPurpose": "assertionMethod",
+      "role": "holder",
+      "type": "EcdsaSecp256k1Signature2019",
+      "verificationMethod": "did:ethr:11155111:0x90dd9abf619f63494b3711120a309a6573d4acea"
+    }
+  ],
+  "proofs": {
+    "issuerProof": {
+      "created": "2025-11-24T17:51:41.765Z",
+      "jws": "0xa07c7cb682c31a8c4a2a01e8f7fd162f0d6349a586c33899ab7e25164c24aad67afeb67b1d4b3d45ab160b4f535b22595a5572420c2c956d8113a08fe4fae4801c",
+      "payloadHash": "0xf7153cb06783b4245ccb527eb0a0590e4279e6aec2dda01e6bead1d36657944a",
+      "proofPurpose": "assertionMethod",
+      "role": "seller",
+      "type": "EcdsaSecp256k1Signature2019",
+      "verificationMethod": "did:ethr:11155111:0x88dcdcfb5e330049597003d41ef8e744fa613e68"
+    }
+  },
+  "schemaVersion": "1.0",
+  "type": [
+    "VerifiableCredential"
+  ]
+}

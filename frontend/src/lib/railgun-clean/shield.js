@@ -13,10 +13,13 @@ import {
   gasEstimateForShield,
   populateShield,
   getShieldPrivateKeySignatureMessage,
-  refreshBalances,
-  awaitWalletScan,
 } from '@railgun-community/wallet';
 import { initializeSDK } from '../railgun-client-browser';
+import { refreshBalances as localRefreshBalances } from '../railgun/wallets/balances.js';
+import {
+  awaitWalletScan as localAwaitWalletScan,
+  walletForID as localWalletForID,
+} from '../railgun/wallets/wallets.js';
 
 // -------------------------
 // Helper functions
@@ -305,9 +308,36 @@ export async function shieldWETH(amountWeth, signer) {
     // 8) Refresh balances (non-blocking - transaction already succeeded)
     console.log('[Shield] Refreshing balances for chain:', chain);
     try {
-      await refreshBalances(chain, [stored.walletID]);
-      await awaitWalletScan(chain, stored.walletID);
-      console.log('[Shield] Balance refresh completed');
+      const latestStored = JSON.parse(localStorage.getItem('railgun.wallet') || 'null');
+      const walletIDForRefresh = latestStored?.walletID || stored.walletID;
+
+      let walletLoaded = true;
+      try {
+        localWalletForID(walletIDForRefresh);
+      } catch (_walletErr) {
+        walletLoaded = false;
+      }
+
+      if (!walletLoaded) {
+        console.warn(
+          `[Shield] Wallet ${walletIDForRefresh} not loaded in local engine yet - skipping immediate refresh`,
+        );
+      } else {
+        await localRefreshBalances(chain, [walletIDForRefresh]);
+
+        try {
+          await Promise.race([
+            localAwaitWalletScan(walletIDForRefresh, chain),
+            new Promise((_, reject) =>
+              setTimeout(() => reject(new Error('Wallet scan timeout')), 8000),
+            ),
+          ]);
+        } catch (scanError) {
+          console.warn('[Shield] Wallet scan wait timed out (non-critical):', scanError.message);
+        }
+
+        console.log('[Shield] Balance refresh completed');
+      }
     } catch (refreshError) {
       // Balance refresh failure is non-critical - transaction already confirmed
       console.warn('[Shield] Balance refresh failed (non-critical):', refreshError.message);
@@ -352,9 +382,11 @@ export async function getWETHBalance(signer = null) {
   }
 }
 
-export default {
+const railgunShieldApi = {
   wrapETHtoWETH,
   estimateShieldWETH,
   shieldWETH,
   getWETHBalance,
 };
+
+export default railgunShieldApi;

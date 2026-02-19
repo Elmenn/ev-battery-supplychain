@@ -2,7 +2,7 @@
 
 **Milestone:** v1.0-railgun-fix
 **Created:** 2026-01-20
-**Updated:** 2026-02-17
+**Updated:** 2026-02-18
 
 ## Goal
 
@@ -288,24 +288,33 @@ Plans:
 
 ## Phase 10: Cleanup & E2E Integration
 
-**Goal:** Remove dead code from old flow, verify end-to-end on Sepolia
+**Goal:** Remove dead code from old flow, verify end-to-end on Ganache, produce gas comparison report, audit console errors
 
-**Status:** PLANNED
+**Status:** IN PROGRESS
+
+**Plans:** 4 plans
+
+Plans:
+- [ ] 10-01-PLAN.md — Dead code removal: old tests (22 files), stale build artifacts, old migration, dead scripts, root-level dev files (~47 files)
+- [ ] 10-02-PLAN.md — Dead code removal: App.js cleanup (handleDelivery + dead imports), deprecated vcBuilder stubs, old railgun/ directory (135 files)
+- [ ] 10-03-PLAN.md — E2E lifecycle test on Ganache with gas measurement + gas comparison report (docs/GAS_COMPARISON.md)
+- [ ] 10-04-PLAN.md — Console error audit: production build verification, fix app errors, document SDK noise (docs/CONSOLE_AUDIT.md)
 
 **Why Tenth:** Final integration after all pieces are in place
 
 **Key Changes:**
-- Delete old contract code (ProductEscrow.sol if superseded)
-- Remove dead UI paths (public purchase, bidding, buyer delivery confirmation)
+- Delete old contract code, tests, build artifacts, migration
+- Remove dead UI paths (handleDelivery, deprecated VC stubs)
+- Delete old railgun/ directory (135 unused files) and ~47 root-level dev files
 - E2E test: product creation → private payment → order confirmation → delivery → fund release
 - Gas comparison: old vs. new contract (for thesis)
-- Verify VC chain integrity end-to-end
+- Console error audit with allowlisted SDK noise
 
 **Deliverables:**
-- [ ] Dead code removal
-- [ ] E2E flow verified on Sepolia
-- [ ] Gas optimization report
-- [ ] No console errors in full flow
+- [ ] Dead code removal (backend + frontend)
+- [ ] E2E flow verified on Ganache
+- [ ] Gas comparison report (docs/GAS_COMPARISON.md)
+- [ ] Console error audit (docs/CONSOLE_AUDIT.md)
 
 ---
 
@@ -314,11 +323,11 @@ Plans:
 ```
 Phase 1-6 (Railgun Foundation) ✓
     |
-Phase 7 (Contract Redesign)
+Phase 7 (Contract Redesign) ✓
     |
-Phase 8 (Single VC Architecture)
+Phase 8 (Single VC Architecture) ✓
     |
-Phase 9 (UI Rework)
+Phase 9 (UI Rework) ✓
     |
 Phase 10 (Cleanup & E2E)
 ```
@@ -348,4 +357,4 @@ Note: Phase 8 (VC) could partially overlap with Phase 7 (Contract) since VC sche
 
 ---
 
-*Created: 2026-01-20 | Updated: 2026-02-17 | Milestone: v1.0-railgun-fix*
+*Created: 2026-01-20 | Updated: 2026-02-18 | Milestone: v1.0-railgun-fix*

@@ -50,7 +50,12 @@ export async function getAllBalances() {
           try {
             const client = await import('../railgun-client-browser.js');
             // SDK getPrivateBalances returns { spendable, pending } or similar
-            const sdkBalances = await client.getPrivateBalances(parsed.walletID, []);
+            const sepoliaConfig = NETWORK_CONFIG[NetworkName.EthereumSepolia];
+            const WETH_ADDRESS =
+              sepoliaConfig?.baseToken?.wrappedAddress || '0xfff9976782d46cc05630d1f6ebab18b2324d6b14';
+
+            const sdkBalances = await client.getPrivateBalances(parsed.walletID, [WETH_ADDRESS]);
+
             if (sdkBalances) {
               railgunBalances.weth = BigInt(sdkBalances.spendable || sdkBalances.weth || 0);
               railgunBalances.pendingWeth = BigInt(sdkBalances.pending || sdkBalances.pendingWeth || 0);
@@ -85,4 +90,6 @@ export async function getAllBalances() {
   }
 }
 
-export default { getAllBalances };
+const railgunBalancesApi = { getAllBalances };
+
+export default railgunBalancesApi;

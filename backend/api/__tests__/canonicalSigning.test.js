@@ -5,7 +5,6 @@
  */
 
 const { verifyVC } = require('../verifyVC');
-const { verifyTypedData, TypedDataEncoder } = require('ethers');
 
 describe('Backend: Canonical Signing Verification', () => {
   const mockVC = {
@@ -49,7 +48,7 @@ describe('Backend: Canonical Signing Verification', () => {
       // Note: This will fail signature verification because we're using mock signatures
       // But it should not fail on schemaVersion parsing
       try {
-        await verifyVC(vc, false);
+        await verifyVC(vc);
       } catch (error) {
         // Expected to fail on signature verification, but not on schemaVersion
         expect(error.message).not.toContain('schemaVersion');
@@ -62,7 +61,7 @@ describe('Backend: Canonical Signing Verification', () => {
 
       // Should not throw error about missing schemaVersion
       try {
-        await verifyVC(vcWithoutSchema, false);
+        await verifyVC(vcWithoutSchema);
       } catch (error) {
         expect(error.message).not.toContain('schemaVersion');
       }
@@ -78,7 +77,7 @@ describe('Backend: Canonical Signing Verification', () => {
       // Note: This will fail signature verification because we're using mock signatures
       // But it should handle verifyingContract parameter
       try {
-        await verifyVC(vc, false, contractAddress);
+        await verifyVC(vc, contractAddress);
       } catch (error) {
         // Expected to fail on signature verification, but not on verifyingContract
         expect(error.message).not.toContain('verifyingContract');
@@ -90,7 +89,7 @@ describe('Backend: Canonical Signing Verification', () => {
       
       // Should not require verifyingContract
       try {
-        await verifyVC(vc, false, null);
+        await verifyVC(vc, null);
       } catch (error) {
         expect(error.message).not.toContain('verifyingContract');
       }

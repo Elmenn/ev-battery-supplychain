@@ -128,3 +128,4 @@ npx truffle test test/IPFSCaching.test.js --network development
 ---
 
 **Next Steps:** Prioritize fixing the scalability analysis (Table 6.9) as it shows the most significant discrepancy and could affect the narrative conclusions about system performance.
+

@@ -499,7 +499,7 @@ export function HashDisplay({ hash, label, guidance }) {
 | 3-stage VC chain (buildStage2VC, buildStage3VC) | Single append-only VC (createListingVC, appendPaymentProof, appendDeliveryProof) | Phase 8 | All VC-building code must switch to v2.0 functions |
 | Buyer confirms delivery | Transporter confirms delivery via hash | Phase 7 | Delivery UI completely changes actor |
 | Public + private purchase paths | Private-only (Railgun) | Phase 7 | Remove all public purchase buttons and flows |
-| Seller-designated buyer | FCFS buyer (first recordPrivatePayment wins) | Phase 7 | Remove buyer designation UI |
+| Pre-assigned buyer (legacy) | FCFS buyer (first recordPrivatePayment wins) | Phase 7 | Buyer is assigned automatically during private payment |
 | Backend Railgun API | Client-side SDK only | Phase 1-6 | IS_RAILGUN_API_CONFIGURED already false |
 | vcCid stored as string on-chain | keccak256(vcCID) stored as bytes32 vcHash | Phase 7 | getCurrentCid returns hash not CID; CID only in events |
 | No bonds | Seller bond at creation + transporter bond at bid | Phase 7 | Bond disclosure UI needed throughout |

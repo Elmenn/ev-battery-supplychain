@@ -3,7 +3,7 @@
 
 import { privateTransfer } from './operations/transfer';
 
-const API = (typeof process !== 'undefined' && process.env && process.env.REACT_APP_RAILGUN_API_URL) || 'http://localhost:3001';
+// Backend API no longer used - all operations are client-side via SDK
 
 /**
  * paySellerV2: perform client-side private transfer using SDK, with progress callbacks.
@@ -13,8 +13,12 @@ const API = (typeof process !== 'undefined' && process.env && process.env.REACT_
 export async function paySellerV2(params = {}) {
   const { sellerRailgunAddress, amountWei, tokenAddress, productId, onProgress } = params;
 
+  console.log('[paySellerV2] Received params:', { sellerRailgunAddress, amountWei, tokenAddress, productId });
+
   try {
     onProgress?.({ step: 'prepare', message: 'Preparing private transaction...' });
+
+    console.log('[paySellerV2] Calling privateTransfer with toRailgunAddress:', sellerRailgunAddress);
 
     const result = await privateTransfer({
       toRailgunAddress: sellerRailgunAddress,
@@ -28,23 +32,14 @@ export async function paySellerV2(params = {}) {
       throw new Error(result.error || 'Transfer failed');
     }
 
-    // Record public metadata on backend if endpoint exists (best-effort)
-    try {
-      await fetch(`${API}/api/railgun/private-transfer-audit`, {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({
-          productId,
-          txHash: result.txHash,
-          memoHash: result.memoHash,
-          railgunTxRef: result.railgunTxRef,
-          timestamp: Date.now()
-        })
-      });
-    } catch (e) {
-      // ignore audit failures (backend may not be migrated yet)
-      console.warn('Audit endpoint call failed:', e.message);
-    }
+    // Audit record stored locally (backend deprecated)
+    console.log('[payments] Transfer audit:', {
+      productId,
+      txHash: result.txHash,
+      memoHash: result.memoHash,
+      railgunTxRef: result.railgunTxRef,
+      timestamp: Date.now()
+    });
 
     onProgress?.({ step: 'complete', message: 'Payment completed successfully!' });
 
@@ -65,24 +60,27 @@ export async function paySellerV2(params = {}) {
 export async function checkWalletState(eoaAddress) {
   if (!eoaAddress) throw new Error('eoaAddress required');
   try {
-    // Prefer SDK-based restore if available
-    try {
-      const client = await import('../railgun-client-browser.js');
-      // Many SDKs provide restore/lookup APIs; if not, fall back to backend
-      if (typeof client.restoreWallet === 'function') {
-        return await client.restoreWallet(eoaAddress);
+    // Check localStorage for wallet info (client-side SDK storage)
+    const stored = localStorage.getItem('railgun.wallet');
+    if (stored) {
+      const walletData = JSON.parse(stored);
+      if (walletData?.walletID && walletData?.railgunAddress) {
+        return {
+          success: true,
+          data: {
+            walletID: walletData.walletID,
+            railgunAddress: walletData.railgunAddress
+          }
+        };
       }
-    } catch (sdkErr) {
-      // ignore
     }
-
-    // Fallback: query backend for public wallet info
-    const res = await fetch(`${API}/api/railgun/wallet-info?userAddress=${encodeURIComponent(eoaAddress)}`);
-    const body = await res.json();
-    return body;
+    // No wallet found in localStorage
+    return { success: false, error: 'No Railgun wallet connected' };
   } catch (err) {
     return { success: false, error: String(err.message || err) };
   }
 }
 
-export default { paySellerV2, checkWalletState };
+const railgunPaymentsApi = { paySellerV2, checkWalletState };
+
+export default railgunPaymentsApi;

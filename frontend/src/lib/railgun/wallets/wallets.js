@@ -8,21 +8,13 @@
 import {
   RailgunWallet,
   EngineEvent,
-  WalletScannedEventData,
-  AbstractWallet,
-  WalletData,
-  AddressData,
   RailgunEngine,
   ByteUtils,
-  POICurrentProofEventData,
   ViewOnlyWallet,
 } from '@railgun-community/engine';
 import {
-  RailgunWalletInfo,
-  NetworkName,
   NETWORK_CONFIG,
   isDefined,
-  Chain,
 } from '@railgun-community/shared-models';
 import { onBalancesUpdate, onWalletPOIProofProgress } from './balance-update.js';
 import { reportAndSanitizeError } from '../../../utils/error.js';

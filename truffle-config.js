@@ -24,20 +24,39 @@ const HDWalletProvider = require('@truffle/hdwallet-provider');
 const {
   MNEMONIC,
   ALCHEMY_API_KEY,
+  SEPOLIA_RPC_URL,
+  SEPOLIA_RPC_URLS,
 } = process.env;
 
 const makeProvider = () => {
   const ALCHEMY_URL = `https://eth-sepolia.g.alchemy.com/v2/${ALCHEMY_API_KEY}`;
+  const fallbackUrls = [
+    SEPOLIA_RPC_URL,
+    "https://sepolia.gateway.tenderly.co",
+    ALCHEMY_URL,
+  ].filter(Boolean);
+  const configuredUrls = (SEPOLIA_RPC_URLS || "")
+    .split(",")
+    .map((u) => u.trim())
+    .filter(Boolean);
+  const rpcCandidates = configuredUrls.length > 0 ? configuredUrls : fallbackUrls;
+  const RPC_URL = rpcCandidates[0];
   if (MNEMONIC) {
-    return new HDWalletProvider({
+    const provider = new HDWalletProvider({
       mnemonic: { phrase: process.env.MNEMONIC },
-      providerOrUrl: ALCHEMY_URL,
+      providerOrUrl: RPC_URL,
       addressIndex: 0,          // use the first account
       numberOfAddresses: 1,     // only derive one
       derivationPath: "m/44'/60'/0'/0/", // standard ETH path
       chainId: 11155111,
-      pollingInterval: 15000
+      pollingInterval: 20000
     });
+    // Prevent intermittent polling errors from crashing the Truffle process.
+    provider.engine.on("error", (err) => {
+      const msg = err?.message || err?.toString?.() || "unknown provider error";
+      console.warn(`[sepolia provider warning] ${msg}`);
+    });
+    return provider;
   }
   throw new Error('Set MNEMONIC in .env.truffle');
 };
@@ -71,10 +90,9 @@ module.exports = {
         provider: () => makeProvider(),
         network_id: 11155111,
         confirmations: 2,
-        timeoutBlocks: 500,        // was 200
-        networkCheckTimeout: 300000, // Increased timeout to 5 minutes
+        timeoutBlocks: 2000,
+        networkCheckTimeout: 600000,
         skipDryRun: true,
-        gasPrice: 1500000000,
       },
     //
     // An additional network, but with some advanced options…

@@ -5,14 +5,11 @@
  * Converted from TypeScript to JavaScript.
  */
 
-import { ArtifactGetter, PublicInputsRailgun } from '@railgun-community/engine';
 import {
-  Artifact,
   assertArtifactExists,
   isDefined,
 } from '@railgun-community/shared-models';
 import { ArtifactDownloader } from '../../artifacts/artifact-downloader.js';
-import { ArtifactStore } from '../../artifacts/artifact-store.js';
 import {
   getArtifactVariantString,
   getArtifactVariantStringPOI,

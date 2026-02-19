@@ -50,6 +50,7 @@ export function freezeVcJson(vc) {
  */
 export function createListingVC({
   sellerAddr,
+  sellerRailgunAddress,
   productName,
   batch,
   quantity,
@@ -61,6 +62,22 @@ export function createListingVC({
   componentCredentials,
 }) {
   const chain = chainId || inferChainId();
+  const normalizedProductName = String(productName || "");
+  const normalizedBatch = String(batch || "");
+  const normalizedQuantity = Number.isFinite(Number(quantity))
+    ? Number(quantity)
+    : 1;
+  const normalizedProductContract = String(productContract || "");
+  const normalizedProductId = String(productId ?? "");
+  const normalizedCertificate = {
+    name: String(certificateCredential?.name || ""),
+    cid: String(certificateCredential?.cid || ""),
+  };
+  const normalizedComponents = Array.isArray(componentCredentials)
+    ? componentCredentials
+        .filter((item) => item != null && String(item).trim().length > 0)
+        .map((item) => String(item))
+    : [];
 
   return {
     "@context": ["https://www.w3.org/2018/credentials/v1"],
@@ -79,11 +96,12 @@ export function createListingVC({
     issuanceDate: new Date().toISOString(),
 
     credentialSubject: {
-      productName,
-      batch: batch || "",
-      quantity,
-      productContract,
-      productId: String(productId),
+      id: `did:ethr:${chain}:${sellerAddr}`,
+      productName: normalizedProductName,
+      batch: normalizedBatch,
+      quantity: normalizedQuantity,
+      productContract: normalizedProductContract,
+      productId: normalizedProductId,
       chainId: String(chain),
 
       priceCommitment: {
@@ -95,11 +113,108 @@ export function createListingVC({
 
       listing: {
         timestamp: new Date().toISOString(),
-        certificateCredential: certificateCredential || { name: "", cid: "" },
-        componentCredentials: componentCredentials || [],
+        certificateCredential: normalizedCertificate,
+        componentCredentials: normalizedComponents,
+        ...(sellerRailgunAddress
+          ? { sellerRailgunAddress: sellerRailgunAddress.trim() }
+          : {}),
       },
 
       payment: null,
+      delivery: null,
+    },
+
+    previousVersion: null,
+    proof: [],
+  };
+}
+
+/**
+ * Create one final VC at order confirmation time (single-final-VC model).
+ * This VC includes listing + payment in one document and sets previousVersion to null.
+ */
+export function createFinalOrderVC({
+  sellerAddr,
+  buyerAddr,
+  sellerRailgunAddress,
+  productName,
+  batch,
+  quantity,
+  productContract,
+  productId,
+  chainId,
+  priceCommitment,
+  certificateCredential,
+  componentCredentials,
+  memoHash,
+  railgunTxRef,
+}) {
+  const chain = chainId || inferChainId();
+  const normalizedProductName = String(productName || "");
+  const normalizedBatch = String(batch || "");
+  const normalizedQuantity = Number.isFinite(Number(quantity))
+    ? Number(quantity)
+    : 1;
+  const normalizedProductContract = String(productContract || "");
+  const normalizedProductId = String(productId ?? "");
+  const normalizedCertificate = {
+    name: String(certificateCredential?.name || ""),
+    cid: String(certificateCredential?.cid || ""),
+  };
+  const normalizedComponents = Array.isArray(componentCredentials)
+    ? componentCredentials
+        .filter((item) => item != null && String(item).trim().length > 0)
+        .map((item) => String(item))
+    : [];
+
+  return {
+    "@context": ["https://www.w3.org/2018/credentials/v1"],
+    id: `urn:uuid:${uuid()}`,
+    type: ["VerifiableCredential", "SupplyChainCredential"],
+    schemaVersion: "2.0",
+
+    issuer: {
+      id: `did:ethr:${chain}:${sellerAddr}`,
+      name: "Seller",
+    },
+    holder: {
+      id: `did:ethr:${chain}:${buyerAddr}`,
+      name: "Buyer",
+    },
+    issuanceDate: new Date().toISOString(),
+
+    credentialSubject: {
+      id: `did:ethr:${chain}:${sellerAddr}`,
+      productName: normalizedProductName,
+      batch: normalizedBatch,
+      quantity: normalizedQuantity,
+      productContract: normalizedProductContract,
+      productId: normalizedProductId,
+      chainId: String(chain),
+
+      priceCommitment: {
+        protocol: "bulletproofs-pedersen",
+        version: "1.0",
+        encoding: "hex",
+        ...(priceCommitment || {}),
+      },
+
+      listing: {
+        timestamp: new Date().toISOString(),
+        certificateCredential: normalizedCertificate,
+        componentCredentials: normalizedComponents,
+        ...(sellerRailgunAddress
+          ? { sellerRailgunAddress: sellerRailgunAddress.trim() }
+          : {}),
+      },
+
+      payment: {
+        timestamp: new Date().toISOString(),
+        buyerAddress: `did:ethr:${chain}:${buyerAddr}`,
+        memoHash,
+        railgunTxRef,
+      },
+
       delivery: null,
     },
 
@@ -168,22 +283,4 @@ export function appendDeliveryProof(vc, {
   updated.previousVersion = previousVersionCid;
 
   return updated;
-}
-
-// ---------- DEPRECATED STUBS ----------
-// These functions are removed in v2.0 (single-VC architecture).
-// Stubs kept so existing imports compile. Phase 9 will update call sites.
-
-/** @deprecated Use createListingVC + appendPaymentProof instead */
-export function buildStage2VC() {
-  throw new Error(
-    "buildStage2VC removed in v2.0 -- use appendPaymentProof instead. See Phase 8 migration."
-  );
-}
-
-/** @deprecated Use createListingVC + appendDeliveryProof instead */
-export function buildStage3VC() {
-  throw new Error(
-    "buildStage3VC removed in v2.0 -- use appendDeliveryProof instead. See Phase 8 migration."
-  );
 }

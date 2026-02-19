@@ -26,6 +26,7 @@ contract("EscrowBonds – Bond Mechanics, Access Control, Reentrancy", accounts 
     const ev = tx.logs.find(l => l.event === "ProductCreated");
     escAddr = ev.args.product;
     esc = await ProductEscrow_Initializer.at(escAddr);
+    await esc.designateBuyer(buyer, { from: seller });
   }
 
   async function advanceToOrderConfirmed() {
@@ -234,15 +235,19 @@ contract("EscrowBonds – Bond Mechanics, Access Control, Reentrancy", accounts 
       });
     });
 
-    describe("recordPrivatePayment: anyone except seller", () => {
+    describe("recordPrivatePayment: FCFS buyer selection", () => {
       it("reverts if seller tries to purchase", async () => {
         await truffleAssert.reverts(
           esc.recordPrivatePayment(1, randomHex(32), randomHex(32), { from: seller })
         );
       });
-      it("anyone (non-seller) can purchase", async () => {
+      it("allows any non-seller address to purchase first", async () => {
         await esc.recordPrivatePayment(1, randomHex(32), randomHex(32), { from: anyone });
         assert.equal(await esc.buyer(), anyone);
+      });
+      it("another non-seller buyer can purchase", async () => {
+        await esc.recordPrivatePayment(1, randomHex(32), randomHex(32), { from: buyer });
+        assert.equal(await esc.buyer(), buyer);
       });
     });
 
@@ -276,6 +281,7 @@ contract("EscrowBonds – Bond Mechanics, Access Control, Reentrancy", accounts 
       });
       const addr = tx.logs.find(l => l.event === "ProductCreated").args.product;
       const escrow = await ProductEscrow_Initializer.at(addr);
+      await escrow.designateBuyer(buyer, { from: seller });
 
       // Record payment
       await escrow.recordPrivatePayment(1, randomHex(32), randomHex(32), { from: buyer });
@@ -317,6 +323,7 @@ contract("EscrowBonds – Bond Mechanics, Access Control, Reentrancy", accounts 
       });
       const addr = tx.logs.find(l => l.event === "ProductCreated").args.product;
       const escrow = await ProductEscrow_Initializer.at(addr);
+      await escrow.designateBuyer(buyer, { from: seller });
 
       await escrow.recordPrivatePayment(1, randomHex(32), randomHex(32), { from: buyer });
       await escrow.confirmOrder(VCID, { from: seller });
@@ -345,6 +352,7 @@ contract("EscrowBonds – Bond Mechanics, Access Control, Reentrancy", accounts 
       });
       const addr = tx.logs.find(l => l.event === "ProductCreated").args.product;
       const escrow = await ProductEscrow_Initializer.at(addr);
+      await escrow.designateBuyer(buyer, { from: seller });
 
       await escrow.recordPrivatePayment(1, randomHex(32), randomHex(32), { from: buyer });
       await escrow.confirmOrder(VCID, { from: seller });

@@ -21,19 +21,24 @@ const RailgunConnectionButton = ({ currentUser }) => {
     }
   };
 
-  const handleDisconnect = useCallback(async () => {
+  const handleDisconnect = useCallback(async (options = {}) => {
     try {
-      await disconnectRailgun();
+      await disconnectRailgun({
+        clearStored: options.clearStored || false,
+        userAddress: currentUser
+      });
       setIsConnected(false);
       setRailgunAddress(null);
       setRailgunWalletID(null);
-      toast.success('Railgun wallet disconnected');
+      if (!options.silent) {
+        toast.success('Railgun wallet disconnected');
+      }
       console.log('Railgun wallet disconnected');
     } catch (error) {
       console.error('Error disconnecting:', error);
       toast.error('Failed to disconnect');
     }
-  }, []);
+  }, [currentUser]);
 
   const checkConnectionStatus = useCallback(() => {
     try {
@@ -57,7 +62,7 @@ const RailgunConnectionButton = ({ currentUser }) => {
           // Don't disconnect if we're still connecting (race condition)
           const timeSinceConnection = stored.timestamp ? Date.now() - stored.timestamp : Infinity;
           if (timeSinceConnection > 5000) { // Only clear if connection is older than 5 seconds
-            handleDisconnect();
+            handleDisconnect({ silent: true, clearStored: false });
           } else {
             console.log('Connection is recent - might be in progress, not clearing yet');
           }
@@ -123,7 +128,7 @@ const RailgunConnectionButton = ({ currentUser }) => {
                 console.log('EOA changed - disconnecting Railgun wallet');
                 console.log('   - Previous EOA:', connectedEOA);
                 console.log('   - New EOA:', newAddress);
-                handleDisconnect();
+                handleDisconnect({ silent: true, clearStored: false });
               } else {
                 console.log('Same EOA - keeping Railgun connection');
               }
@@ -131,7 +136,7 @@ const RailgunConnectionButton = ({ currentUser }) => {
           } catch (error) {
             console.log('Error checking stored connection:', error);
             // If we can't check, disconnect to be safe
-            handleDisconnect();
+            handleDisconnect({ silent: true, clearStored: false });
           }
         }
       }

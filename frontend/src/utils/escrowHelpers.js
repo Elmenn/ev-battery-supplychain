@@ -2,7 +2,7 @@
 // Centralized escrow contract interaction helpers.
 // All components should use these instead of creating contract instances directly.
 
-import { Contract, ZeroAddress, formatEther } from "ethers";
+import { Contract, ZeroAddress } from "ethers";
 import ProductEscrowABI from "../abis/ProductEscrow_Initializer.json";
 
 // ─── Phase Enum ─────────────────────────────────────────────────────────────

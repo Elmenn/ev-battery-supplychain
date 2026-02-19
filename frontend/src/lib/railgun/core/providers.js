@@ -5,9 +5,7 @@
  * Converted from TypeScript to JavaScript.
  */
 
-import { NetworkName, isDefined } from '@railgun-community/shared-models';
-import { PollingJsonRpcProvider } from '@railgun-community/engine';
-import { FallbackProvider } from 'ethers';
+import { isDefined } from '@railgun-community/shared-models';
 
 export const fallbackProviderMap = {};
 export const pollingProviderMap = {};

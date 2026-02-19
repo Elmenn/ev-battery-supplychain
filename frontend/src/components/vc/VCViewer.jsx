@@ -4,7 +4,7 @@ function truncate(text, length = 12) {
   if (!text || text.length <= length) return text;
   const start = text.slice(0, 6);
   const end = text.slice(-4);
-  return `${start}…${end}`;
+  return `${start}...${end}`;
 }
 
 function Copyable({ value }) {
@@ -27,29 +27,18 @@ const VCViewer = ({ vc }) => {
   const holder = vc.holder?.id || "-";
   const holderName = vc.holder?.name || "";
   const subject = vc.credentialSubject || {};
-  const proofs = vc.proofs || {};
-  
-  // Safely extract ZKP proof from price object
-  let zkp = null;
-  if (subject.price) {
-    try {
-      const priceObj = typeof subject.price === 'string' ? JSON.parse(subject.price) : subject.price;
-      zkp = priceObj?.zkpProof || null;
-    } catch (e) {
-      // If parsing fails, zkp remains null
-      zkp = null;
-    }
-  }
-  
   const issuanceDate = vc.issuanceDate || "-";
-  const productContract = subject.subjectDetails?.productContract;
-  const previousCredential = subject.previousCredential;
-  const componentCredentials = Array.isArray(subject.componentCredentials) ? subject.componentCredentials : [];
-  const cert = subject.certificateCredential || {};
-  const transporter = subject.subjectDetails?.transporter;
-  const onChainCommitment = subject.subjectDetails?.onChainCommitment;
-  const deliveryStatus = subject.deliveryStatus;
-  const txHashCommitment = subject.txHashCommitment;
+
+  const productContract = subject.productContract;
+  const previousVersion = vc.previousVersion;
+  const componentCredentials = Array.isArray(subject.listing?.componentCredentials)
+    ? subject.listing.componentCredentials
+    : [];
+  const certificateCid = subject.listing?.certificateCredential?.cid;
+  const sellerRailgunAddress = subject.listing?.sellerRailgunAddress;
+
+  const priceCommitment = subject.priceCommitment || null;
+  const proofs = Array.isArray(vc.proof) ? vc.proof : [];
 
   return (
     <div className="vc-result-box">
@@ -69,19 +58,24 @@ const VCViewer = ({ vc }) => {
         <strong>Product:</strong> {subject.productName || "-"} <br />
         <strong>Batch:</strong> {subject.batch || "-"} <br />
         <strong>Quantity:</strong> {subject.quantity || "-"} <br />
+        {subject.productId && (
+          <>
+            <strong>Product ID:</strong> {subject.productId} <br />
+          </>
+        )}
         {productContract && (
           <>
             <strong>Contract:</strong> <Copyable value={productContract} /> <br />
           </>
         )}
-        {transporter && (
+        {sellerRailgunAddress && (
           <>
-            <strong>Transporter:</strong> <Copyable value={transporter} /> <br />
+            <strong>Seller Railgun:</strong> <Copyable value={sellerRailgunAddress} /> <br />
           </>
         )}
-        {previousCredential && (
+        {previousVersion && (
           <>
-            <strong>Previous VC:</strong> <Copyable value={previousCredential} /> <br />
+            <strong>Previous VC CID:</strong> <Copyable value={previousVersion} /> <br />
           </>
         )}
         {componentCredentials.length > 0 && (
@@ -89,67 +83,34 @@ const VCViewer = ({ vc }) => {
             <strong>Component VCs ({componentCredentials.length}):</strong> <br />
             {componentCredentials.map((cid, idx) => (
               <span key={idx} style={{ display: "block", marginLeft: "1rem", fontSize: "0.9em" }}>
-                • <Copyable value={cid} />
+                - <Copyable value={cid} />
               </span>
             ))}
             <br />
           </>
         )}
-        {cert?.cid && (
+        {certificateCid && (
           <>
-            <strong>Certificate CID:</strong> <Copyable value={cert.cid} /> <br />
-          </>
-        )}
-        {onChainCommitment && onChainCommitment !== "0x" + "0".repeat(64) && (
-          <>
-            <strong>On-Chain Commitment:</strong> <Copyable value={onChainCommitment} /> <br />
-          </>
-        )}
-        {txHashCommitment && (
-          <>
-            <strong>TX Hash Commitment:</strong> <Copyable value={txHashCommitment.commitment?.substring(0, 20) + '...'} /> <br />
-            <strong>Protocol:</strong> {txHashCommitment.protocol || 'bulletproofs-pedersen'} <br />
-          </>
-        )}
-        {deliveryStatus !== undefined && (
-          <>
-            <strong>Delivery Status:</strong> {deliveryStatus ? "✅ Delivered" : "⏳ Pending"} <br />
+            <strong>Certificate CID:</strong> <Copyable value={certificateCid} /> <br />
           </>
         )}
       </div>
 
-      <div className="vc-section">
-        <strong>VC Hash:</strong> <Copyable value={subject.vcHash || vc.vcHash || "-"} />
-      </div>
-
-      {proofs.issuerProof?.jws && (
+      {priceCommitment?.commitment && (
         <div className="vc-section">
-          <strong>Issuer Proof:</strong> <Copyable value={proofs.issuerProof.jws} /> <br />
-          <strong>Payload Hash:</strong> <Copyable value={proofs.issuerProof.payloadHash} /> <br />
-          <strong>Created:</strong> {proofs.issuerProof.created}
-        </div>
-      )}
-      {proofs.holderProof?.jws && (
-        <div className="vc-section">
-          <strong>Holder Proof:</strong> <Copyable value={proofs.holderProof.jws} /> <br />
-          <strong>Payload Hash:</strong> <Copyable value={proofs.holderProof.payloadHash} /> <br />
-          <strong>Created:</strong> {proofs.holderProof.created}
+          <strong>Price Commitment:</strong> <Copyable value={priceCommitment.commitment} />
         </div>
       )}
 
-      {zkp?.commitment && (
+      {priceCommitment?.proof && (
         <div className="vc-section">
-          <strong>Commitment:</strong> <Copyable value={zkp.commitment} />
+          <strong>ZKP Proof:</strong> <Copyable value={priceCommitment.proof} />
         </div>
       )}
-      {zkp?.proof && (
+
+      {proofs.length > 0 && (
         <div className="vc-section">
-          <strong>ZKP Proof:</strong> <Copyable value={zkp.proof} />
-        </div>
-      )}
-      {zkp?.protocol && (
-        <div className="vc-section">
-          <strong>ZKP Protocol:</strong> {zkp.protocol} v{zkp.version || "1.0"}
+          <strong>Proof Entries:</strong> {proofs.length}
         </div>
       )}
     </div>

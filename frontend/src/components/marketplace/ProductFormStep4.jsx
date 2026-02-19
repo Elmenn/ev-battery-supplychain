@@ -4,7 +4,7 @@ const ProductFormStep4 = ({ productData }) => {
   // Fallback in case productData is missing
   if (!productData) return <div className="form-step">❌ No product data provided</div>;
 
-  const { productName, price, quantity, cid, vcPreview } = productData;
+  const { productName, price, quantity, cid, vcPreview, productContract } = productData;
 
   return (
     <div className="form-step">
@@ -14,7 +14,7 @@ const ProductFormStep4 = ({ productData }) => {
       <p><strong>Price:</strong> {price} ETH</p>
       <p><strong>Quantity:</strong> {quantity}</p>
 
-      {cid && (
+      {cid ? (
         <p>
           <strong>VC CID:</strong>{" "}
           <a
@@ -25,17 +25,21 @@ const ProductFormStep4 = ({ productData }) => {
             {cid.slice(0, 10)}…
           </a>
         </p>
+      ) : (
+        <p className="text-sm text-gray-600">
+          <strong>VC:</strong> Will be generated when seller confirms order after buyer payment.
+        </p>
       )}
 
-      {vcPreview?.credentialSubject?.subjectDetails?.productContract && (
+      {(productContract || vcPreview?.productContract) && (
         <p>
           <strong>Product Contract:</strong>{" "}
           <a
-            href={`https://sepolia.etherscan.io/address/${vcPreview.credentialSubject.subjectDetails.productContract}`}
+            href={`https://sepolia.etherscan.io/address/${productContract || vcPreview?.productContract}`}
             target="_blank"
             rel="noreferrer"
           >
-            {vcPreview.credentialSubject.subjectDetails.productContract.slice(0, 10)}…
+            {(productContract || vcPreview?.productContract).slice(0, 10)}…
           </a>
         </p>
       )}

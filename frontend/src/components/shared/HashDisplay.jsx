@@ -14,12 +14,61 @@ function truncateHash(hash) {
   return hash.slice(0, 10) + "..." + hash.slice(-8);
 }
 
+function normalizeBaseUrl(rawUrl) {
+  const value = String(rawUrl || "").trim();
+  if (!value) return "";
+  try {
+    const parsed = new URL(value);
+    return `${parsed.origin}${parsed.pathname}`.replace(/\/$/, "");
+  } catch {
+    return "";
+  }
+}
+
+function getQrBaseUrl() {
+  const overrideUrl = normalizeBaseUrl(process.env.REACT_APP_QR_BASE_URL);
+  if (overrideUrl) return overrideUrl;
+
+  const publicUrl = normalizeBaseUrl(process.env.REACT_APP_PUBLIC_URL);
+  if (publicUrl) return publicUrl;
+
+  if (typeof window !== "undefined" && window.location?.origin) {
+    return window.location.origin;
+  }
+
+  return "https://example.invalid";
+}
+
+function buildDeliveryQrLink({ hash, productAddress, chainId, vcCid }) {
+  const appBaseUrl = getQrBaseUrl();
+  const path = productAddress ? `/product/${productAddress}` : "/product";
+  const url = new URL(`${appBaseUrl}${path}`);
+  url.searchParams.set("qr", "delivery-v1");
+  url.searchParams.set("deliveryHash", hash || "");
+
+  if (chainId != null && String(chainId).trim() !== "") {
+    url.searchParams.set("chainId", String(chainId));
+  }
+  if (vcCid && String(vcCid).trim() !== "") {
+    url.searchParams.set("cid", String(vcCid).trim());
+  }
+
+  return url.toString();
+}
+
 /**
  * Display a hash with truncation, copy button, QR code, and optional guidance text.
  *
- * @param {{ hash: string, label: string, guidance?: string }} props
+ * @param {{ hash: string, label: string, guidance?: string, productAddress?: string, chainId?: number|string, vcCid?: string }} props
  */
-export default function HashDisplay({ hash, label, guidance }) {
+export default function HashDisplay({
+  hash,
+  label,
+  guidance,
+  productAddress,
+  chainId,
+  vcCid,
+}) {
   const [copied, setCopied] = useState(false);
 
   const handleCopy = useCallback(() => {
@@ -31,6 +80,12 @@ export default function HashDisplay({ hash, label, guidance }) {
   }, [hash]);
 
   const empty = isEmptyHash(hash);
+  const qrPayload = buildDeliveryQrLink({
+    hash,
+    productAddress,
+    chainId,
+    vcCid,
+  });
 
   return (
     <div className="bg-gray-50 rounded-lg p-4 border border-gray-200">
@@ -53,8 +108,11 @@ export default function HashDisplay({ hash, label, guidance }) {
           </div>
 
           <div className="flex justify-center">
-            <QRCodeSVG value={hash} size={128} />
+            <QRCodeSVG value={qrPayload} size={128} />
           </div>
+          <p className="mt-2 text-center text-[11px] text-gray-500">
+            QR deep-link: product + hash + chain + CID
+          </p>
         </>
       )}
 

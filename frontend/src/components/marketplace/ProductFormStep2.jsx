@@ -1,7 +1,16 @@
-import React, { useState } from "react";
+import React, { useMemo, useState } from "react";
 import toast from "react-hot-toast";
 
-const ProductFormStep2 = ({ onNext }) => {
+const ZERO_ADDRESS = "0x0000000000000000000000000000000000000000";
+
+const extractAddressFromDid = (did) => {
+  if (!did || typeof did !== "string") return null;
+  const parts = did.split(":");
+  const last = parts[parts.length - 1];
+  return last || null;
+};
+
+const ProductFormStep2 = ({ onNext, currentUser }) => {
   const [formData, setFormData] = useState({
     batch: "",
     quantity: 1,
@@ -11,9 +20,14 @@ const ProductFormStep2 = ({ onNext }) => {
     componentCredentials: [],
   });
 
-  const [componentVCs, setComponentVCs] = useState([]); // Store full VC objects for display
+  const [componentVCs, setComponentVCs] = useState([]);
   const [componentCidInput, setComponentCidInput] = useState("");
   const [verifyingComponent, setVerifyingComponent] = useState(false);
+
+  const normalizedCurrentUser = useMemo(
+    () => (currentUser ? currentUser.toLowerCase() : null),
+    [currentUser]
+  );
 
   const handleChange = (e) => {
     const { name, value, type, checked } = e.target;
@@ -23,63 +37,72 @@ const ProductFormStep2 = ({ onNext }) => {
     }));
   };
 
-  // Validate IPFS CID format
   const isValidCID = (cid) => {
-    if (!cid || typeof cid !== 'string') return false;
-    // IPFS CID v0: Qm... (46 chars) or CID v1: starts with b, z, etc.
+    if (!cid || typeof cid !== "string") return false;
     const cidV0Pattern = /^Qm[1-9A-HJ-NP-Za-km-z]{44}$/;
     const cidV1Pattern = /^[bBzZ][a-zA-Z0-9]{58,}$/;
     return cidV0Pattern.test(cid) || cidV1Pattern.test(cid);
   };
 
-  // Fetch and verify a component VC from IPFS
   const fetchAndVerifyComponentVC = async (cid) => {
     try {
       setVerifyingComponent(true);
-      
-      // Validate CID format first
+
       if (!isValidCID(cid)) {
         throw new Error("Invalid IPFS CID format. Please check the CID and try again.");
       }
-      
+
       const response = await fetch(`https://ipfs.io/ipfs/${cid}`);
       if (!response.ok) {
         throw new Error(`Failed to fetch VC from IPFS: ${response.status}`);
       }
       const vc = await response.json();
 
-      // Basic validation
       if (!vc["@context"] || !vc.type || !vc.credentialSubject) {
         throw new Error("Invalid VC structure");
       }
 
-      // Extract product name
       const productName = vc.credentialSubject?.productName || "Unknown Product";
 
-      // Check if it's a delivered VC (has both issuer and holder proofs)
-      const proofs = vc.proof || [];
-      const hasIssuerProof = proofs.some((p) => p.role === "seller" || p.role === "issuer");
-      const hasHolderProof = proofs.some((p) => p.role === "holder" || p.role === "buyer");
-      const isDelivered = hasIssuerProof && hasHolderProof;
+      // Governance check: previous VC holder must equal connected seller wallet.
+      const holderDid = vc?.holder?.id || null;
+      const holderAddress = extractAddressFromDid(holderDid);
+      const normalizedHolder = holderAddress ? holderAddress.toLowerCase() : null;
+
+      let governanceVerified = true;
+      let governanceError = null;
+
+      if (!normalizedCurrentUser) {
+        governanceVerified = false;
+        governanceError = "Connected wallet not detected. Reconnect wallet before linking components.";
+      } else if (!normalizedHolder || normalizedHolder === ZERO_ADDRESS) {
+        governanceVerified = false;
+        governanceError = "Component VC holder is not assigned yet (T.B.D./zero address).";
+      } else if (normalizedHolder !== normalizedCurrentUser) {
+        governanceVerified = false;
+        governanceError = `Component holder ${holderAddress} does not match your wallet ${currentUser}.`;
+      }
 
       return {
         cid,
         vc,
         productName,
         verified: true,
-        isDelivered,
+        governanceVerified,
+        governanceError,
         error: null,
       };
     } catch (error) {
       console.error("Error fetching/verifying component VC:", error);
-        return {
-          cid,
-          vc: null,
-          productName: "Unknown",
-          verified: false,
-          isDelivered: false,
-          error: error.message,
-        };
+      return {
+        cid,
+        vc: null,
+        productName: "Unknown",
+        verified: false,
+        governanceVerified: false,
+        governanceError: null,
+        error: error.message,
+      };
     } finally {
       setVerifyingComponent(false);
     }
@@ -90,8 +113,7 @@ const ProductFormStep2 = ({ onNext }) => {
       toast.error("Please enter a component VC CID");
       return;
     }
-    
-    // Validate CID format
+
     if (!isValidCID(componentCidInput.trim())) {
       toast.error("Invalid IPFS CID format. Please check the CID and try again.");
       return;
@@ -99,7 +121,6 @@ const ProductFormStep2 = ({ onNext }) => {
 
     const cid = componentCidInput.trim();
 
-    // Check if already added
     if (formData.componentCredentials.includes(cid)) {
       toast.error("This component VC is already added");
       return;
@@ -109,32 +130,36 @@ const ProductFormStep2 = ({ onNext }) => {
     const result = await fetchAndVerifyComponentVC(cid);
 
     if (result.verified) {
-      // Add to component credentials
       setFormData((prev) => ({
         ...prev,
         componentCredentials: [...prev.componentCredentials, cid],
       }));
 
-      // Store full VC for display
       setComponentVCs((prev) => [...prev, result]);
 
       toast.dismiss();
-      if (result.isDelivered) {
-        toast.success(`✅ Component "${result.productName}" verified (Delivered)`);
+      if (!result.governanceVerified) {
+        toast.error(`Governance check failed for "${result.productName}": ${result.governanceError}`);
       } else {
-        toast.success(`⚠️ Component "${result.productName}" fetched (Not delivered)`);
+        toast.success(`Component "${result.productName}" verified`);
       }
     } else {
       toast.dismiss();
       toast.error(`Failed to verify component VC: ${result.error}`);
-      // Still allow adding with warning
       setFormData((prev) => ({
         ...prev,
         componentCredentials: [...prev.componentCredentials, cid],
       }));
       setComponentVCs((prev) => [
         ...prev,
-        { cid, productName: "Unknown", verified: false, error: result.error },
+        {
+          cid,
+          productName: "Unknown",
+          verified: false,
+          governanceVerified: false,
+          governanceError: null,
+          error: result.error,
+        },
       ]);
     }
 
@@ -151,6 +176,14 @@ const ProductFormStep2 = ({ onNext }) => {
   };
 
   const handleNext = () => {
+    const governanceMismatch = componentVCs.find(
+      (comp) => comp.verified && comp.governanceVerified === false
+    );
+    if (governanceMismatch) {
+      toast.error(`Cannot continue: governance mismatch for component "${governanceMismatch.productName}".`);
+      return;
+    }
+
     onNext(formData);
   };
 
@@ -208,10 +241,9 @@ const ProductFormStep2 = ({ onNext }) => {
         />
       </div>
 
-      {/* Component Products Section */}
       <div className="form-group" style={{ marginTop: "2rem", paddingTop: "2rem", borderTop: "1px solid #ddd" }}>
         <label style={{ fontWeight: "bold", marginBottom: "0.5rem" }}>
-          🔗 Component Products (Optional)
+          Component Products (Optional)
         </label>
         <div style={{ marginBottom: "1rem" }}>
           <label style={{ display: "flex", alignItems: "center", gap: "0.5rem", cursor: "pointer" }}>
@@ -230,7 +262,6 @@ const ProductFormStep2 = ({ onNext }) => {
 
         {formData.usesComponents && (
           <div>
-            {/* Component Input */}
             <div style={{ display: "flex", gap: "0.5rem", marginBottom: "1rem" }}>
               <input
                 type="text"
@@ -262,59 +293,63 @@ const ProductFormStep2 = ({ onNext }) => {
               </button>
             </div>
 
-            {/* Component List */}
             {componentVCs.length > 0 && (
               <div style={{ marginTop: "1rem" }}>
-                {componentVCs.map((comp, index) => (
-                  <div
-                    key={index}
-                    style={{
-                      padding: "0.75rem",
-                      marginBottom: "0.5rem",
-                      backgroundColor: comp.verified ? "#f0f9ff" : "#fff3cd",
-                      border: `1px solid ${comp.verified ? "#b3d9ff" : "#ffc107"}`,
-                      borderRadius: "4px",
-                      display: "flex",
-                      justifyContent: "space-between",
-                      alignItems: "center",
-                    }}
-                  >
-                    <div style={{ flex: 1 }}>
-                      <div style={{ fontWeight: "bold" }}>
-                        {comp.productName || "Unknown Product"}
-                      </div>
-                      <div style={{ fontSize: "0.875rem", color: "#666", fontFamily: "monospace" }}>
-                        {comp.cid.slice(0, 20)}...
-                      </div>
-                      <div style={{ fontSize: "0.75rem", marginTop: "0.25rem" }}>
-                        {comp.verified ? (
-                          <span style={{ color: "#28a745" }}>
-                            ✅ Verified {comp.isDelivered ? "(Delivered)" : "(Not delivered)"}
-                          </span>
-                        ) : (
-                          <span style={{ color: "#dc3545" }}>
-                            ⚠️ Verification failed: {comp.error}
-                          </span>
-                        )}
-                      </div>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() => handleRemoveComponent(index)}
+                {componentVCs.map((comp, index) => {
+                  const isGreen = comp.verified && comp.governanceVerified !== false;
+                  return (
+                    <div
+                      key={index}
                       style={{
-                        padding: "0.25rem 0.5rem",
-                        backgroundColor: "#dc3545",
-                        color: "white",
-                        border: "none",
+                        padding: "0.75rem",
+                        marginBottom: "0.5rem",
+                        backgroundColor: isGreen ? "#f0f9ff" : "#fff3cd",
+                        border: `1px solid ${isGreen ? "#b3d9ff" : "#ffc107"}`,
                         borderRadius: "4px",
-                        cursor: "pointer",
-                        fontSize: "0.875rem",
+                        display: "flex",
+                        justifyContent: "space-between",
+                        alignItems: "center",
                       }}
                     >
-                      Remove
-                    </button>
-                  </div>
-                ))}
+                      <div style={{ flex: 1 }}>
+                        <div style={{ fontWeight: "bold" }}>{comp.productName || "Unknown Product"}</div>
+                        <div style={{ fontSize: "0.875rem", color: "#666", fontFamily: "monospace" }}>
+                          {comp.cid.slice(0, 20)}...
+                        </div>
+                        <div style={{ fontSize: "0.75rem", marginTop: "0.25rem" }}>
+                          {comp.verified && comp.governanceVerified !== false ? (
+                            <span style={{ color: "#28a745" }}>
+                              Verified
+                            </span>
+                          ) : comp.verified && comp.governanceVerified === false ? (
+                            <span style={{ color: "#dc3545" }}>
+                              Governance mismatch: {comp.governanceError}
+                            </span>
+                          ) : (
+                            <span style={{ color: "#dc3545" }}>
+                              Verification failed: {comp.error}
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => handleRemoveComponent(index)}
+                        style={{
+                          padding: "0.25rem 0.5rem",
+                          backgroundColor: "#dc3545",
+                          color: "white",
+                          border: "none",
+                          borderRadius: "4px",
+                          cursor: "pointer",
+                          fontSize: "0.875rem",
+                        }}
+                      >
+                        Remove
+                      </button>
+                    </div>
+                  );
+                })}
               </div>
             )}
 

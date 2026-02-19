@@ -1,8 +1,6 @@
 // utils/errorHandler.js
 // Utility functions for better error handling and user feedback
 
-import { ethers } from "ethers";
-
 /**
  * Extract user-friendly error message from Ethereum transaction error
  * @param {Error} error - The error object
@@ -194,7 +192,7 @@ const CONTRACT_ERRORS = {
   'AlreadyPaid': 'Payment already recorded',
   'MemoAlreadyUsed': 'This payment was already used',
   'PaymentAlreadyRecorded': 'Payment already confirmed on-chain',
-  'NotParticipant': 'Only buyer or seller can record payment'
+  'NotParticipant': 'Caller is not an allowed participant for this product.'
 };
 
 /**

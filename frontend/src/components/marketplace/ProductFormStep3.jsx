@@ -1,12 +1,9 @@
 import React, { useState, useEffect } from "react";
 import toast from "react-hot-toast";
-import { ethers, getAddress, isAddress, ZeroAddress } from "ethers";
-import { uploadJson } from "../../utils/ipfs";
+import { ethers, getAddress, isAddress } from "ethers";
 import ProductFactoryABI from "../../abis/ProductFactory.json";
 import ProductEscrowABI from "../../abis/ProductEscrow_Initializer.json";
-import { signVcAsSeller } from "../../utils/signVcWithMetamask";
 import { generateCommitmentWithBindingTag } from "../../utils/commitmentUtils";
-import { createListingVC } from "../../utils/vcBuilder.mjs";
 
 // Copyable component for CIDs
 function truncate(text, length = 12) {
@@ -48,6 +45,19 @@ const ProductFormStep3 = ({ onNext, productData, backendUrl }) => {
   const [bondAmount, setBondAmount] = useState(null);
   const [bondLoading, setBondLoading] = useState(true);
 
+  const getFallbackSellerRailgunAddress = () => {
+    try {
+      const stored = JSON.parse(localStorage.getItem("railgun.wallet") || "null");
+      const candidate = stored?.railgunAddress;
+      if (typeof candidate === "string" && candidate.startsWith("0zk")) {
+        return candidate;
+      }
+    } catch {
+      // no-op
+    }
+    return null;
+  };
+
   // Fetch bond amount from factory on mount
   useEffect(() => {
     let cancelled = false;
@@ -71,17 +81,6 @@ const ProductFormStep3 = ({ onNext, productData, backendUrl }) => {
     fetchBondAmount();
     return () => { cancelled = true; };
   }, []);
-
-  // Helper function to validate addresses
-  const mustAddress = (input, label) => {
-    if (!input || typeof input !== 'string') {
-      throw new Error(`${label} missing or invalid`);
-    }
-    if (!isAddress(input)) {
-      throw new Error(`${label} is not a valid address: ${input}`);
-    }
-    return getAddress(input); // normalize to checksum address
-  };
 
   // Build a preview VC for the collapsible developer view (pre-deployment)
   const vcPreviewData = {
@@ -111,6 +110,17 @@ const ProductFormStep3 = ({ onNext, productData, backendUrl }) => {
       const signer = await provider.getSigner();
       const sellerAddr = await signer.getAddress();
       console.log('[Flow][Seller] Step 1 -> MetaMask connected, seller address:', sellerAddr);
+
+      // Ensure seller Railgun address exists before deployment so buyer flow is never broken.
+      const sellerRailgunAddress =
+        (productData.sellerRailgunAddress &&
+          String(productData.sellerRailgunAddress).trim()) ||
+        getFallbackSellerRailgunAddress();
+      if (!sellerRailgunAddress || !sellerRailgunAddress.startsWith("0zk")) {
+        throw new Error(
+          "Seller Railgun wallet not connected. Go back to Step 2.5 and connect Railgun before deploying product."
+        );
+      }
 
       // Validate seller address
       if (!isAddress(sellerAddr)) {
@@ -222,14 +232,22 @@ const ProductFormStep3 = ({ onNext, productData, backendUrl }) => {
 
       console.log('[Flow][Seller] Step 4: Skipping public price write (private-only contract).');
 
-      console.log('[Flow][Seller] Step 5: Building v2.0 listing VC.');
-      // Build VC using v2.0 createListingVC
-      const vcToUpload = createListingVC({
-        sellerAddr,
-        productContract: validatedProductAddress,
+      console.log('[Flow][Seller] Step 5: Storing listing metadata locally (single-final-VC flow).');
+      const listingMeta = {
+        schemaVersion: "2.0",
         productName: productData.productName,
-        chainId: VC_CHAIN,
+        batch: productData.batch || "",
+        quantity: productData.quantity || 1,
+        productContract: validatedProductAddress,
         productId: productId.toString(),
+        chainId: VC_CHAIN,
+        sellerAddr,
+        sellerRailgunAddress,
+        certificateCredential: {
+          name: productData.certificateName || "",
+          cid: productData.certificateCid || "",
+        },
+        componentCredentials: productData.componentCredentials || [],
         priceCommitment: {
           commitment: pedersenCommitment,
           proof: pedersenProof,
@@ -240,38 +258,21 @@ const ProductFormStep3 = ({ onNext, productData, backendUrl }) => {
             escrowAddr: validatedProductAddress,
             productId: productId.toString(),
             stage: 0,
-            schemaVersion: "1.0",
+            schemaVersion: "2.0",
           },
         },
-        batch: productData.batch || "",
-        quantity: productData.quantity || 1,
-        certificateCredential: {
-          name: productData.certificateName || "",
-          cid: productData.certificateCid || "",
-        },
-        componentCredentials: productData.componentCredentials || [],
-      });
+        createdAt: new Date().toISOString(),
+      };
 
-      console.log('[Flow][Seller] Step 6: Signing v2.0 VC as seller.');
-      // Sign the VC as issuer (with contract address for verifyingContract binding)
-      const issuerProof = await signVcAsSeller(vcToUpload, signer, validatedProductAddress);
-      vcToUpload.proof = [issuerProof];
-      console.log('[Flow][Seller] Step 6 -> VC signed. Uploading to IPFS next.');
-
-      toast("Uploading VC to IPFS...");
-      const cid = await uploadJson(vcToUpload);
-      console.log('[Flow][Seller] Step 7: v2.0 VC uploaded to IPFS, CID:', cid);
-
-      toast.success("Product created & VC issued!");
+      toast.success("Product created successfully.");
       onNext({
         productData: {
           ...productData,
-          cid,
           productContract: productAddress,
-          vcPreview: vcToUpload,
+          vcPreview: listingMeta,
           priceWei: price.toString(),
           priceCommitment: pedersenCommitment,
-          sellerRailgunAddress: productData.sellerRailgunAddress,
+          sellerRailgunAddress,
           sellerWalletID: productData.sellerWalletID,
           sellerEOA: productData.sellerEOA,
           privatePaymentsDisabled: productData.privatePaymentsDisabled || false,
@@ -281,14 +282,14 @@ const ProductFormStep3 = ({ onNext, productData, backendUrl }) => {
       console.log('[Flow][Seller] Step 8: Caching price and Railgun metadata locally for reuse.');
       localStorage.setItem(`priceWei_${productAddress}`, price.toString());
       localStorage.setItem(`priceCommitment_${productAddress}`, pedersenCommitment);
-      localStorage.setItem(`vcCid_${productAddress}`, cid);
+      localStorage.setItem(`productMeta_${productAddress}`, JSON.stringify(listingMeta));
 
-      if (productData.sellerRailgunAddress) {
-        localStorage.setItem(`sellerRailgunAddress_${productAddress}`, productData.sellerRailgunAddress);
+      if (sellerRailgunAddress) {
+        localStorage.setItem(`sellerRailgunAddress_${productAddress}`, sellerRailgunAddress);
         localStorage.setItem(`sellerWalletID_${productAddress}`, productData.sellerWalletID || '');
         console.log('[Flow][Seller] Step 8 -> Railgun metadata saved for product:', {
           productAddress,
-          sellerRailgunAddress: productData.sellerRailgunAddress,
+          sellerRailgunAddress,
           sellerWalletID: productData.sellerWalletID
         });
       } else {
@@ -297,7 +298,7 @@ const ProductFormStep3 = ({ onNext, productData, backendUrl }) => {
 
     } catch (err) {
       console.error("handleConfirm:", err);
-      toast.error(err.message || "Failed to issue VC");
+      toast.error(err.message || "Failed to create product");
     } finally {
       setLoading(false);
     }

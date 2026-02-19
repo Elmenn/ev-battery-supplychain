@@ -32,6 +32,7 @@ error NotATransporter();
 error OwnerCannotPurchase();
 error NotPurchased();
 error SellerWindowNotExpired();
+error SellerWindowExpired();
 error BiddingWindowNotExpired();
 error NotYetTimeout();
 
@@ -189,6 +190,7 @@ contract ProductEscrow_Initializer is ReentrancyGuard {
     event VcHashStored(uint256 indexed productId, bytes32 vcHash, string vcCID, uint256 timestamp);
     event BondSlashed(uint256 indexed productId, address indexed from, address indexed to, uint256 amount, string reason, uint256 timestamp);
     event BondReturned(uint256 indexed productId, address indexed to, uint256 amount, uint256 timestamp);
+    event BuyerDesignated(uint256 indexed productId, address indexed buyer, uint256 timestamp);
 
     // ═══════════════════════════════════════════════════════════════════
     //  Initialization
@@ -235,11 +237,21 @@ contract ProductEscrow_Initializer is ReentrancyGuard {
         emit PhaseChanged(_id, Phase.Listed, Phase.Listed, msg.sender, block.timestamp, bytes32(0));
     }
 
+    /// @notice Seller designates the only address allowed to record private payment.
+    function designateBuyer(address payable _buyer) external onlySeller whenNotStopped {
+        if (phase != Phase.Listed) revert WrongPhase();
+        if (_buyer == address(0) || _buyer == owner) revert NotParticipant();
+        if (purchased) revert AlreadyPurchased();
+        buyer = _buyer;
+        emit BuyerDesignated(id, _buyer, block.timestamp);
+        emit ProductStateChanged(id, owner, buyer, phase, block.timestamp, priceCommitment, purchased, delivered);
+    }
+
     // ═══════════════════════════════════════════════════════════════════
     //  Core Lifecycle Functions
     // ═══════════════════════════════════════════════════════════════════
 
-    /// @notice Record a private Railgun payment. Caller becomes the buyer.
+    /// @notice Record a private Railgun payment. First valid caller becomes the buyer (FCFS).
     /// @param _productId Must match this product's ID
     /// @param _memoHash Railgun memo hash (non-zero)
     /// @param _railgunTxRef Railgun transaction reference (non-zero)
@@ -254,10 +266,9 @@ contract ProductEscrow_Initializer is ReentrancyGuard {
         if (usedMemoHash[_memoHash]) revert MemoAlreadyUsed();
         if (privatePayments[_memoHash]) revert PaymentAlreadyRecorded();
 
-        // If buyer already set, only that buyer can record
-        if (buyer != address(0) && msg.sender != buyer) revert NotParticipant();
-
+        // FCFS marketplace behavior: first successful buyer becomes the on-chain buyer.
         buyer = payable(msg.sender);
+
         purchased = true;
         purchaseTimestamp = uint64(block.timestamp);
 
@@ -270,7 +281,7 @@ contract ProductEscrow_Initializer is ReentrancyGuard {
         Phase oldPhase = phase;
         phase = Phase.Purchased;
 
-        emit PurchasedPrivate(buyer, _memoHash, _railgunTxRef);
+        emit PurchasedPrivate(msg.sender, _memoHash, _railgunTxRef);
         emit PhaseChanged(id, oldPhase, phase, msg.sender, block.timestamp, _memoHash);
         emit ProductStateChanged(id, owner, buyer, phase, block.timestamp, priceCommitment, purchased, delivered);
         emit PrivatePaymentRecorded(id, _memoHash, _railgunTxRef, msg.sender, block.timestamp);
@@ -281,6 +292,7 @@ contract ProductEscrow_Initializer is ReentrancyGuard {
     function confirmOrder(string calldata vcCID) external onlySeller nonReentrant whenNotStopped {
         if (phase != Phase.Purchased) revert WrongPhase();
         if (!purchased) revert NotPurchased();
+        if (block.timestamp > purchaseTimestamp + SELLER_WINDOW) revert SellerWindowExpired();
 
         orderConfirmedTimestamp = uint64(block.timestamp);
         phase = Phase.OrderConfirmed;
@@ -298,7 +310,8 @@ contract ProductEscrow_Initializer is ReentrancyGuard {
     function createTransporter(uint256 _feeInWei) public payable nonReentrant whenNotStopped {
         if (phase != Phase.OrderConfirmed) revert WrongPhase();
         if (transporterCount >= MAX_BIDS) revert BidCapReached();
-        if (transporters[msg.sender] != 0) revert AlreadyExists();
+        if (isTransporter[msg.sender]) revert AlreadyExists();
+        if (_feeInWei == 0) revert IncorrectFee();
         if (msg.value != bondAmount) revert InsufficientBond();
 
         transporters[msg.sender] = _feeInWei;

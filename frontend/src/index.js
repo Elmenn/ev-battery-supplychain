@@ -1,11 +1,11 @@
 // CRITICAL: Import order matters!
 // 1. Bootstrap: Patch NETWORK_CONFIG BEFORE any Railgun code runs
 //    This ensures SDK functions using networkName can find Sepolia config
-import './lib/railgun-bootstrap.js';
+import './lib/railgun-clean/bootstrap.js';
 
 // 2. New Railgun structure (TypeScript files - will be converted to JS)
 //    Note: For now, we'll load these on-demand or convert to JS
-// import './lib/railgun'; // TODO: Convert TS to JS first
+// import './lib/railgun-clean'; // TODO: Convert TS to JS first
 
 // 4. React and app code
 import React from 'react';

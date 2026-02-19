@@ -5,8 +5,6 @@
  * Converted from TypeScript to JavaScript.
  */
 
-import { Chain } from '@railgun-community/engine';
-import { TXIDVersion } from '@railgun-community/shared-models';
 import { reportAndSanitizeError } from '../../../utils/error.js';
 import { getEngine } from '../core/engine.js';
 
@@ -36,7 +34,10 @@ export const refreshBalances = async (chain, walletIdFilter) => {
           errorMessage.includes('Failed to scan V2 events') ||
           errorMessage.includes('invalid block range params') ||
           errorMessage.includes('eth_getLogs') ||
-          errorString.includes('invalid block range params');
+          errorMessage.includes('Under the Free tier plan') ||
+          errorString.includes('invalid block range params') ||
+          errorString.includes('Under the Free tier plan') ||
+          errorString.includes('up to a 10 block range');
         
         if (isSlowSyncError) {
           console.warn(`[REFRESH-BALANCES] ⚠️  Slow-sync failed (expected on Sepolia): ${errorMessage}`);

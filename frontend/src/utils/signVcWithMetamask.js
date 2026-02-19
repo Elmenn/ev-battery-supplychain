@@ -69,6 +69,7 @@ export function preparePayloadForSigning(vc) {
   if (clone.credentialSubject?.listing) {
     clone.credentialSubject.certificateCredential = clone.credentialSubject.listing.certificateCredential || { name: "", cid: "" };
     clone.credentialSubject.componentCredentials = clone.credentialSubject.listing.componentCredentials || [];
+    clone.credentialSubject.sellerRailgunAddress = clone.credentialSubject.listing.sellerRailgunAddress || "";
     delete clone.credentialSubject.listing;
   }
 
@@ -79,13 +80,40 @@ export function preparePayloadForSigning(vc) {
       cid: '',
     };
   }
+  clone.credentialSubject.certificateCredential.name = String(
+    clone.credentialSubject.certificateCredential.name || ''
+  );
+  clone.credentialSubject.certificateCredential.cid = String(
+    clone.credentialSubject.certificateCredential.cid || ''
+  );
   
   // Ensure other required fields have defaults
+  if (clone.credentialSubject.id === undefined || clone.credentialSubject.id === null) {
+    clone.credentialSubject.id = String(clone.issuer?.id || '');
+  }
+  if (clone.credentialSubject.productName === undefined || clone.credentialSubject.productName === null) {
+    clone.credentialSubject.productName = '';
+  }
+  if (clone.credentialSubject.batch === undefined || clone.credentialSubject.batch === null) {
+    clone.credentialSubject.batch = '';
+  }
+  if (clone.credentialSubject.quantity === undefined || clone.credentialSubject.quantity === null) {
+    clone.credentialSubject.quantity = 0;
+  }
   if (clone.credentialSubject.previousCredential === undefined || clone.credentialSubject.previousCredential === null) {
     clone.credentialSubject.previousCredential = '';
   }
   if (!Array.isArray(clone.credentialSubject.componentCredentials)) {
     clone.credentialSubject.componentCredentials = [];
+  }
+  clone.credentialSubject.componentCredentials = clone.credentialSubject.componentCredentials
+    .filter((item) => item != null)
+    .map((item) => String(item));
+  if (clone.credentialSubject.price === undefined || clone.credentialSubject.price === null) {
+    clone.credentialSubject.price = '';
+  }
+  if (typeof clone.credentialSubject.sellerRailgunAddress !== "string") {
+    clone.credentialSubject.sellerRailgunAddress = "";
   }
 
   if (clone.issuer?.id) clone.issuer.id = clone.issuer.id.toLowerCase();
@@ -157,6 +185,7 @@ async function signPayload(vc, signer, role = "holder", contractAddress = null) 
       { name: "previousCredential", type: "string" },
       { name: "componentCredentials", type: "string[]" },
       { name: "certificateCredential", type: "Certificate" },
+      { name: "sellerRailgunAddress", type: "string" },
       { name: "price", type: "string" },
     ],
     Certificate: [

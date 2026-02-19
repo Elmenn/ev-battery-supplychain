@@ -6,24 +6,14 @@
  */
 
 import {
-  Chain,
-  AbstractWallet,
   TokenType,
-  TokenBalances,
   NFTTokenData,
   getTokenDataHash,
   getTokenDataNFT,
   getTokenDataERC20,
-  POIProofEventStatus,
 } from '@railgun-community/engine';
 import {
-  RailgunBalancesEvent,
-  POIProofProgressEvent,
-  RailgunNFTAmount,
-  RailgunERC20Amount,
-  NetworkName,
   NETWORK_CONFIG,
-  TXIDVersion,
   NFTTokenType,
   RailgunWalletBalanceBucket,
   isDefined,
@@ -32,7 +22,6 @@ import {
 import { sendErrorMessage, sendMessage } from '../../../utils/logger.js';
 import { parseRailgunTokenAddress } from '../util/bytes.js';
 import { POIRequired } from '../../poi/poi-required.js';
-import { getEngine } from '../core/engine.js';
 
 let onBalanceUpdateCallback = null;
 let onWalletPOIProofProgressCallback = null;

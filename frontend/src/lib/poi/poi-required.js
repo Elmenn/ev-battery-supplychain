@@ -5,7 +5,7 @@
  * Converted from TypeScript to JavaScript.
  */
 
-import { NetworkName, NETWORK_CONFIG, isDefined } from '@railgun-community/shared-models';
+import { NETWORK_CONFIG, isDefined } from '@railgun-community/shared-models';
 
 export class POIRequired {
   static async isRequiredForNetwork(networkName) {

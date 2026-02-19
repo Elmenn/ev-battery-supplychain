@@ -1,7 +1,7 @@
 import React, { useState } from "react";
 import ProductFormStep1 from "./ProductFormStep1";
 import ProductFormStep2 from "./ProductFormStep2";
-import ProductFormStep2_5_Railgun from "./ProductFormStep2_5_Railgun";
+import ProductFormStepRailgun from "./ProductFormStep2_5_Railgun";
 import ProductFormStep3 from "./ProductFormStep3";
 import ProductFormStep4 from "./ProductFormStep4";
 
@@ -41,10 +41,10 @@ const ProductFormWizard = ({ provider, backendUrl, currentUser }) => {
       case 1:
         return <ProductFormStep1 onNext={goToNext} />;
       case 2:
-        return <ProductFormStep2 onNext={goToNext} />;
+        return <ProductFormStep2 onNext={goToNext} currentUser={currentUser} />;
       case 2.5:
         return (
-          <ProductFormStep2_5_Railgun
+          <ProductFormStepRailgun
             onNext={goToNext}
             productData={{ ...step1Data, ...step2Data }}
             currentUser={currentUser}

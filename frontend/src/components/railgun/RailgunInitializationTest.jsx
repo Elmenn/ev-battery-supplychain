@@ -7,7 +7,7 @@
 
 import React, { useState } from 'react';
 import { Button } from '../ui/button';
-import { initRailgunForBrowser, stopRailgunEngineBrowser } from '../../lib/railgun-browser-init';
+import { initRailgunForBrowser, stopRailgunEngineBrowser } from '../../lib/railgun-clean/bootstrap';
 
 const RailgunInitializationTest = () => {
   const [testing, setTesting] = useState(false);

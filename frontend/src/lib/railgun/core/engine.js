@@ -5,7 +5,6 @@
  * Converted from TypeScript to JavaScript.
  */
 
-import { RailgunEngine } from '@railgun-community/engine';
 import { isDefined } from '@railgun-community/shared-models';
 
 let savedEngine; // Optional<RailgunEngine>

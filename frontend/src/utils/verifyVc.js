@@ -1,7 +1,7 @@
 // utils/verifyVc.js
-const BACKEND_URL = "http://localhost:5000";
+const BACKEND_URL = process.env.REACT_APP_VC_BACKEND_URL || "http://localhost:5000";
 
-export async function fetchVCFromServer(cid, backendUrl) {
+export async function fetchVCFromServer(cid, backendUrl = BACKEND_URL) {
   const res = await fetch(`${backendUrl}/fetch-vc`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -25,10 +25,9 @@ export async function verifyVCWithServer(vc, contractAddress = null) {
     headers: {
       "Content-Type": "application/json",
     },
-    body: JSON.stringify({ 
-      vc, 
-      isCertificate: false,
-      ...(contractAddress ? { contractAddress } : {}), // ✅ Pass contractAddress if provided
+    body: JSON.stringify({
+      vc,
+      ...(contractAddress ? { contractAddress } : {}),
     }),
   });
 
@@ -37,7 +36,21 @@ export async function verifyVCWithServer(vc, contractAddress = null) {
   }
 
   const data = await response.json();
-
   return data;
 }
 
+export async function verifyVCChainWithServer(cid, maxDepth = 50) {
+  const response = await fetch(`${BACKEND_URL}/verify-vc-chain`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ cid, maxDepth }),
+  });
+
+  if (!response.ok) {
+    throw new Error("Failed to verify VC chain on server");
+  }
+
+  return response.json();
+}

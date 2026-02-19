@@ -6,11 +6,7 @@
  */
 
 import {
-  Chain,
-  FallbackProviderJsonConfig,
-  LoadProviderResponse,
   NETWORK_CONFIG,
-  NetworkName,
   TXIDVersion,
   createFallbackProviderFromJsonConfig,
   isDefined,
@@ -20,11 +16,9 @@ import { reportAndSanitizeError } from '../../../utils/error.js';
 import { WalletPOI } from '../../poi/wallet-poi.js';
 import { getEngine } from './engine.js';
 import {
-  PollingJsonRpcProvider,
   RailgunVersionedSmartContracts,
   createPollingJsonRpcProviderForListeners,
 } from '@railgun-community/engine';
-import { FallbackProvider } from 'ethers';
 import {
   fallbackProviderMap,
   pollingProviderMap,
@@ -150,7 +144,12 @@ export const loadProvider = async (
   pollingInterval = 15000,
 ) => {
   try {
+    // Clean up any existing providers before replacing them.
+    // This prevents stale polling loops (e.g. old RPC endpoints) from continuing in background.
+    await fallbackProviderMap[networkName]?.destroy?.();
+    pollingProviderMap[networkName]?.destroy?.();
     delete fallbackProviderMap[networkName];
+    delete pollingProviderMap[networkName];
 
     const { chain, supportsV3 } = NETWORK_CONFIG[networkName];
     if (fallbackProviderJsonConfig.chainId !== chain.id) {

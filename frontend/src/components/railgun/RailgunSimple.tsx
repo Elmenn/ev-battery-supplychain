@@ -16,7 +16,7 @@ import {
   shieldWETH,
   privateTransfer,
   getCurrentWallet
-} from '../../lib/railgun';
+} from '../../lib/railgun-clean';
 
 const RailgunSimple = ({ currentUser }) => {
   const [isInitialized, setIsInitialized] = useState(false);
