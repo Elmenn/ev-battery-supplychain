@@ -26,6 +26,7 @@ import DeliveryConfirmModal from "../shared/DeliveryConfirmModal";
 import PayoutSummaryCard from "../shared/PayoutSummaryCard";
 import VerifyVCInline from "../vc/VerifyVCInline";
 import { fetchVCFromServer } from "../../utils/verifyVc";
+import { getProductMeta, updateVcCid } from "../../utils/productMetaApi";
 import { Button } from "../ui/button";
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -138,8 +139,22 @@ const ProductDetail = ({ provider, currentUser }) => {
 
   useEffect(() => {
     if (!address) return;
-    const cached = localStorage.getItem(`vcCid_${address}`) || "";
-    setAuditCid(cached);
+    // DB-first: try to get vcCid from backend, fall back to localStorage.
+    // getProductMeta returns null on 404 or network error (no throw).
+    (async () => {
+      try {
+        const data = await getProductMeta(address);
+        if (data?.vcCid) {
+          setAuditCid(data.vcCid);
+          return;
+        }
+      } catch {
+        // getProductMeta should not throw, but guard defensively
+      }
+      // Fallback: localStorage (pre-migration products or DB unavailable)
+      const cached = localStorage.getItem(`vcCid_${address}`) || "";
+      setAuditCid(cached);
+    })();
   }, [address]);
 
   // ── Seller Handlers ───────────────────────────────────────────────────────
@@ -182,24 +197,30 @@ const ProductDetail = ({ provider, currentUser }) => {
         throw new Error("Missing Railgun tx reference on-chain.");
       }
 
-      const rawMeta = findLocalStorageValueByAddress("productMeta_", address);
-      if (!rawMeta) {
-        throw new Error(
-          "Missing product metadata for final VC generation. Recreate product from this browser."
-        );
-      }
-
-      let listingMeta;
-      try {
-        listingMeta = JSON.parse(rawMeta);
-      } catch {
-        throw new Error("Stored product metadata is invalid JSON.");
+      // DB-first lookup for productMeta. Falls back to localStorage for pre-migration products.
+      let listingMeta = null;
+      const dbData = await getProductMeta(address);
+      if (dbData?.productMeta) {
+        listingMeta = dbData.productMeta;
+      } else {
+        const rawMeta = findLocalStorageValueByAddress("productMeta_", address);
+        if (!rawMeta) {
+          throw new Error(
+            "Missing product metadata for final VC generation. Recreate product from this browser or ensure the seller saves from their original device."
+          );
+        }
+        try {
+          listingMeta = JSON.parse(rawMeta);
+        } catch {
+          throw new Error("Stored product metadata is invalid JSON.");
+        }
       }
 
       const finalVc = createFinalOrderVC({
         sellerAddr,
         buyerAddr: product.buyer,
         sellerRailgunAddress:
+          dbData?.sellerRailgunAddress ||
           listingMeta?.sellerRailgunAddress ||
           findLocalStorageValueByAddress("sellerRailgunAddress_", address) ||
           "",
