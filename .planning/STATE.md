@@ -5,12 +5,12 @@
 ## Current Position
 
 - **Phase:** 11 of 11 (SQLite Metadata Persistence)
-- **Plan:** 5 of 5 in phase (wave 3 plan)
-- **Status:** In progress (Phase 11 Plans 01, 02, 05 complete)
+- **Plan:** 4 of 5 in phase (11-04 now complete; 11-03 outstanding)
+- **Status:** In progress (Phase 11 Plans 01, 02, 04, 05 complete)
 
-Progress: [█████████████████████████████████░] ~96% (24/27 plans complete)
+Progress: [█████████████████████████████████░] ~96% (25/27 plans complete)
 
-Last activity: 2026-02-26 - Completed 11-05-PLAN.md (PrivatePaymentModal DB-first resolution)
+Last activity: 2026-02-26 - Completed 11-04-PLAN.md (ProductDetail.jsx DB-first wiring)
 
 ## Living Memory
 
@@ -82,7 +82,7 @@ Last activity: 2026-02-26 - Completed 11-05-PLAN.md (PrivatePaymentModal DB-firs
 
 ### Context
 
-**PHASE 11 IN PROGRESS** (Plan 2 of 4 complete)
+**PHASE 11 IN PROGRESS** (Plans 01, 02, 04, 05 complete; 11-03 outstanding)
 
 - 09-01 COMPLETE: Shared components and escrow helpers
   - escrowHelpers.js: Phase enum, getProductState (with memoHash/railgunTxRef), detectRole
@@ -113,7 +113,7 @@ Last activity: 2026-02-26 - Completed 11-05-PLAN.md (PrivatePaymentModal DB-firs
   - priceWei useEffect: async IIFE with localStorage first, DB fallback
   - pending_private_payment_* lines untouched (ephemeral retry cache remains localStorage-only)
 
-Next: 11-03 (ProductFormStep3.jsx - save to API after escrow deploy)
+Next: 11-03 (ProductFormStep3.jsx - wire saveProductMeta after escrow deploy) — only remaining plan
 
 ## Roadmap Evolution
 
@@ -122,7 +122,7 @@ Next: 11-03 (ProductFormStep3.jsx - save to API after escrow deploy)
 ## Session Continuity
 
 - **Last session:** 2026-02-26
-- **Stopped at:** Completed 11-05-PLAN.md (PrivatePaymentModal DB-first resolution)
+- **Stopped at:** Completed 11-04-PLAN.md (ProductDetail.jsx DB-first wiring)
 - **Next:** 11-03 (ProductFormStep3.jsx - wire saveProductMeta after escrow deploy)
 - **Resume file:** None
 
@@ -130,6 +130,8 @@ Next: 11-03 (ProductFormStep3.jsx - save to API after escrow deploy)
 
 | Hash | Message |
 |------|---------|
+| 5cae1ba5 | feat(11-04): update vcCid write sites to also call updateVcCid |
+| 3ebaa7a3 | feat(11-04): update read sites - DB-first vcCid useEffect and handleConfirmOrder productMeta |
 | 9ade14e2 | feat(11-05): wire PrivatePaymentModal to resolve metadata from DB |
 | cb901612 | feat(11-02): create productMetaApi.js frontend utility |
 | 14e9242e | feat(11-01): fix CORS and add metadata REST endpoints to server.js |
@@ -217,6 +219,7 @@ Next: 11-03 (ProductFormStep3.jsx - save to API after escrow deploy)
 **SQLite Metadata Persistence:**
 - Plan 1 COMPLETE: better-sqlite3 installed, db.js singleton, CORS fix (GET+PATCH), three metadata REST endpoints
 - Plan 2 COMPLETE: productMetaApi.js with saveProductMeta/getProductMeta/updateVcCid, null-return read contract, throw-on-failure write contract
+- Plan 4 COMPLETE: ProductDetail.jsx wired DB-first reads (vcCid, productMeta, sellerRailgunAddress) + non-blocking updateVcCid writes after IPFS upload and manual audit CID entry
 - Plan 5 COMPLETE: PrivatePaymentModal.jsx wired with DB-first resolution for sellerRailgunAddress (3-step) and priceWei (2-step with async IIFE); cross-device buying enabled
 
 ---
