@@ -5,12 +5,12 @@
 ## Current Position
 
 - **Phase:** 11 of 11 (SQLite Metadata Persistence)
-- **Plan:** 2 of 4 in phase
-- **Status:** In progress (Phase 11 Plan 02 complete)
+- **Plan:** 5 of 5 in phase (wave 3 plan)
+- **Status:** In progress (Phase 11 Plans 01, 02, 05 complete)
 
-Progress: [█████████████████████████████████░] ~96% (23/27 plans complete)
+Progress: [█████████████████████████████████░] ~96% (24/27 plans complete)
 
-Last activity: 2026-02-26 - Completed 11-02-PLAN.md (productMetaApi.js frontend utility)
+Last activity: 2026-02-26 - Completed 11-05-PLAN.md (PrivatePaymentModal DB-first resolution)
 
 ## Living Memory
 
@@ -63,6 +63,9 @@ Last activity: 2026-02-26 - Completed 11-02-PLAN.md (productMetaApi.js frontend 
 | null-return-read-contract | getProductMeta returns null for 404 and network errors instead of throwing | Enables localStorage fallback at call site without try/catch boilerplate | 11-02 |
 | throw-write-contract | saveProductMeta and updateVcCid throw on failure | Write errors must be surfaced; silently swallowing would leave DB and UI out of sync | 11-02 |
 | module-level-BACKEND_URL | REACT_APP_BACKEND_URL env var with http://localhost:5000 default at module level | No prop drilling from App.js; matches verifyVc.js pattern | 11-02 |
+| db-as-step-3 | DB lookup is step 3 in resolveSellerRailgunAddress (after two localStorage paths) | Seller's own device never hits API; only cross-device buyers reach DB call | 11-05 |
+| session-cache-db-result | DB-returned sellerRailgunAddress cached to localStorage after DB hit | Subsequent modal opens in same session use fast localStorage path | 11-05 |
+| async-iife-useeffect | priceWei useEffect uses (async () => {})() pattern | useEffect callbacks cannot be declared async directly | 11-05 |
 
 ### Issues Log
 
@@ -103,6 +106,13 @@ Last activity: 2026-02-26 - Completed 11-02-PLAN.md (productMetaApi.js frontend 
   - saveProductMeta and updateVcCid throw on failure - write errors surfaced
   - BACKEND_URL from REACT_APP_BACKEND_URL env var with http://localhost:5000 default
 
+- 11-05 COMPLETE: PrivatePaymentModal.jsx DB-first resolution
+  - Added getProductMeta import from productMetaApi.js
+  - resolveSellerRailgunAddress: 3-step resolution (localStorage direct, localStorage meta, DB)
+  - DB result cached to localStorage for session performance
+  - priceWei useEffect: async IIFE with localStorage first, DB fallback
+  - pending_private_payment_* lines untouched (ephemeral retry cache remains localStorage-only)
+
 Next: 11-03 (ProductFormStep3.jsx - save to API after escrow deploy)
 
 ## Roadmap Evolution
@@ -112,7 +122,7 @@ Next: 11-03 (ProductFormStep3.jsx - save to API after escrow deploy)
 ## Session Continuity
 
 - **Last session:** 2026-02-26
-- **Stopped at:** Completed 11-02-PLAN.md (productMetaApi.js frontend utility)
+- **Stopped at:** Completed 11-05-PLAN.md (PrivatePaymentModal DB-first resolution)
 - **Next:** 11-03 (ProductFormStep3.jsx - wire saveProductMeta after escrow deploy)
 - **Resume file:** None
 
@@ -120,6 +130,7 @@ Next: 11-03 (ProductFormStep3.jsx - save to API after escrow deploy)
 
 | Hash | Message |
 |------|---------|
+| 9ade14e2 | feat(11-05): wire PrivatePaymentModal to resolve metadata from DB |
 | cb901612 | feat(11-02): create productMetaApi.js frontend utility |
 | 14e9242e | feat(11-01): fix CORS and add metadata REST endpoints to server.js |
 | d8344100 | feat(11-01): install better-sqlite3 and create db.js |
@@ -206,7 +217,8 @@ Next: 11-03 (ProductFormStep3.jsx - save to API after escrow deploy)
 **SQLite Metadata Persistence:**
 - Plan 1 COMPLETE: better-sqlite3 installed, db.js singleton, CORS fix (GET+PATCH), three metadata REST endpoints
 - Plan 2 COMPLETE: productMetaApi.js with saveProductMeta/getProductMeta/updateVcCid, null-return read contract, throw-on-failure write contract
+- Plan 5 COMPLETE: PrivatePaymentModal.jsx wired with DB-first resolution for sellerRailgunAddress (3-step) and priceWei (2-step with async IIFE); cross-device buying enabled
 
 ---
 
-*Last updated: 2026-02-26T11:28Z*
+*Last updated: 2026-02-26T11:33Z*
