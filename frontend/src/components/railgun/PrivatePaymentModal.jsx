@@ -14,6 +14,7 @@ import {
   privateTransfer,
   checkWalletState,
 } from "../../lib/railgun-clean";
+import { getProductMeta } from "../../utils/productMetaApi";
 
 const SEPOLIA_WETH_ADDRESS =
   NETWORK_CONFIG[NetworkName.EthereumSepolia]?.baseToken?.wrappedAddress ||
@@ -120,6 +121,8 @@ const PrivatePaymentModal = ({
 
   const resolveSellerRailgunAddress = useCallback(async () => {
     if (!product?.address) return null;
+
+    // 1) localStorage fast path (same device as seller — most common case)
     const existing = findLocalStorageValueByAddress(
       "sellerRailgunAddress_",
       product?.address
@@ -128,6 +131,7 @@ const PrivatePaymentModal = ({
       return existing;
     }
 
+    // 2) Extract from localStorage productMeta (legacy same-device path)
     const rawMeta = findLocalStorageValueByAddress("productMeta_", product?.address);
     if (rawMeta) {
       try {
@@ -138,8 +142,20 @@ const PrivatePaymentModal = ({
           return resolved;
         }
       } catch {
-        // ignore invalid metadata and fall through to manual input
+        // ignore invalid metadata
       }
+    }
+
+    // 3) DB lookup — cross-device path (buyer on different device)
+    // getProductMeta returns null for 404 or network errors (never throws)
+    const dbData = await getProductMeta(product.address);
+    if (dbData?.sellerRailgunAddress?.startsWith("0zk")) {
+      // Cache locally so subsequent calls in this session are fast
+      localStorage.setItem(
+        `sellerRailgunAddress_${product.address}`,
+        dbData.sellerRailgunAddress
+      );
+      return dbData.sellerRailgunAddress;
     }
 
     return null;
@@ -314,14 +330,29 @@ const PrivatePaymentModal = ({
     if (!isOpen || !product?.address) return;
     if (amount) return;
 
-    const priceWei = findLocalStorageValueByAddress("priceWei_", product.address);
-    if (priceWei) {
-      try {
-        setAmount(ethers.formatEther(BigInt(priceWei)));
-      } catch {
-        // ignore malformed legacy value
+    (async () => {
+      // 1) localStorage fast path
+      const priceWei = findLocalStorageValueByAddress("priceWei_", product.address);
+      if (priceWei) {
+        try {
+          setAmount(ethers.formatEther(BigInt(priceWei)));
+          return;
+        } catch {
+          // ignore malformed legacy value, fall through to DB
+        }
       }
-    }
+
+      // 2) DB lookup for priceWei (cross-device path)
+      // getProductMeta returns null on 404 or network error — no throw
+      const dbData = await getProductMeta(product.address);
+      if (dbData?.priceWei) {
+        try {
+          setAmount(ethers.formatEther(BigInt(dbData.priceWei)));
+        } catch {
+          // ignore malformed DB value
+        }
+      }
+    })();
   }, [amount, findLocalStorageValueByAddress, isOpen, product?.address]);
 
   const handleConnect = async () => {
