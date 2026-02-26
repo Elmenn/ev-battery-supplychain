@@ -5,12 +5,12 @@
 ## Current Position
 
 - **Phase:** 11 of 11 (SQLite Metadata Persistence)
-- **Plan:** 1 of 4 in phase
-- **Status:** In progress (Phase 11 Plan 01 complete)
+- **Plan:** 2 of 4 in phase
+- **Status:** In progress (Phase 11 Plan 02 complete)
 
-Progress: [████████████████████████████████░░] ~96% (22/26 plans complete)
+Progress: [█████████████████████████████████░] ~96% (23/27 plans complete)
 
-Last activity: 2026-02-26 - Completed 11-01-PLAN.md (SQLite backend + CORS + metadata REST endpoints)
+Last activity: 2026-02-26 - Completed 11-02-PLAN.md (productMetaApi.js frontend utility)
 
 ## Living Memory
 
@@ -60,6 +60,9 @@ Last activity: 2026-02-26 - Completed 11-01-PLAN.md (SQLite backend + CORS + met
 | address-normalise-lowercase | All route handlers lowercase :address before DB ops | Eliminates case-sensitive mismatch from findLocalStorageValueByAddress pattern | 11-01 |
 | prepared-statements-at-startup | stmtUpsert, stmtGet, stmtUpdateVcCid prepared once after app init | Avoids re-parsing SQL on every request | 11-01 |
 | db-path-env-override | DB_PATH from process.env.DB_PATH with default relative path | Allows Docker/production override without code changes | 11-01 |
+| null-return-read-contract | getProductMeta returns null for 404 and network errors instead of throwing | Enables localStorage fallback at call site without try/catch boilerplate | 11-02 |
+| throw-write-contract | saveProductMeta and updateVcCid throw on failure | Write errors must be surfaced; silently swallowing would leave DB and UI out of sync | 11-02 |
+| module-level-BACKEND_URL | REACT_APP_BACKEND_URL env var with http://localhost:5000 default at module level | No prop drilling from App.js; matches verifyVc.js pattern | 11-02 |
 
 ### Issues Log
 
@@ -76,7 +79,7 @@ Last activity: 2026-02-26 - Completed 11-01-PLAN.md (SQLite backend + CORS + met
 
 ### Context
 
-**PHASE 11 IN PROGRESS** (Plan 1 of 4 complete)
+**PHASE 11 IN PROGRESS** (Plan 2 of 4 complete)
 
 - 09-01 COMPLETE: Shared components and escrow helpers
   - escrowHelpers.js: Phase enum, getProductState (with memoHash/railgunTxRef), detectRole
@@ -94,7 +97,13 @@ Last activity: 2026-02-26 - Completed 11-01-PLAN.md (SQLite backend + CORS + met
   - backend/api/server.js: CORS updated (GET+PATCH added), POST/GET/PATCH /metadata routes, prepared statements at startup
   - All addresses normalised to lowercase server-side; DB file auto-created at backend/api/data/metadata.sqlite
 
-Next: 11-02 (productMetaApi.js frontend utility)
+- 11-02 COMPLETE: productMetaApi.js frontend utility
+  - frontend/src/utils/productMetaApi.js: saveProductMeta, getProductMeta, updateVcCid
+  - getProductMeta returns null (not throw) for 404 and network errors - localStorage fallback contract
+  - saveProductMeta and updateVcCid throw on failure - write errors surfaced
+  - BACKEND_URL from REACT_APP_BACKEND_URL env var with http://localhost:5000 default
+
+Next: 11-03 (ProductFormStep3.jsx - save to API after escrow deploy)
 
 ## Roadmap Evolution
 
@@ -103,14 +112,15 @@ Next: 11-02 (productMetaApi.js frontend utility)
 ## Session Continuity
 
 - **Last session:** 2026-02-26
-- **Stopped at:** Completed 11-01-PLAN.md (SQLite backend + CORS + metadata REST endpoints)
-- **Next:** 11-02 (productMetaApi.js frontend utility with localStorage fallback)
+- **Stopped at:** Completed 11-02-PLAN.md (productMetaApi.js frontend utility)
+- **Next:** 11-03 (ProductFormStep3.jsx - wire saveProductMeta after escrow deploy)
 - **Resume file:** None
 
 ## Commits This Session
 
 | Hash | Message |
 |------|---------|
+| cb901612 | feat(11-02): create productMetaApi.js frontend utility |
 | 14e9242e | feat(11-01): fix CORS and add metadata REST endpoints to server.js |
 | d8344100 | feat(11-01): install better-sqlite3 and create db.js |
 
@@ -195,7 +205,8 @@ Next: 11-02 (productMetaApi.js frontend utility)
 
 **SQLite Metadata Persistence:**
 - Plan 1 COMPLETE: better-sqlite3 installed, db.js singleton, CORS fix (GET+PATCH), three metadata REST endpoints
+- Plan 2 COMPLETE: productMetaApi.js with saveProductMeta/getProductMeta/updateVcCid, null-return read contract, throw-on-failure write contract
 
 ---
 
-*Last updated: 2026-02-17T16:21Z*
+*Last updated: 2026-02-26T11:28Z*
