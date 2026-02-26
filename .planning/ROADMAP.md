@@ -2,7 +2,7 @@
 
 **Milestone:** v1.0-railgun-fix
 **Created:** 2026-01-20
-**Updated:** 2026-02-18
+**Updated:** 2026-02-26
 
 ## Goal
 
@@ -318,6 +318,25 @@ Plans:
 
 ---
 
+## Phase 11: SQLite Metadata Persistence
+
+**Goal:** Replace localStorage product metadata with a SQLite backend so sellers, buyers, transporters, and auditors can operate from any device/browser.
+
+**Depends on:** Phase 10
+**Plans:** 5 plans
+
+Plans:
+- [ ] 11-01-PLAN.md — Backend: install better-sqlite3, create db.js, fix CORS (add GET/PATCH), add POST/GET/PATCH metadata routes
+- [ ] 11-02-PLAN.md — Frontend utility: create productMetaApi.js (saveProductMeta, getProductMeta, updateVcCid)
+- [ ] 11-03-PLAN.md — Wire ProductFormStep3.jsx: call saveProductMeta after product creation (keep localStorage as cache)
+- [ ] 11-04-PLAN.md — Wire ProductDetail.jsx: DB-first reads for vcCid/productMeta; updateVcCid after IPFS upload
+- [ ] 11-05-PLAN.md — Wire PrivatePaymentModal.jsx: DB-first resolve for sellerRailgunAddress and priceWei
+
+**Details:**
+Currently all product listing metadata (productMeta, priceWei, priceCommitment, sellerRailgunAddress, vcCid) is stored in browser localStorage, making the app single-device only. This phase moves that data to a SQLite DB on the backend, exposed via new REST endpoints, so any user on any device can participate in the flow.
+
+---
+
 ## Phase Dependencies
 
 ```
@@ -330,6 +349,8 @@ Phase 8 (Single VC Architecture) ✓
 Phase 9 (UI Rework) ✓
     |
 Phase 10 (Cleanup & E2E)
+    |
+Phase 11 (SQLite Metadata Persistence)
 ```
 
 Note: Phase 8 (VC) could partially overlap with Phase 7 (Contract) since VC schema design is independent of contract implementation. Details during planning.
@@ -357,4 +378,4 @@ Note: Phase 8 (VC) could partially overlap with Phase 7 (Contract) since VC sche
 
 ---
 
-*Created: 2026-01-20 | Updated: 2026-02-18 | Milestone: v1.0-railgun-fix*
+*Created: 2026-01-20 | Updated: 2026-02-26 | Milestone: v1.0-railgun-fix*
