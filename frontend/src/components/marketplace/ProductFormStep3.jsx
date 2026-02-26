@@ -4,6 +4,7 @@ import { ethers, getAddress, isAddress } from "ethers";
 import ProductFactoryABI from "../../abis/ProductFactory.json";
 import ProductEscrowABI from "../../abis/ProductEscrow_Initializer.json";
 import { generateCommitmentWithBindingTag } from "../../utils/commitmentUtils";
+import { saveProductMeta } from "../../utils/productMetaApi";
 
 // Copyable component for CIDs
 function truncate(text, length = 12) {
@@ -294,6 +295,23 @@ const ProductFormStep3 = ({ onNext, productData, backendUrl }) => {
         });
       } else {
         console.log('[Flow][Seller] Step 8 -> No Railgun metadata provided for product:', productAddress);
+      }
+
+      // Persist metadata to backend DB for cross-device access.
+      // localStorage writes above remain as local cache (belt-and-suspenders).
+      // Fire-and-forget with error logging — DB failure must NOT block the seller flow.
+      // sellerWalletID is intentionally excluded: the seller re-derives it from their wallet on any device.
+      try {
+        await saveProductMeta({
+          productAddress: validatedProductAddress,
+          productMeta: listingMeta,
+          priceWei: price.toString(),
+          priceCommitment: pedersenCommitment,
+          sellerRailgunAddress: sellerRailgunAddress || '',
+        });
+        console.log('[Flow][Seller] Step 8 -> Metadata saved to backend DB for product:', validatedProductAddress);
+      } catch (dbErr) {
+        console.warn('[Flow][Seller] Step 8 -> Backend DB save failed (localStorage still has data):', dbErr.message);
       }
 
     } catch (err) {
