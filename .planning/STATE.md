@@ -1,16 +1,16 @@
 # Project State
 
-**Updated:** 2026-02-17
+**Updated:** 2026-02-26
 
 ## Current Position
 
-- **Phase:** 9 of 10 (UI Rework)
-- **Plan:** 6 of 6 in phase
-- **Status:** Phase 9 complete (all 6 plans verified)
+- **Phase:** 11 of 11 (SQLite Metadata Persistence)
+- **Plan:** 1 of 4 in phase
+- **Status:** In progress (Phase 11 Plan 01 complete)
 
-Progress: [████████████████████████████████░░] ~95% (21/22 plans complete)
+Progress: [████████████████████████████████░░] ~96% (22/26 plans complete)
 
-Last activity: 2026-02-18 - Phase 9 verified complete (27/27 must-haves)
+Last activity: 2026-02-26 - Completed 11-01-PLAN.md (SQLite backend + CORS + metadata REST endpoints)
 
 ## Living Memory
 
@@ -56,6 +56,10 @@ Last activity: 2026-02-18 - Phase 9 verified complete (27/27 must-haves)
 | bond-fetch-on-mount | Fetch bondAmount via read-only provider on component mount | User sees bond before deciding to proceed | 09-03 |
 | confirmation-modal-pattern | Two-step deployment: button shows modal, modal triggers transaction | Prevents accidental ETH locking | 09-03 |
 | v2-proof-array | Store issuer proof in VC proof array instead of proofs.issuerProof object | v2.0 schema uses proof array for append-only proofs | 09-03 |
+| sqlite-singleton-module | db.js exports one Database instance; server.js does require('./db') | Isolates DB init from routing logic, independently testable | 11-01 |
+| address-normalise-lowercase | All route handlers lowercase :address before DB ops | Eliminates case-sensitive mismatch from findLocalStorageValueByAddress pattern | 11-01 |
+| prepared-statements-at-startup | stmtUpsert, stmtGet, stmtUpdateVcCid prepared once after app init | Avoids re-parsing SQL on every request | 11-01 |
+| db-path-env-override | DB_PATH from process.env.DB_PATH with default relative path | Allows Docker/production override without code changes | 11-01 |
 
 ### Issues Log
 
@@ -72,7 +76,7 @@ Last activity: 2026-02-18 - Phase 9 verified complete (27/27 must-haves)
 
 ### Context
 
-**PHASE 9 IN PROGRESS** (Plans 1, 3 of 6 complete)
+**PHASE 11 IN PROGRESS** (Plan 1 of 4 complete)
 
 - 09-01 COMPLETE: Shared components and escrow helpers
   - escrowHelpers.js: Phase enum, getProductState (with memoHash/railgunTxRef), detectRole
@@ -84,23 +88,31 @@ Last activity: 2026-02-18 - Phase 9 verified complete (27/27 must-haves)
   - web3Utils: simplified confirmOrder(addr, vcCID), ethers-only (Web3.js removed)
   - Note: ProductDetail.jsx still passes stale 3rd arg to confirmOrder (harmless, future cleanup)
 
-Next: 09-04
+- 11-01 COMPLETE: SQLite backend + CORS fix + metadata REST endpoints
+  - better-sqlite3@12.6.2 installed
+  - backend/api/db.js: singleton Database, WAL mode, auto-creates data/ dir, product_metadata table
+  - backend/api/server.js: CORS updated (GET+PATCH added), POST/GET/PATCH /metadata routes, prepared statements at startup
+  - All addresses normalised to lowercase server-side; DB file auto-created at backend/api/data/metadata.sqlite
+
+Next: 11-02 (productMetaApi.js frontend utility)
+
+## Roadmap Evolution
+
+- Phase 11 added: SQLite metadata persistence for cross-device support (2026-02-26)
 
 ## Session Continuity
 
-- **Last session:** 2026-02-17
-- **Stopped at:** Completed 09-03-PLAN.md (Seller flow + web3Utils)
-- **Next:** 09-04
+- **Last session:** 2026-02-26
+- **Stopped at:** Completed 11-01-PLAN.md (SQLite backend + CORS + metadata REST endpoints)
+- **Next:** 11-02 (productMetaApi.js frontend utility with localStorage fallback)
 - **Resume file:** None
 
 ## Commits This Session
 
 | Hash | Message |
 |------|---------|
-| b5a98942 | feat(09-03): add bond disclosure and v2.0 VC to ProductFormStep3 |
-| ea503b8e | feat(09-03): simplify web3Utils for new contract interface |
-| 70e8f112 | feat(09-01): create escrowHelpers.js and install qrcode.react |
-| 25960e53 | feat(09-01): create shared UI components (PhaseTimeline, HashDisplay, CountdownTimer, BondCard) |
+| 14e9242e | feat(11-01): fix CORS and add metadata REST endpoints to server.js |
+| d8344100 | feat(11-01): install better-sqlite3 and create db.js |
 
 ## Phase 1 Summary
 
@@ -172,11 +184,17 @@ Next: 09-04
 - Deprecated stubs for backward compat
 - Full v1.0/v2.0 backward compatibility throughout
 
-## Phase 9 Summary (in progress)
+## Phase 9 Summary (partial - paused)
 
 **UI Rework:**
 - Plan 1 COMPLETE: escrowHelpers.js + shared components (PhaseTimeline, HashDisplay, CountdownTimer, BondCard)
 - Plan 3 COMPLETE: ProductFormStep3 bond disclosure + createListingVC v2.0, web3Utils ethers-only
+- Plans 2, 4, 5, 6: not yet executed (superseded by Phase 11 priority)
+
+## Phase 11 Summary (in progress)
+
+**SQLite Metadata Persistence:**
+- Plan 1 COMPLETE: better-sqlite3 installed, db.js singleton, CORS fix (GET+PATCH), three metadata REST endpoints
 
 ---
 
