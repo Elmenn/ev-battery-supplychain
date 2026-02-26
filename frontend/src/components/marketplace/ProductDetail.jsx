@@ -255,6 +255,13 @@ const ProductDetail = ({ provider, currentUser }) => {
       toast("Uploading VC to IPFS...");
       const newCid = await uploadJson(finalVc);
       localStorage.setItem(`vcCid_${address}`, newCid);
+      // Persist vcCid to backend DB so auditors/buyers can verify from any device.
+      // Wrapped in try/catch: DB failure must NOT prevent the on-chain confirmOrder from proceeding.
+      try {
+        await updateVcCid(address, newCid);
+      } catch (dbErr) {
+        console.warn('Failed to update vcCid in backend DB:', dbErr.message);
+      }
 
       // 3) Confirm on-chain
       toast("Confirming order on-chain...");
@@ -342,6 +349,12 @@ const ProductDetail = ({ provider, currentUser }) => {
       const vc = await fetchVCFromServer(cid);
       setAuditVC(vc);
       localStorage.setItem(`vcCid_${address}`, cid);
+      // Persist auditor-entered CID to backend DB for cross-device audit access.
+      try {
+        await updateVcCid(address, cid);
+      } catch (dbErr) {
+        console.warn('Failed to update vcCid in backend DB (audit):', dbErr.message);
+      }
       toast.success("VC loaded for audit.");
     } catch (err) {
       setAuditVC(null);
