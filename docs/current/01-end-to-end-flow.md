@@ -1,6 +1,7 @@
 ﻿# End-to-End Flow (Current Implementation)
 
 This document describes only the active private FCFS flow currently implemented.
+For DID signing/verification standards mapping, see `docs/current/04-did-signing-and-verification-standards.md`.
 
 ## Scope
 - Network: Sepolia

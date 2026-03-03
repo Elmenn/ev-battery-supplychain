@@ -57,6 +57,10 @@ copy .env.example .env     # Windows
 - **`REACT_APP_ZKP_BACKEND_URL`**: ZKP backend service URL
   - Default: `http://localhost:5010`
   - Make sure the ZKP backend is running if you need ZKP verification
+- **`REACT_APP_ZKP_MODE`**: ZKP execution mode
+  - Values: `backend` (default), `wasm`, `shadow`
+  - Use `shadow` to compare wasm path while keeping backend authoritative
+  - If using `wasm`/`shadow`, build artifacts into `public/wasm/zkp-wasm/` with `npm run zkp:wasm:build`
 
 #### Optional Variables:
 - **`REACT_APP_RAILGUN_API_URL`**: Railgun backend URL (for private payments)
@@ -206,6 +210,7 @@ REACT_APP_PINATA_JWT=your-actual-jwt-token-here
 
 # ZKP Backend
 REACT_APP_ZKP_BACKEND_URL=http://localhost:5010
+REACT_APP_ZKP_MODE=backend
 
 # Optional: Railgun
 REACT_APP_RAILGUN_API_URL=http://localhost:3001

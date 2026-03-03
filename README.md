@@ -17,7 +17,8 @@ Privacy-preserving EV battery marketplace prototype with:
 Reference docs:
 - `docs/current/01-end-to-end-flow.md`
 - `docs/current/02-railgun-integration.md`
-- `docs/current/03-auditor-verification.md`
+- `docs/current/03-auditor-verification.md` (includes dedicated DID signing/verification section `1.1`)
+- `docs/current/04-did-signing-and-verification-standards.md` (standards mapping and compliance statement)
 
 ## Prerequisites
 - Node.js 18+
@@ -139,7 +140,11 @@ cargo test
 5. Governance consistency
 6. Chain-wide on-chain anchors
 
+Signature check uses EIP-712 recovery plus `did:ethr` registry-based DID resolution.
+
 Details: `docs/current/03-auditor-verification.md`
+Standards subsection in auditor doc: `docs/current/03-auditor-verification.md` (`Standards Basis`)
+Standards basis: `docs/current/04-did-signing-and-verification-standards.md`
 
 ## 9) QR Delivery Hash Behavior
 - UI shows plain delivery hash (`vcHash`) and QR code.
@@ -151,4 +156,3 @@ Details: `docs/current/01-end-to-end-flow.md`
 ## 10) Notes
 - Keep `.env` files and local DB files out of git.
 - Rotate any token immediately if exposed.
-

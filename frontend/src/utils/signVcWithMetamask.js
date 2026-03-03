@@ -204,7 +204,7 @@ async function signPayload(vc, signer, role = "holder", contractAddress = null) 
     type: "EcdsaSecp256k1Signature2019",
     created: new Date().toISOString(),
     proofPurpose: "assertionMethod",
-    verificationMethod: `did:ethr:${configuredChainId}:${signerAddress.toLowerCase()}`,
+    verificationMethod: `did:ethr:${configuredChainId}:${signerAddress.toLowerCase()}#controller`,
     jws: signature,
     payloadHash,
     role,

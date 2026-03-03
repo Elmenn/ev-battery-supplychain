@@ -1,4 +1,8 @@
 import { getAddress, solidityPackedKeccak256 } from "ethers";
+import {
+  generateValueCommitmentWithBinding,
+  generateValueCommitmentWithBlinding,
+} from "./zkp/zkpClient";
 
 /**
  * Generate deterministic blinding factor for Pedersen commitment
@@ -53,22 +57,11 @@ export async function generateCommitmentWithDeterministicBlinding(
     throw new Error(`Invalid value: ${value}. Must be a valid u64 number`);
   }
 
-  // Call ZKP backend with value and blinding
-  const response = await fetch(`${zkpBackendUrl}/zkp/generate-value-commitment-with-blinding`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      value: valueNum,
-      blinding_hex: `0x${blindingHex}`,
-    }),
+  const data = await generateValueCommitmentWithBlinding({
+    value: valueNum,
+    blindingHex: `0x${blindingHex}`,
+    zkpBackendUrl,
   });
-
-  if (!response.ok) {
-    const errorText = await response.text();
-    throw new Error(`ZKP backend error: ${errorText}`);
-  }
-
-  const data = await response.json();
   return {
     commitment: data.commitment,
     proof: data.proof,
@@ -121,23 +114,12 @@ export async function generateCommitmentWithBindingTag(
     throw new Error(`Invalid value: ${value}. Must be a valid u64 number`);
   }
 
-  // Call ZKP backend with value, blinding, and binding tag
-  const response = await fetch(`${zkpBackendUrl}/zkp/generate-value-commitment-with-binding`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      value: valueNum,
-      blinding_hex: `0x${blindingHex}`,
-      binding_tag_hex: `0x${bindingTag}`,
-    }),
+  const data = await generateValueCommitmentWithBinding({
+    value: valueNum,
+    blindingHex: `0x${blindingHex}`,
+    bindingTagHex: `0x${bindingTag}`,
+    zkpBackendUrl,
   });
-
-  if (!response.ok) {
-    const errorText = await response.text();
-    throw new Error(`ZKP backend error: ${errorText}`);
-  }
-
-  const data = await response.json();
   return {
     commitment: data.commitment,
     proof: data.proof,
@@ -310,4 +292,3 @@ export function generateTxHashCommitmentBindingTag({
   // Remove 0x prefix and return as hex string (64 chars)
   return bindingTag.slice(2);
 }
-

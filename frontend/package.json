@@ -48,6 +48,8 @@
     "start": "react-app-rewired start",
     "start:sepolia": "copy .env.sepolia .env && react-app-rewired start",
     "start:ganache": "copy .env.ganache .env && react-app-rewired start",
+    "zkp:wasm:build": "wasm-pack build ../zkp-backend/zkp-wasm --target web --out-dir ../../frontend/public/wasm/zkp-wasm --out-name zkp_wasm --release",
+    "zkp:wasm:dev-build": "wasm-pack build ../zkp-backend/zkp-wasm --target web --out-dir ../../frontend/public/wasm/zkp-wasm --out-name zkp_wasm --dev",
     "build": "react-app-rewired build",
     "test": "react-app-rewired test",
     "eject": "react-scripts eject"

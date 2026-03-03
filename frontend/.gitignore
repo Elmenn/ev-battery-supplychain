@@ -10,6 +10,9 @@
 
 # production
 /build
+/public/wasm/zkp-wasm/*.js
+/public/wasm/zkp-wasm/*.wasm
+!/public/wasm/zkp-wasm/README.md
 
 # misc
 .DS_Store

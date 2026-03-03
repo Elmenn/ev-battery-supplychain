@@ -39,6 +39,7 @@ See the main [README.md](../README.md) for full setup instructions. Key requirem
    # - REACT_APP_PINATA_JWT (get from https://www.pinata.cloud/)
    # - REACT_APP_FACTORY_ADDRESS (after contract deployment)
    # - REACT_APP_ZKP_BACKEND_URL (default: http://localhost:5010)
+   # - REACT_APP_ZKP_MODE (backend | wasm | shadow, default: backend)
    
    # Copy to .env
    copy .env.ganache .env     # Windows
@@ -120,6 +121,7 @@ Required environment variables (see `.env.example` for full list):
 | `REACT_APP_FACTORY_ADDRESS` | ProductFactory contract address | ✅ Yes |
 | `REACT_APP_PINATA_JWT` | Pinata API JWT token for IPFS | ✅ Yes |
 | `REACT_APP_ZKP_BACKEND_URL` | ZKP backend service URL | ✅ Yes |
+| `REACT_APP_ZKP_MODE` | ZKP execution mode (`backend`, `wasm`, `shadow`) | ❌ Optional |
 | `REACT_APP_RPC_URL` | Ethereum RPC endpoint | ✅ Yes |
 | `REACT_APP_CHAIN_ID` | Ethereum chain ID | ✅ Yes |
 | `REACT_APP_RAILGUN_API_URL` | Railgun backend URL | ❌ Optional |
@@ -168,6 +170,19 @@ Products can reference component VCs via `componentCredentials` array:
 ### ZKP verification fails
 - Ensure ZKP backend is running: `cd ../zkp-backend && cargo run`
 - Verify `REACT_APP_ZKP_BACKEND_URL` in `.env` points to the backend (default: `http://localhost:5010`)
+- If testing parallel mode, use `REACT_APP_ZKP_MODE=shadow` to keep backend as source of truth while comparing against wasm
+
+### Testing WASM ZKP mode
+- Install wasm tooling once: `cargo install wasm-pack`
+- Install wasm target once: `rustup target add wasm32-unknown-unknown`
+- Build browser artifacts from `frontend/`:
+  - Dev build: `npm run zkp:wasm:dev-build`
+  - Release build: `npm run zkp:wasm:build`
+- WASM prove/verify runs inside `public/wasmZkpWorker.js` to avoid blocking the UI thread
+- Set mode in `.env`:
+  - `REACT_APP_ZKP_MODE=shadow` (recommended first)
+  - `REACT_APP_ZKP_MODE=wasm` (only after validation)
+- Artifacts are loaded from `public/wasm/zkp-wasm/`.
 
 ### Environment variables not updating
 - React apps read environment variables at build time

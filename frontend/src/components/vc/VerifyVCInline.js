@@ -3,6 +3,7 @@ import { ethers } from "ethers";
 
 import { verifyVCWithServer, verifyVCChainWithServer } from "../../utils/verifyVc";
 import { extractZKPProof } from "../../utils/verifyZKP";
+import { verifyProofByEndpoint } from "../../utils/zkp/zkpClient";
 
 import VCViewer from "./VCViewer";
 import VerificationBox from "./VerifyVCTab-Enhanced";
@@ -76,12 +77,14 @@ const VerifyVCInline = ({ vc, cid, provider, contractAddress }) => {
         ...(bindingTag ? { binding_tag_hex: bindingTag } : {}),
       };
 
-      const res = await fetch(`${zkpBackendUrl}/zkp/${endpoint}`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(requestBody),
+      const data = await verifyProofByEndpoint({
+        endpoint,
+        commitment: requestBody.commitment,
+        proof: requestBody.proof,
+        bindingTagHex: requestBody.binding_tag_hex,
+        zkpBackendUrl,
       });
-      const data = await res.json();
+
       setZkpResult(data);
     } catch (err) {
       setZkpResult({ verified: false, error: err.message || "Error verifying ZKP." });
