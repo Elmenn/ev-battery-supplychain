@@ -376,6 +376,16 @@ Note: Phase 8 (VC) could partially overlap with Phase 7 (Contract) since VC sche
 4. **Contract migration** — Existing deployed products will use old contract; new products use new contract
 5. **Single VC complexity** — Append-only VC needs careful schema design to avoid bloat
 
+### Phase 12: Buyer Attestation + Deferred Equality Proving
+
+**Goal:** [To be planned]
+**Requirements**: TBD
+**Depends on:** Phase 11
+**Plans:** 0 plans
+
+Plans:
+- [ ] TBD (run /gsd:plan-phase 12 to break down)
+
 ---
 
 *Created: 2026-01-20 | Updated: 2026-02-26 | Milestone: v1.0-railgun-fix*

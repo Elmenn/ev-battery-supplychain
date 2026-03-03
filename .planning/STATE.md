@@ -142,6 +142,7 @@ All Phase 11 plans complete. Cross-device metadata persistence fully wired.
 ## Roadmap Evolution
 
 - Phase 11 added: SQLite metadata persistence for cross-device support (2026-02-26)
+- Phase 12 added: Buyer Attestation + Deferred Equality Proving (2026-03-03)
 
 ## Session Continuity
 
