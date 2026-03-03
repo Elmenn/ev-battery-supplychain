@@ -2,7 +2,7 @@
 
 **Milestone:** v1.0-railgun-fix
 **Created:** 2026-01-20
-**Updated:** 2026-02-26
+**Updated:** 2026-03-03
 
 ## Goal
 
@@ -351,6 +351,8 @@ Phase 9 (UI Rework) ✓
 Phase 10 (Cleanup & E2E)
     |
 Phase 11 (SQLite Metadata Persistence)
+    |
+Phase 12 (Buyer Attestation + Deferred Equality Proving)
 ```
 
 Note: Phase 8 (VC) could partially overlap with Phase 7 (Contract) since VC schema design is independent of contract implementation. Details during planning.
@@ -378,14 +380,20 @@ Note: Phase 8 (VC) could partially overlap with Phase 7 (Contract) since VC sche
 
 ### Phase 12: Buyer Attestation + Deferred Equality Proving
 
-**Goal:** [To be planned]
-**Requirements**: TBD
+**Goal:** After private Railgun payment completes, buyer publishes C_pay + x25519 disclosure pubkey; seller encrypts {value, blinding_price} to buyer at confirmOrder via x25519 ECIES; buyer can locally verify exact price (Workstream A) and generate a Schnorr sigma equality proof that C_price and C_pay commit to the same value (Workstream B); auditor verifies full bundle via VerifyVCInline/VCViewer.
+**Requirements:** none (derived from phase goal)
 **Depends on:** Phase 11
-**Plans:** 0 plans
+**Plans:** 7 plans
 
 Plans:
-- [ ] TBD (run /gsd:plan-phase 12 to break down)
+- [ ] 12-01-PLAN.md — DB schema (buyer_secrets table) + 4 REST routes (POST, GET, 2x PATCH)
+- [ ] 12-02-PLAN.md — Rust equality_proof.rs (Chaum-Pedersen DLEQ) + 2 ZKP endpoints
+- [ ] 12-03-PLAN.md — Frontend utilities: ecies.js (x25519 ECIES) + buyerSecretApi.js (REST client)
+- [ ] 12-04-PLAN.md — Frontend utilities: vcBuilder.mjs appendAttestationData + commitmentUtils extensions + equalityProofClient.js
+- [ ] 12-05-PLAN.md — PrivatePaymentModal write path: keypair gen + blob encryption + attestation VC write
+- [ ] 12-06-PLAN.md — ProductDetail.handleConfirmOrder: ECIES encryption + encryptedOpening into VC
+- [ ] 12-07-PLAN.md — ProductDetail buyer panel (Workstream A+B) + VerifyVCInline equality proof status card
 
 ---
 
-*Created: 2026-01-20 | Updated: 2026-02-26 | Milestone: v1.0-railgun-fix*
+*Created: 2026-01-20 | Updated: 2026-03-03 | Milestone: v1.0-railgun-fix*
