@@ -3,8 +3,8 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: executing
-stopped_at: Completed 12-01-PLAN.md (buyer_secrets table + REST API)
-last_updated: "2026-03-04T10:50:53.953Z"
+stopped_at: Completed 12-02-PLAN.md (equality_proof.rs + actix-web endpoints)
+last_updated: "2026-03-04T10:51:13.075Z"
 last_activity: 2026-03-04 - Completed 12-01-PLAN.md (buyer_secrets table + REST API)
 progress:
   total_phases: 12
@@ -21,12 +21,12 @@ progress:
 ## Current Position
 
 - **Phase:** 12 of 12 (Buyer Attestation + Deferred Equality Proving)
-- **Plan:** 1 of 7 in phase (12-01 complete)
+- **Plan:** 2 of 7 in phase (12-02 complete)
 - **Status:** In Progress
 
-Progress: [███████░░░] ~67% (26/39 plans complete)
+Progress: [███████░░░] 69% (27/39 plans complete)
 
-Last activity: 2026-03-04 - Completed 12-01-PLAN.md (buyer_secrets table + REST API)
+Last activity: 2026-03-04 - Completed 12-02-PLAN.md (equality_proof.rs + actix-web endpoints)
 
 ## Living Memory
 
@@ -82,6 +82,10 @@ Last activity: 2026-03-04 - Completed 12-01-PLAN.md (buyer_secrets table + REST 
 | db-as-step-3 | DB lookup is step 3 in resolveSellerRailgunAddress (after two localStorage paths) | Seller's own device never hits API; only cross-device buyers reach DB call | 11-05 |
 | session-cache-db-result | DB-returned sellerRailgunAddress cached to localStorage after DB hit | Subsequent modal opens in same session use fast localStorage path | 11-05 |
 | async-iife-useeffect | priceWei useEffect uses (async () => {})() pattern | useEffect callbacks cannot be declared async directly | 11-05 |
+| merlin-transcript-fixed-order | Transcript order context->C_price->C_pay->R->challenge must be identical in prove and verify | Any deviation breaks Fiat-Shamir binding and causes verify to return false | 12-02 |
+| self-verify-in-generate | prove_equality immediately followed by verify_equality in generate endpoint | Surfaces transcript mismatch bugs before returning 200 to caller | 12-02 |
+| from-bytes-mod-order-for-input | Use Scalar::from_bytes_mod_order (not from_canonical_bytes) when parsing user-supplied scalars | from_canonical_bytes rejects values >= group order, breaking valid user inputs | 12-02 |
+| binding-context-as-json-value | binding_context typed as serde_json::Value in endpoint structs | Serialized deterministically via serde_json::to_vec for Merlin transcript binding | 12-02 |
 | buyer-secrets-composite-pk | Use (product_address, buyer_address) as composite PK; INSERT OR REPLACE handles upsert atomically | Single table covers full lifecycle for any buyer-product pair | 12-01 |
 | disclose-pubkey-unencrypted | disclosure_pubkey stored unencrypted alongside encrypted_blob | Seller must read pubkey during confirmOrder without buyer decryption key | 12-01 |
 | nullable-lifecycle-columns | c_pay, c_pay_proof, encrypted_opening, equality_proof are nullable; written in separate lifecycle steps | Each column is written by a different party at a different time | 12-01 |
@@ -144,12 +148,18 @@ Last activity: 2026-03-04 - Completed 12-01-PLAN.md (buyer_secrets table + REST 
 
 All Phase 11 plans complete. Cross-device metadata persistence fully wired.
 
-**PHASE 12 IN PROGRESS** (1/7 plans done)
+**PHASE 12 IN PROGRESS** (2/7 plans done)
 
 - 12-01 COMPLETE: buyer_secrets table + REST API
   - backend/api/db.js: buyer_secrets table with composite PK (product_address, buyer_address)
   - backend/api/server.js: 4 prepared statements + POST/GET/2xPATCH /buyer-secrets routes
   - All address params lowercased; nullable lifecycle columns (c_pay, c_pay_proof, encrypted_opening, equality_proof)
+
+- 12-02 COMPLETE: Chaum-Pedersen DLEQ Schnorr sigma proof + ZKP endpoints
+  - zkp-backend/src/zk/equality_proof.rs: prove_equality() and verify_equality() with Merlin transcript
+  - Transcript order fixed: context->C_price->C_pay->R->challenge (identical in prove+verify)
+  - zkp-backend/src/main.rs: POST /zkp/generate-equality-proof (self-verifies, returns verified:true) and POST /zkp/verify-equality-proof
+  - cargo build exits 0; binary compiles cleanly
 
 ## Roadmap Evolution
 
@@ -158,8 +168,8 @@ All Phase 11 plans complete. Cross-device metadata persistence fully wired.
 
 ## Session Continuity
 
-- **Last session:** 2026-03-04T10:49:01.254Z
-- **Stopped at:** Completed 12-01-PLAN.md (buyer_secrets table + REST API)
+- **Last session:** 2026-03-04T10:51:13.055Z
+- **Stopped at:** Completed 12-02-PLAN.md (equality_proof.rs + actix-web endpoints)
 - **Next:** 11-03 (ProductFormStep3.jsx - wire saveProductMeta after escrow deploy)
 - **Resume file:** None
 
