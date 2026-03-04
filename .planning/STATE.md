@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: executing
-stopped_at: Completed 12-03-PLAN.md (ecies.js + buyerSecretApi.js)
-last_updated: "2026-03-04T11:03:35.668Z"
-last_activity: "2026-03-04 - Completed 12-04-PLAN.md (utility extensions: vcBuilder + commitmentUtils + equalityProofClient)"
+stopped_at: Completed 13-01-PLAN.md (pre-payment price verification UI)
+last_updated: "2026-03-04T16:44:11.799Z"
+last_activity: 2026-03-04 - Completed 13-01-PLAN.md (Verify Price button + badge JSX in ProductDetail.jsx)
 progress:
-  total_phases: 12
-  completed_phases: 8
-  total_plans: 39
-  completed_plans: 29
-  percent: 72
+  total_phases: 13
+  completed_phases: 9
+  total_plans: 42
+  completed_plans: 33
+  percent: 79
 ---
 
 # Project State
@@ -20,13 +20,13 @@ progress:
 
 ## Current Position
 
-- **Phase:** 12 of 12 (Buyer Attestation + Deferred Equality Proving)
-- **Plan:** 4 of 7 in phase (12-04 complete)
+- **Phase:** 13 of 13 (Pre-Payment Price Commitment Verification)
+- **Plan:** 1 of 3 in phase (13-01 complete)
 - **Status:** In Progress
 
-Progress: [███████░░░] 72% (28/39 plans complete)
+Progress: [████████░░] 79% (33/42 plans complete)
 
-Last activity: 2026-03-04 - Completed 12-04-PLAN.md (utility extensions: vcBuilder + commitmentUtils + equalityProofClient)
+Last activity: 2026-03-04 - Completed 13-01-PLAN.md (Verify Price button + badge JSX in ProductDetail.jsx)
 
 ## Living Memory
 
@@ -89,6 +89,9 @@ Last activity: 2026-03-04 - Completed 12-04-PLAN.md (utility extensions: vcBuild
 | buyer-secrets-composite-pk | Use (product_address, buyer_address) as composite PK; INSERT OR REPLACE handles upsert atomically | Single table covers full lifecycle for any buyer-product pair | 12-01 |
 | disclose-pubkey-unencrypted | disclosure_pubkey stored unencrypted alongside encrypted_blob | Seller must read pubkey during confirmOrder without buyer decryption key | 12-01 |
 | nullable-lifecycle-columns | c_pay, c_pay_proof, encrypted_opening, equality_proof are nullable; written in separate lifecycle steps | Each column is written by a different party at a different time | 12-01 |
+| meta-not-onchain-commitment | Use meta.priceCommitment from DB (real Pedersen C_price) not product.priceCommitment (on-chain keccak256 placeholder) | On-chain priceCommitment is always a keccak256 placeholder; real C_price lives in DB/VC | 13-01 |
+| phase-only-gate | Verify Price badge gated on product.phase === Phase.Listed only — no priceCommitment check | On-chain field is always truthy (placeholder); gating on it is meaningless; DB-missing case surfaces as error state | 13-01 |
+| buy-button-unblocked | Buy with Railgun button not blocked by verification status | Buyer autonomy — verification is informational, not a gate | 13-01 |
 
 ### Issues Log
 
@@ -168,8 +171,8 @@ All Phase 11 plans complete. Cross-device metadata persistence fully wired.
 
 ## Session Continuity
 
-- **Last session:** 2026-03-04T11:03:35.648Z
-- **Stopped at:** Completed 12-03-PLAN.md (ecies.js + buyerSecretApi.js)
+- **Last session:** 2026-03-04T16:44:11.775Z
+- **Stopped at:** Completed 13-01-PLAN.md (pre-payment price verification UI)
 - **Next:** 11-03 (ProductFormStep3.jsx - wire saveProductMeta after escrow deploy)
 - **Resume file:** None
 
