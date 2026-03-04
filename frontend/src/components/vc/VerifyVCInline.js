@@ -4,6 +4,7 @@ import { ethers } from "ethers";
 import { verifyVCWithServer, verifyVCChainWithServer } from "../../utils/verifyVc";
 import { extractZKPProof } from "../../utils/verifyZKP";
 import { verifyProofByEndpoint } from "../../utils/zkp/zkpClient";
+import { verifyEqualityProof } from "../../utils/equalityProofClient";
 
 import VCViewer from "./VCViewer";
 import VerificationBox from "./VerifyVCTab-Enhanced";
@@ -45,6 +46,9 @@ const VerifyVCInline = ({ vc, cid, provider, contractAddress }) => {
   const [showVC, setShowVC] = useState(false);
   const [vcLoading, setVcLoading] = useState(false);
   const [zkpLoading, setZkpLoading] = useState(false);
+
+  const [equalityProofResult, setEqualityProofResult] = useState(null); // null | true | false
+  const [equalityProofLoading, setEqualityProofLoading] = useState(false);
 
   const handleVerify = async () => {
     setVcLoading(true);
@@ -202,6 +206,35 @@ const VerifyVCInline = ({ vc, cid, provider, contractAddress }) => {
       setChainAnchorResult({ verified: false, error: err.message || "Chain anchor verification failed" });
     } finally {
       setChainAnchorLoading(false);
+    }
+  };
+
+  const handleVerifyEqualityProof = async () => {
+    const attestation = vc?.credentialSubject?.attestation;
+    const ep = attestation?.paymentEqualityProof;
+    const cPriceHex = vc?.credentialSubject?.priceCommitment?.commitment;
+    const cPayHex = attestation?.buyerPaymentCommitment?.commitment;
+
+    if (!ep || !cPriceHex || !cPayHex) {
+      setEqualityProofResult(false);
+      return;
+    }
+
+    setEqualityProofLoading(true);
+    try {
+      const result = await verifyEqualityProof({
+        cPriceHex,
+        cPayHex,
+        proofRHex: ep.proof_r_hex,
+        proofSHex: ep.proof_s_hex,
+        bindingContext: ep.bindingContext || {},
+      });
+      setEqualityProofResult(Boolean(result?.verified));
+    } catch (err) {
+      console.warn('[EqualityProofVerify] failed:', err.message);
+      setEqualityProofResult(false);
+    } finally {
+      setEqualityProofLoading(false);
     }
   };
 
@@ -592,6 +625,64 @@ const VerifyVCInline = ({ vc, cid, provider, contractAddress }) => {
                 </div>
               )}
             </div>
+          )}
+        </div>
+      )}
+
+      {/* Equality Proof Status (Phase 12 Buyer Attestation) */}
+      {vc?.credentialSubject?.attestation && (
+        <div className="mt-4 border border-gray-200 rounded-lg p-4 bg-white space-y-2">
+          <div className="flex items-center justify-between">
+            <span className="text-sm font-semibold text-gray-700">Payment Equality Proof</span>
+            {vc.credentialSubject.attestation.paymentEqualityProof ? (
+              <span className="text-xs px-2 py-0.5 rounded-full border font-medium bg-blue-50 text-blue-700 border-blue-200">
+                Schnorr Sigma (Chaum-Pedersen DLEQ)
+              </span>
+            ) : (
+              <span className="text-xs text-gray-400">Not yet generated</span>
+            )}
+          </div>
+
+          {vc.credentialSubject.attestation.disclosurePubKey && (
+            <p className="text-xs text-gray-500 font-mono truncate">
+              Disclosure PubKey: {vc.credentialSubject.attestation.disclosurePubKey}
+            </p>
+          )}
+
+          {vc.credentialSubject.attestation.buyerPaymentCommitment?.commitment && (
+            <p className="text-xs text-gray-500 font-mono truncate">
+              C_pay: {vc.credentialSubject.attestation.buyerPaymentCommitment.commitment}
+            </p>
+          )}
+
+          {vc.credentialSubject.attestation.paymentEqualityProof && (
+            <div className="space-y-2">
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={handleVerifyEqualityProof}
+                disabled={equalityProofLoading}
+                className="text-indigo-700 border-indigo-300 hover:bg-indigo-50"
+              >
+                {equalityProofLoading ? 'Verifying...' : 'Verify Equality Proof'}
+              </Button>
+
+              {equalityProofResult !== null && (() => {
+                const meta = getStatusMeta(equalityProofResult);
+                return (
+                  <div className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full border text-xs font-medium ${meta.badge}`}>
+                    <span className={meta.tone}>{meta.label}</span>
+                    <span className="text-gray-500">— C_price and C_pay commit to same value</span>
+                  </div>
+                );
+              })()}
+            </div>
+          )}
+
+          {!vc.credentialSubject.attestation.paymentEqualityProof && (
+            <p className="text-xs text-gray-400">
+              Buyer has not yet generated the equality proof. Available in buyer panel after price verification.
+            </p>
           )}
         </div>
       )}

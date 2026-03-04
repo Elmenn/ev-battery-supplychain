@@ -15,9 +15,10 @@ import {
 import { uploadJson } from "../../utils/ipfs";
 import { createFinalOrderVC, appendAttestationData } from "../../utils/vcBuilder.mjs";
 import { signVcAsSeller } from "../../utils/signVcWithMetamask";
-import { encryptOpening } from '../../utils/ecies';
-import { getBuyerSecretBlob, updateEncryptedOpening } from '../../utils/buyerSecretApi';
-import { generateDeterministicBlinding } from '../../utils/commitmentUtils';
+import { encryptOpening, decryptOpening } from '../../utils/ecies';
+import { getBuyerSecretBlob, updateEncryptedOpening, updateEqualityProof } from '../../utils/buyerSecretApi';
+import { generateDeterministicBlinding, openAndVerifyCommitment } from '../../utils/commitmentUtils';
+import { generateEqualityProof } from '../../utils/equalityProofClient';
 import { decodeContractError, getExplorerUrl } from "../../utils/errorHandler";
 import PrivatePaymentModal from "../railgun/PrivatePaymentModal";
 import PhaseTimeline from "../shared/PhaseTimeline";
@@ -60,6 +61,38 @@ const phaseColors = {
   [Phase.Expired]: "bg-red-100 text-red-700",
 };
 
+// ─── Buyer Attestation Helpers ─────────────────────────────────────────────
+
+const BUYER_BLOB_SIGNING_MSG = 'EV Supply Chain Buyer Privacy Key v1';
+
+async function decryptBuyerBlob(encryptedBlobJson, signer) {
+  const blob = typeof encryptedBlobJson === 'string'
+    ? JSON.parse(encryptedBlobJson)
+    : encryptedBlobJson;
+  const signature = await signer.signMessage(BUYER_BLOB_SIGNING_MSG);
+  const encoder = new TextEncoder();
+  const salt = new Uint8Array(blob.salt);
+  const iv = new Uint8Array(blob.iv);
+  const ciphertextBytes = new Uint8Array(blob.ciphertext);
+  const aadBytes = encoder.encode(blob.aad);
+  const keyMaterial = await crypto.subtle.importKey(
+    'raw', encoder.encode(signature), 'PBKDF2', false, ['deriveKey']
+  );
+  const key = await crypto.subtle.deriveKey(
+    { name: 'PBKDF2', salt, iterations: 100000, hash: 'SHA-256' },
+    keyMaterial,
+    { name: 'AES-GCM', length: 256 },
+    false,
+    ['decrypt']
+  );
+  const plainBuffer = await crypto.subtle.decrypt(
+    { name: 'AES-GCM', iv, additionalData: aadBytes },
+    key,
+    ciphertextBytes
+  );
+  return JSON.parse(new TextDecoder().decode(plainBuffer));
+}
+
 // ─── Component ────────────────────────────────────────────────────────────────
 
 const ProductDetail = ({ provider, currentUser }) => {
@@ -82,6 +115,17 @@ const ProductDetail = ({ provider, currentUser }) => {
   const [auditLoading, setAuditLoading] = useState(false);
   const [auditError, setAuditError] = useState("");
   const [chainId, setChainId] = useState(null);
+
+  // ── Buyer Attestation State ────────────────────────────────────────────────
+  const [workstreamAResult, setWorkstreamAResult] = useState(null); // null | true | false
+  const [workstreamALoading, setWorkstreamALoading] = useState(false);
+  const [workstreamBResult, setWorkstreamBResult] = useState(null); // null | true | false
+  const [workstreamBLoading, setWorkstreamBLoading] = useState(false);
+  const [workstreamError, setWorkstreamError] = useState('');
+  // Cached decrypted opening from Workstream A — avoids a second MetaMask sign in Workstream B
+  const [decryptedOpening, setDecryptedOpening] = useState(null);
+  // Cached full blob plaintext from Workstream A — r_pay is read from here in Workstream B
+  const [blobPlaintext, setBlobPlaintext] = useState(null);
 
   // ── Data Loading ──────────────────────────────────────────────────────────
 
@@ -414,6 +458,151 @@ const ProductDetail = ({ provider, currentUser }) => {
     }
   };
 
+  // ── Buyer Attestation Handlers ────────────────────────────────────────────
+
+  const handleWorkstreamA = async () => {
+    setWorkstreamALoading(true);
+    setWorkstreamError('');
+    try {
+      const signer = await provider.getSigner();
+      const buyerAddr = await signer.getAddress();
+
+      // Fetch encrypted blob from DB
+      const row = await getBuyerSecretBlob(address, buyerAddr);
+      if (!row?.encryptedBlob) {
+        throw new Error('Buyer secret blob not found. Ensure payment was made from this account.');
+      }
+
+      // Decrypt blob to get { x25519_priv, r_pay, meta }
+      // Cache the full plaintext so Workstream B can read r_pay without re-signing
+      const blobData = await decryptBuyerBlob(row.encryptedBlob, signer);
+      setBlobPlaintext(blobData);
+
+      // Get encryptedOpening from the loaded audit VC
+      const encOpening = auditVC?.credentialSubject?.attestation?.encryptedOpening;
+      if (!encOpening) {
+        throw new Error('Encrypted opening not found in VC. Seller may not have confirmed the order yet.');
+      }
+
+      // Decrypt encryptedOpening using buyer's x25519 private key
+      const opening = await decryptOpening(encOpening, blobData.x25519_priv);
+      setDecryptedOpening(opening);
+
+      // Verify: recompute C_price and compare with VC's priceCommitment
+      const cPriceHex = auditVC?.credentialSubject?.priceCommitment?.commitment;
+      if (!cPriceHex) {
+        throw new Error('Price commitment not found in VC.');
+      }
+      const result = await openAndVerifyCommitment({
+        value: opening.value,
+        blindingPrice: opening.blinding_price,
+        cPriceHex,
+      });
+
+      setWorkstreamAResult(result.verified);
+      if (!result.verified) {
+        setWorkstreamError('Price commitment mismatch — the committed price does not match the encrypted opening.');
+      }
+    } catch (err) {
+      setWorkstreamAResult(false);
+      setWorkstreamError(err.message || 'Verification failed');
+    } finally {
+      setWorkstreamALoading(false);
+    }
+  };
+
+  const handleWorkstreamB = async () => {
+    setWorkstreamBLoading(true);
+    setWorkstreamError('');
+    try {
+      const signer = await provider.getSigner();
+      const buyerAddr = await signer.getAddress();
+      const network = await provider.getNetwork();
+      const cId = String(network?.chainId || process.env.REACT_APP_CHAIN_ID || '1337');
+
+      // Prefer cached blobPlaintext from Workstream A to avoid a second MetaMask signMessage.
+      // Only re-decrypt if the cache is empty (e.g. user refreshed the page between A and B).
+      let cachedBlob = blobPlaintext;
+      if (!cachedBlob) {
+        const row = await getBuyerSecretBlob(address, buyerAddr);
+        if (!row?.encryptedBlob) throw new Error('Buyer secret blob not found.');
+        cachedBlob = await decryptBuyerBlob(row.encryptedBlob, signer);
+        setBlobPlaintext(cachedBlob);
+      }
+
+      // r_pay comes from the cached blob plaintext
+      const rPay = cachedBlob.r_pay;
+
+      // Get decryptedOpening from Workstream A cache or re-run opening decryption
+      let opening = decryptedOpening;
+      if (!opening) {
+        const encOpening = auditVC?.credentialSubject?.attestation?.encryptedOpening;
+        if (!encOpening) throw new Error('Encrypted opening not found in VC.');
+        opening = await decryptOpening(encOpening, cachedBlob.x25519_priv);
+        setDecryptedOpening(opening);
+      }
+
+      // Gather commitments and blinding factors
+      const cPriceHex = auditVC?.credentialSubject?.priceCommitment?.commitment;
+      const cPayHex = auditVC?.credentialSubject?.attestation?.buyerPaymentCommitment?.commitment;
+      const rPriceHex = generateDeterministicBlinding(address, product?.seller);
+
+      if (!cPriceHex || !cPayHex) {
+        throw new Error('Missing C_price or C_pay from VC. Cannot generate equality proof.');
+      }
+
+      const bindingContext = {
+        productId: String(product?.id ?? ''),
+        txRef: product?.memoHash || '',
+        chainId: cId,
+        escrowAddr: address,
+        stage: 'equality',
+      };
+
+      // Generate Schnorr sigma equality proof via ZKP backend
+      const proofResult = await generateEqualityProof({
+        cPriceHex,
+        cPayHex,
+        rPriceHex,
+        rPayHex: rPay,
+        bindingContext,
+      });
+
+      if (!proofResult.verified) {
+        throw new Error('Proof generation succeeded but self-verification failed. Data integrity issue.');
+      }
+
+      // Write proof to VC via appendAttestationData + IPFS upload
+      const proofFields = {
+        paymentEqualityProof: {
+          proof_r_hex: proofResult.proof_r_hex,
+          proof_s_hex: proofResult.proof_s_hex,
+          bindingContext,
+        },
+      };
+      const vcWithProof = appendAttestationData(auditVC, { attestationFields: proofFields, previousVersionCid: auditCid });
+      const newCid = await uploadJson(vcWithProof);
+      setAuditCid(newCid);
+      setAuditVC(vcWithProof);
+      localStorage.setItem(`vcCid_${address}`, newCid);
+
+      // Update DB: vcCid + equality_proof (non-blocking)
+      try { await updateVcCid(address, newCid); } catch { /* non-blocking */ }
+      updateEqualityProof(address, buyerAddr, proofFields.paymentEqualityProof).catch(err => {
+        console.warn('[WorkstreamB] updateEqualityProof DB write failed:', err.message);
+      });
+
+      setWorkstreamBResult(true);
+      toast.success('Equality proof generated and stored in VC.');
+    } catch (err) {
+      setWorkstreamBResult(false);
+      setWorkstreamError(err.message || 'Equality proof generation failed');
+      toast.error('Equality proof failed: ' + (err.message || 'unknown error'));
+    } finally {
+      setWorkstreamBLoading(false);
+    }
+  };
+
   // ── Render ────────────────────────────────────────────────────────────────
 
   if (loading) {
@@ -614,6 +803,61 @@ const ProductDetail = ({ provider, currentUser }) => {
                 <CopyButton value={product.railgunTxRef} />
               </div>
             )}
+        </div>
+      )}
+
+      {/* BUYER: Price Verification — Workstream A + B */}
+      {role.role === "buyer" && product?.phase >= Phase.OrderConfirmed && auditVC && (
+        <div className="border border-indigo-200 rounded-lg p-4 bg-indigo-50 space-y-3">
+          <h4 className="text-sm font-semibold text-indigo-800">Price Verification</h4>
+
+          {/* Workstream A: Verify Price */}
+          {auditVC?.credentialSubject?.attestation?.encryptedOpening && (
+            <div className="space-y-2">
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={handleWorkstreamA}
+                disabled={workstreamALoading}
+                className="border-indigo-400 text-indigo-700 hover:bg-indigo-100"
+              >
+                {workstreamALoading ? 'Verifying...' : 'Verify Price'}
+              </Button>
+              {workstreamAResult === true && (
+                <p className="text-xs text-green-700 font-medium">Price verified — commitment matches.</p>
+              )}
+              {workstreamAResult === false && (
+                <p className="text-xs text-red-700 font-medium">Verification failed — {workstreamError}</p>
+              )}
+            </div>
+          )}
+
+          {/* Workstream B: Generate Equality Proof — only shown after A passes */}
+          {workstreamAResult === true && (
+            <div className="space-y-2">
+              <Button
+                size="sm"
+                onClick={handleWorkstreamB}
+                disabled={workstreamBLoading || workstreamBResult === true}
+                className="bg-indigo-600 hover:bg-indigo-700 text-white"
+              >
+                {workstreamBLoading
+                  ? 'Generating proof...'
+                  : workstreamBResult === true
+                  ? 'Equality proof stored'
+                  : 'Generate Equality Proof'}
+              </Button>
+              {workstreamBResult === false && (
+                <p className="text-xs text-red-700 font-medium">Proof failed — {workstreamError}</p>
+              )}
+            </div>
+          )}
+
+          {!auditVC?.credentialSubject?.attestation?.encryptedOpening && (
+            <p className="text-xs text-gray-500">
+              Price verification available once the seller confirms the order.
+            </p>
+          )}
         </div>
       )}
 
