@@ -284,3 +284,38 @@ export function appendDeliveryProof(vc, {
 
   return updated;
 }
+
+/**
+ * Append (or merge) attestation data into credentialSubject.attestation.
+ *
+ * Attestation fields are written incrementally:
+ *   1. At payment time: { disclosurePubKey, buyerPaymentCommitment }
+ *   2. After confirmOrder: { encryptedOpening }
+ *   3. After proof generation: { paymentEqualityProof }
+ *
+ * Deep-clones the input VC — never mutates the original.
+ * Merges attestationFields into any existing credentialSubject.attestation object.
+ *
+ * @param {object} vc - Existing VC (will not be mutated)
+ * @param {object} options
+ * @param {object} options.attestationFields - Fields to merge into credentialSubject.attestation
+ * @param {string} [options.previousVersionCid] - IPFS CID of the previous VC version
+ * @returns {object} New VC with attestation fields merged
+ */
+export function appendAttestationData(vc, { attestationFields, previousVersionCid }) {
+  const updated = JSON.parse(JSON.stringify(vc));
+
+  // Initialize attestation section if not present
+  if (!updated.credentialSubject.attestation) {
+    updated.credentialSubject.attestation = { attestationVersion: '1.0' };
+  }
+
+  // Merge new fields — preserves previously written fields (incremental write pattern)
+  Object.assign(updated.credentialSubject.attestation, attestationFields);
+
+  if (previousVersionCid) {
+    updated.previousVersion = previousVersionCid;
+  }
+
+  return updated;
+}

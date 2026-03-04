@@ -292,3 +292,46 @@ export function generateTxHashCommitmentBindingTag({
   // Remove 0x prefix and return as hex string (64 chars)
   return bindingTag.slice(2);
 }
+
+/**
+ * Generate a random 32-byte blinding factor for C_pay.
+ * Returns a 64-char lowercase hex string (no 0x prefix).
+ * Uses crypto.getRandomValues for cryptographic randomness.
+ *
+ * IMPORTANT: Store the exact returned hex in the buyer-secret blob.
+ * The ZKP backend uses Scalar::from_bytes_mod_order() to reduce it —
+ * do NOT apply any JS-side transformation before sending to the backend.
+ */
+export function generateRandomBlinding() {
+  const bytes = crypto.getRandomValues(new Uint8Array(32));
+  return Array.from(bytes).map(b => b.toString(16).padStart(2, '0')).join('');
+}
+
+/**
+ * Open the seller's encryptedOpening and verify that C_price matches the reconstructed commitment.
+ * This is the core of Workstream A (buyer local verification).
+ *
+ * Steps:
+ *   1. Call generateValueCommitmentWithBlinding({ value, blindingHex: blinding_price })
+ *   2. Compare the resulting commitment hex against vc.credentialSubject.priceCommitment.commitment
+ *
+ * @param {object} params
+ * @param {number} params.value           - Price value (from decrypted encryptedOpening)
+ * @param {string} params.blindingPrice   - 32-byte hex blinding factor (from decrypted encryptedOpening)
+ * @param {string} params.cPriceHex       - Expected C_price commitment hex (from VC)
+ * @returns {Promise<{ verified: boolean, cCheck: string }>}
+ */
+export async function openAndVerifyCommitment({ value, blindingPrice, cPriceHex }) {
+  const result = await generateValueCommitmentWithBlinding({
+    value: typeof value === 'bigint' ? Number(value) : Number(value),
+    blindingHex: blindingPrice.startsWith('0x') ? blindingPrice : `0x${blindingPrice}`,
+  });
+
+  const normalizedCheck = result.commitment.toLowerCase().replace(/^0x/, '');
+  const normalizedExpected = cPriceHex.toLowerCase().replace(/^0x/, '');
+
+  return {
+    verified: normalizedCheck === normalizedExpected,
+    cCheck: result.commitment,
+  };
+}
