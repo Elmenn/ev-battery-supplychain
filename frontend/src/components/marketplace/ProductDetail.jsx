@@ -127,6 +127,9 @@ const ProductDetail = ({ provider, currentUser }) => {
   // Cached full blob plaintext from Workstream A — r_pay is read from here in Workstream B
   const [blobPlaintext, setBlobPlaintext] = useState(null);
 
+  // Pre-payment price verification state
+  const [priceVerifyStatus, setPriceVerifyStatus] = useState(null); // null | 'loading' | 'verified' | 'mismatch' | 'error'
+
   // ── Data Loading ──────────────────────────────────────────────────────────
 
   const loadProductData = useCallback(async () => {
@@ -324,10 +327,17 @@ const ProductDetail = ({ provider, currentUser }) => {
               blinding_price: blindingPrice,
             });
 
-            // Merge encryptedOpening into VC attestation before IPFS upload
-            vcWithAttestation = appendAttestationData(finalVc, {
-              attestationFields: { encryptedOpening },
-            });
+            // Merge encryptedOpening + buyerPaymentCommitment into VC attestation before IPFS upload
+            // buyerPaymentCommitment (cPay) was saved to DB at payment time but never included in
+            // the seller's finalVc — carry it forward here so Workstream B can read it from the VC.
+            const attestationFields = { encryptedOpening };
+            if (buyerRow.cPay) {
+              attestationFields.buyerPaymentCommitment = {
+                commitment: buyerRow.cPay,
+                ...(buyerRow.cPayProof ? { proof: buyerRow.cPayProof } : {}),
+              };
+            }
+            vcWithAttestation = appendAttestationData(finalVc, { attestationFields });
 
             // Persist encryptedOpening to buyer_secrets DB row (non-blocking)
             updateEncryptedOpening(address, buyerAddr, encryptedOpening).catch((patchErr) => {
@@ -458,6 +468,52 @@ const ProductDetail = ({ provider, currentUser }) => {
     }
   };
 
+  // ── Pre-Payment Price Verification ───────────────────────────────────────────
+
+  const handleVerifyPrice = async () => {
+    setPriceVerifyStatus('loading');
+    try {
+      // Fetch priceWei AND priceCommitment (real Pedersen C_price) from DB.
+      // IMPORTANT: product.priceCommitment (on-chain) is a keccak256 placeholder — do NOT use it.
+      // The real C_price is meta.priceCommitment saved to DB during listing.
+      const meta = await getProductMeta(address);
+      const priceWeiRaw = meta?.priceWei;
+      if (!priceWeiRaw) {
+        throw new Error('price-data-unavailable');
+      }
+      const priceValueNum = Number(priceWeiRaw);
+
+      const cPriceHex = meta?.priceCommitment;
+      if (!cPriceHex) {
+        throw new Error('price-commitment-missing');
+      }
+
+      // Derive r_price deterministically — same formula used by seller.
+      // Use product.owner (not product.seller — that field does not exist on product state).
+      const blindingPrice = generateDeterministicBlinding(address, product?.owner);
+
+      const result = await openAndVerifyCommitment({
+        value: priceValueNum,
+        blindingPrice,
+        cPriceHex,
+      });
+
+      setPriceVerifyStatus(result.verified ? 'verified' : 'mismatch');
+    } catch (err) {
+      const msg = err.message || '';
+      const isNetworkError =
+        msg.includes('Failed to fetch') ||
+        msg.includes('ZKP backend error') ||
+        msg.includes('NetworkError') ||
+        msg.includes('ERR_CONNECTION_REFUSED');
+      if (isNetworkError || msg === 'price-data-unavailable' || msg === 'price-commitment-missing') {
+        setPriceVerifyStatus('error');
+      } else {
+        setPriceVerifyStatus('mismatch');
+      }
+    }
+  };
+
   // ── Buyer Attestation Handlers ────────────────────────────────────────────
 
   const handleWorkstreamA = async () => {
@@ -545,7 +601,7 @@ const ProductDetail = ({ provider, currentUser }) => {
       // Gather commitments and blinding factors
       const cPriceHex = auditVC?.credentialSubject?.priceCommitment?.commitment;
       const cPayHex = auditVC?.credentialSubject?.attestation?.buyerPaymentCommitment?.commitment;
-      const rPriceHex = generateDeterministicBlinding(address, product?.seller);
+      const rPriceHex = generateDeterministicBlinding(address, product?.owner);
 
       if (!cPriceHex || !cPayHex) {
         throw new Error('Missing C_price or C_pay from VC. Cannot generate equality proof.');
@@ -572,28 +628,16 @@ const ProductDetail = ({ provider, currentUser }) => {
         throw new Error('Proof generation succeeded but self-verification failed. Data integrity issue.');
       }
 
-      // Write proof to VC via appendAttestationData + IPFS upload
-      const proofFields = {
-        paymentEqualityProof: {
-          proof_r_hex: proofResult.proof_r_hex,
-          proof_s_hex: proofResult.proof_s_hex,
-          bindingContext,
-        },
+      // Sidecar-only storage: keep the anchored VC immutable and store proof in buyer_secrets.
+      const equalityProofPayload = {
+        proof_r_hex: proofResult.proof_r_hex,
+        proof_s_hex: proofResult.proof_s_hex,
+        bindingContext,
       };
-      const vcWithProof = appendAttestationData(auditVC, { attestationFields: proofFields, previousVersionCid: auditCid });
-      const newCid = await uploadJson(vcWithProof);
-      setAuditCid(newCid);
-      setAuditVC(vcWithProof);
-      localStorage.setItem(`vcCid_${address}`, newCid);
-
-      // Update DB: vcCid + equality_proof (non-blocking)
-      try { await updateVcCid(address, newCid); } catch { /* non-blocking */ }
-      updateEqualityProof(address, buyerAddr, proofFields.paymentEqualityProof).catch(err => {
-        console.warn('[WorkstreamB] updateEqualityProof DB write failed:', err.message);
-      });
+      await updateEqualityProof(address, buyerAddr, equalityProofPayload);
 
       setWorkstreamBResult(true);
-      toast.success('Equality proof generated and stored in VC.');
+      toast.success('Equality proof generated and stored.');
     } catch (err) {
       setWorkstreamBResult(false);
       setWorkstreamError(err.message || 'Equality proof generation failed');
