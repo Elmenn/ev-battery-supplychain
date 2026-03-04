@@ -122,8 +122,6 @@ const ProductDetail = ({ provider, currentUser }) => {
   const [workstreamBResult, setWorkstreamBResult] = useState(null); // null | true | false
   const [workstreamBLoading, setWorkstreamBLoading] = useState(false);
   const [workstreamError, setWorkstreamError] = useState('');
-  // Cached decrypted opening from Workstream A — avoids a second MetaMask sign in Workstream B
-  const [decryptedOpening, setDecryptedOpening] = useState(null);
   // Cached full blob plaintext from Workstream A — r_pay is read from here in Workstream B
   const [blobPlaintext, setBlobPlaintext] = useState(null);
 
@@ -520,44 +518,30 @@ const ProductDetail = ({ provider, currentUser }) => {
     setWorkstreamALoading(true);
     setWorkstreamError('');
     try {
-      const signer = await provider.getSigner();
-      const buyerAddr = await signer.getAddress();
-
-      // Fetch encrypted blob from DB
-      const row = await getBuyerSecretBlob(address, buyerAddr);
-      if (!row?.encryptedBlob) {
-        throw new Error('Buyer secret blob not found. Ensure payment was made from this account.');
-      }
-
-      // Decrypt blob to get { x25519_priv, r_pay, meta }
-      // Cache the full plaintext so Workstream B can read r_pay without re-signing
-      const blobData = await decryptBuyerBlob(row.encryptedBlob, signer);
-      setBlobPlaintext(blobData);
-
-      // Get encryptedOpening from the loaded audit VC
-      const encOpening = auditVC?.credentialSubject?.attestation?.encryptedOpening;
-      if (!encOpening) {
-        throw new Error('Encrypted opening not found in VC. Seller may not have confirmed the order yet.');
-      }
-
-      // Decrypt encryptedOpening using buyer's x25519 private key
-      const opening = await decryptOpening(encOpening, blobData.x25519_priv);
-      setDecryptedOpening(opening);
-
-      // Verify: recompute C_price and compare with VC's priceCommitment
       const cPriceHex = auditVC?.credentialSubject?.priceCommitment?.commitment;
       if (!cPriceHex) {
         throw new Error('Price commitment not found in VC.');
       }
+
+      // Fetch priceWei from DB — deterministic, no MetaMask required
+      const meta = await getProductMeta(address);
+      const priceValueNum = Number(meta?.priceWei ?? '0');
+      if (!meta?.priceWei) {
+        throw new Error('Price not available from backend.');
+      }
+
+      // Derive r_price deterministically — same formula used by seller
+      const blindingPrice = generateDeterministicBlinding(address, product?.owner);
+
       const result = await openAndVerifyCommitment({
-        value: opening.value,
-        blindingPrice: opening.blinding_price,
+        value: priceValueNum,
+        blindingPrice,
         cPriceHex,
       });
 
       setWorkstreamAResult(result.verified);
       if (!result.verified) {
-        setWorkstreamError('Price commitment mismatch — the committed price does not match the encrypted opening.');
+        setWorkstreamError('Price commitment mismatch — committed price does not match listed price.');
       }
     } catch (err) {
       setWorkstreamAResult(false);
