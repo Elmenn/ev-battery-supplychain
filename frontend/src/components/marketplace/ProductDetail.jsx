@@ -15,7 +15,7 @@ import {
 import { uploadJson } from "../../utils/ipfs";
 import { createFinalOrderVC, appendAttestationData } from "../../utils/vcBuilder.mjs";
 import { signVcAsSeller } from "../../utils/signVcWithMetamask";
-import { encryptOpening, decryptOpening } from '../../utils/ecies';
+import { encryptOpening } from '../../utils/ecies';
 import { getBuyerSecretBlob, updateEncryptedOpening, updateEqualityProof } from '../../utils/buyerSecretApi';
 import { generateDeterministicBlinding, openAndVerifyCommitment } from '../../utils/commitmentUtils';
 import { generateEqualityProof } from '../../utils/equalityProofClient';
@@ -588,15 +588,6 @@ const ProductDetail = ({ provider, currentUser }) => {
 
       // r_pay comes from the cached blob plaintext
       const rPay = cachedBlob.r_pay;
-
-      // Get decryptedOpening from Workstream A cache or re-run opening decryption
-      let opening = decryptedOpening;
-      if (!opening) {
-        const encOpening = auditVC?.credentialSubject?.attestation?.encryptedOpening;
-        if (!encOpening) throw new Error('Encrypted opening not found in VC.');
-        opening = await decryptOpening(encOpening, cachedBlob.x25519_priv);
-        setDecryptedOpening(opening);
-      }
 
       // Gather commitments and blinding factors
       const cPriceHex = auditVC?.credentialSubject?.priceCommitment?.commitment;
