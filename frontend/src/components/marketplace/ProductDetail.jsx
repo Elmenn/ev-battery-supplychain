@@ -13,8 +13,11 @@ import {
   DELIVERY_WINDOW,
 } from "../../utils/escrowHelpers";
 import { uploadJson } from "../../utils/ipfs";
-import { createFinalOrderVC } from "../../utils/vcBuilder.mjs";
+import { createFinalOrderVC, appendAttestationData } from "../../utils/vcBuilder.mjs";
 import { signVcAsSeller } from "../../utils/signVcWithMetamask";
+import { encryptOpening } from '../../utils/ecies';
+import { getBuyerSecretBlob, updateEncryptedOpening } from '../../utils/buyerSecretApi';
+import { generateDeterministicBlinding } from '../../utils/commitmentUtils';
 import { decodeContractError, getExplorerUrl } from "../../utils/errorHandler";
 import PrivatePaymentModal from "../railgun/PrivatePaymentModal";
 import PhaseTimeline from "../shared/PhaseTimeline";
@@ -251,9 +254,56 @@ const ProductDetail = ({ provider, currentUser }) => {
       const proof = await signVcAsSeller(finalVc, signer, address);
       finalVc.proof.push(proof);
 
+      // ── ECIES Encryption Step (seller encrypts opening to buyer) ────────────
+      // Reads buyer's x25519 pubkey from DB and encrypts { value, blinding_price }.
+      // If buyer secret is absent (blob not saved yet), skip silently — VC will lack encryptedOpening.
+      // This step must NOT block the confirmOrder on-chain call.
+      let vcWithAttestation = finalVc; // default: pass through unchanged
+      try {
+        const buyerAddr = product?.buyer;
+        if (buyerAddr && buyerAddr !== ethers.ZeroAddress) {
+          const buyerRow = await getBuyerSecretBlob(address, buyerAddr);
+
+          if (buyerRow?.disclosurePubkey) {
+            // Seller-generated deterministic blinding (same as used when C_price was created)
+            const blindingPrice = generateDeterministicBlinding(address, sellerAddr);
+
+            // Price value: prefer DB-stored priceWei, fall back to contract value
+            const priceWeiRaw = dbData?.priceWei || listingMeta?.priceWei || product?.priceWei || '0';
+            const priceValueNum = typeof priceWeiRaw === 'bigint'
+              ? Number(priceWeiRaw)
+              : Number(priceWeiRaw);
+
+            // Encrypt { value, blinding_price } to buyer's x25519 pubkey
+            const encryptedOpening = await encryptOpening(buyerRow.disclosurePubkey, {
+              value: priceValueNum,
+              blinding_price: blindingPrice,
+            });
+
+            // Merge encryptedOpening into VC attestation before IPFS upload
+            vcWithAttestation = appendAttestationData(finalVc, {
+              attestationFields: { encryptedOpening },
+            });
+
+            // Persist encryptedOpening to buyer_secrets DB row (non-blocking)
+            updateEncryptedOpening(address, buyerAddr, encryptedOpening).catch((patchErr) => {
+              console.warn('[ConfirmOrder] updateEncryptedOpening to DB failed:', patchErr.message);
+            });
+
+            toast('Buyer opening encrypted.');
+          } else {
+            console.warn('[ConfirmOrder] Buyer secret blob not found — encryptedOpening will be absent.');
+          }
+        }
+      } catch (eciesErr) {
+        console.warn('[ConfirmOrder] ECIES encryption failed (non-blocking):', eciesErr.message);
+        // vcWithAttestation remains finalVc — confirmOrder will proceed without encryptedOpening
+      }
+      // ── End ECIES Encryption Step ────────────────────────────────────────────
+
       // 2) Upload to IPFS
       toast("Uploading VC to IPFS...");
-      const newCid = await uploadJson(finalVc);
+      const newCid = await uploadJson(vcWithAttestation);
       localStorage.setItem(`vcCid_${address}`, newCid);
       // Persist vcCid to backend DB so auditors/buyers can verify from any device.
       // Wrapped in try/catch: DB failure must NOT prevent the on-chain confirmOrder from proceeding.
