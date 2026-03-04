@@ -31,6 +31,25 @@ const stmtUpdateVcCid = db.prepare(
   "UPDATE product_metadata SET vc_cid = ?, updated_at = datetime('now') WHERE product_address = ?"
 );
 
+const stmtUpsertBuyerSecret = db.prepare(`
+  INSERT OR REPLACE INTO buyer_secrets
+    (product_address, buyer_address, encrypted_blob, disclosure_pubkey, c_pay, c_pay_proof, updated_at)
+  VALUES
+    (@productAddress, @buyerAddress, @encryptedBlob, @disclosurePubkey, @cPay, @cPayProof, datetime('now'))
+`);
+
+const stmtGetBuyerSecret = db.prepare(
+  'SELECT * FROM buyer_secrets WHERE product_address = ? AND buyer_address = ?'
+);
+
+const stmtUpdateEncryptedOpening = db.prepare(
+  "UPDATE buyer_secrets SET encrypted_opening = ?, updated_at = datetime('now') WHERE product_address = ? AND buyer_address = ?"
+);
+
+const stmtUpdateEqualityProof = db.prepare(
+  "UPDATE buyer_secrets SET equality_proof = ?, updated_at = datetime('now') WHERE product_address = ? AND buyer_address = ?"
+);
+
 app.use(cors(corsOptions));
 app.use(express.json());
 
@@ -148,6 +167,93 @@ app.patch('/metadata/:address/vc-cid', (req, res) => {
     return res.json({ success: true });
   } catch (error) {
     console.error('Error updating vcCid:', error);
+    return res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// POST /buyer-secrets — upsert buyer secret blob at payment time
+app.post('/buyer-secrets', (req, res) => {
+  const { productAddress, buyerAddress, encryptedBlob, disclosurePubkey, cPay, cPayProof } = req.body;
+  if (!productAddress || !buyerAddress || !encryptedBlob || !disclosurePubkey) {
+    return res.status(400).json({ error: 'productAddress, buyerAddress, encryptedBlob, and disclosurePubkey are required' });
+  }
+  try {
+    const pa = productAddress.toLowerCase();
+    const ba = buyerAddress.toLowerCase();
+    stmtUpsertBuyerSecret.run({
+      productAddress: pa,
+      buyerAddress: ba,
+      encryptedBlob: typeof encryptedBlob === 'string' ? encryptedBlob : JSON.stringify(encryptedBlob),
+      disclosurePubkey,
+      cPay: cPay || null,
+      cPayProof: cPayProof || null,
+    });
+    return res.status(201).json({ success: true });
+  } catch (error) {
+    console.error('Error saving buyer secret:', error);
+    return res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// GET /buyer-secrets/:productAddress/:buyerAddress — read blob (buyer reads own blob; seller reads to get disclosurePubkey)
+app.get('/buyer-secrets/:productAddress/:buyerAddress', (req, res) => {
+  try {
+    const pa = req.params.productAddress.toLowerCase();
+    const ba = req.params.buyerAddress.toLowerCase();
+    const row = stmtGetBuyerSecret.get(pa, ba);
+    if (!row) return res.status(404).json({ error: 'Not found' });
+    return res.json({
+      productAddress: row.product_address,
+      buyerAddress: row.buyer_address,
+      encryptedBlob: row.encrypted_blob,
+      disclosurePubkey: row.disclosure_pubkey,
+      cPay: row.c_pay,
+      cPayProof: row.c_pay_proof,
+      encryptedOpening: row.encrypted_opening,
+      equalityProof: row.equality_proof,
+      createdAt: row.created_at,
+      updatedAt: row.updated_at,
+    });
+  } catch (error) {
+    console.error('Error fetching buyer secret:', error);
+    return res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// PATCH /buyer-secrets/:productAddress/:buyerAddress/encrypted-opening — seller writes ciphertext after confirmOrder
+app.patch('/buyer-secrets/:productAddress/:buyerAddress/encrypted-opening', (req, res) => {
+  try {
+    const pa = req.params.productAddress.toLowerCase();
+    const ba = req.params.buyerAddress.toLowerCase();
+    const { encryptedOpening } = req.body;
+    if (!encryptedOpening) return res.status(400).json({ error: 'encryptedOpening is required' });
+    const result = stmtUpdateEncryptedOpening.run(
+      typeof encryptedOpening === 'string' ? encryptedOpening : JSON.stringify(encryptedOpening),
+      pa, ba
+    );
+    if (result.changes === 0) return res.status(404).json({ error: 'Not found' });
+    return res.json({ success: true });
+  } catch (error) {
+    console.error('Error updating encrypted opening:', error);
+    return res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// PATCH /buyer-secrets/:productAddress/:buyerAddress/equality-proof — buyer writes Schnorr proof
+app.patch('/buyer-secrets/:productAddress/:buyerAddress/equality-proof', (req, res) => {
+  try {
+    const pa = req.params.productAddress.toLowerCase();
+    const ba = req.params.buyerAddress.toLowerCase();
+    const { equalityProof } = req.body;
+    if (!equalityProof) return res.status(400).json({ error: 'equalityProof is required' });
+    const result = stmtUpdateEqualityProof.run(
+      typeof equalityProof === 'string' ? equalityProof : JSON.stringify(equalityProof),
+      pa, ba
+    );
+    if (result.changes === 0) return res.status(404).json({ error: 'Not found' });
+    return res.json({ success: true });
+  } catch (error) {
+    console.error('Error updating equality proof:', error);
     return res.status(500).json({ error: 'Internal server error' });
   }
 });
