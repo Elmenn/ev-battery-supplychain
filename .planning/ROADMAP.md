@@ -396,4 +396,17 @@ Plans:
 
 ---
 
-*Created: 2026-01-20 | Updated: 2026-03-03 | Milestone: v1.0-railgun-fix*
+### Phase 13: Pre-Payment Price Commitment Verification
+
+**Goal:** Add a buyer-facing "Verify Price" badge on the product detail page that runs before the payment modal opens. The buyer sees cryptographic confirmation that the seller's on-chain commitment (C_price) matches the listed price before committing funds. Simplify the post-payment buyer panel: Workstream A auto-runs silently (no manual button) using deterministic r_price instead of ECIES decryption, removing the dependency on seller confirmOrder. Workstream B keeps the equality proof flow but derives r_price directly from the deterministic formula.
+**Requirements:** none (derived from phase goal)
+**Depends on:** Phase 12
+
+Plans:
+- [ ] 13-01-PLAN.md — Pre-payment verify button: fetch priceWei from DB, compute C_check via ZKP backend, compare with on-chain C_price, show badge
+- [ ] 13-02-PLAN.md — Simplify Workstream A: auto-run silently using deterministic r_price (remove ECIES dependency), remove manual "Verify Price" button from post-payment panel
+- [ ] 13-03-PLAN.md — Simplify Workstream B: derive r_price deterministically instead of from decryptedOpening, clean up state/cache dependencies
+
+---
+
+*Created: 2026-01-20 | Updated: 2026-03-04 | Milestone: v1.0-railgun-fix*
