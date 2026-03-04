@@ -799,6 +799,47 @@ const ProductDetail = ({ provider, currentUser }) => {
         </div>
       )}
 
+      {/* PRE-PAYMENT PRICE VERIFICATION */}
+      {product.phase === Phase.Listed && (
+        <div className="bg-white border rounded-lg p-4">
+          <div className="flex flex-wrap items-center gap-3">
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={handleVerifyPrice}
+              disabled={priceVerifyStatus === 'loading'}
+            >
+              {priceVerifyStatus === 'loading' ? 'Verifying...' : 'Verify Price'}
+            </Button>
+            {priceVerifyStatus === 'verified' && (
+              <span className="text-xs text-green-700 font-medium">
+                Price commitment verified — listed price matches seller commitment record
+              </span>
+            )}
+            {priceVerifyStatus === 'mismatch' && (
+              <span className="text-xs text-red-700 font-medium">
+                Price commitment mismatch — do not proceed with payment
+              </span>
+            )}
+            {priceVerifyStatus === 'error' && (
+              <span className="text-xs text-amber-700 font-medium">
+                Unable to verify — commitment record unavailable or verifier offline
+              </span>
+            )}
+            {priceVerifyStatus === 'error' && (
+              <Button
+                size="sm"
+                variant="ghost"
+                onClick={handleVerifyPrice}
+                className="text-amber-700 underline"
+              >
+                Retry
+              </Button>
+            )}
+          </div>
+        </div>
+      )}
+
       {/* BUYER: Buy with Railgun (phase=Listed, visitor or any non-seller/non-transporter) */}
       {(role.role === "visitor" || role.role === "buyer") &&
         product.phase === Phase.Listed && (
