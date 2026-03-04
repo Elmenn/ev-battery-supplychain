@@ -2,14 +2,16 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-status: completed
-stopped_at: Completed 11-04-PLAN.md (ProductDetail.jsx DB-first wiring)
-last_updated: "2026-02-26T18:36:19.849Z"
+status: executing
+stopped_at: Completed 12-01-PLAN.md (buyer_secrets table + REST API)
+last_updated: "2026-03-04T10:50:53.953Z"
+last_activity: 2026-03-04 - Completed 12-01-PLAN.md (buyer_secrets table + REST API)
 progress:
-  total_phases: 11
+  total_phases: 12
   completed_phases: 8
-  total_plans: 32
-  completed_plans: 25
+  total_plans: 39
+  completed_plans: 27
+  percent: 67
 ---
 
 # Project State
@@ -18,13 +20,13 @@ progress:
 
 ## Current Position
 
-- **Phase:** 11 of 11 (SQLite Metadata Persistence)
-- **Plan:** 5 of 5 in phase (all plans complete)
-- **Status:** Milestone complete
+- **Phase:** 12 of 12 (Buyer Attestation + Deferred Equality Proving)
+- **Plan:** 1 of 7 in phase (12-01 complete)
+- **Status:** In Progress
 
-Progress: [██████████████████████████████████] ~100% (26/27 plans complete)
+Progress: [███████░░░] ~67% (26/39 plans complete)
 
-Last activity: 2026-02-26 - Completed 11-03-PLAN.md (ProductFormStep3 saveProductMeta wire-up)
+Last activity: 2026-03-04 - Completed 12-01-PLAN.md (buyer_secrets table + REST API)
 
 ## Living Memory
 
@@ -80,6 +82,9 @@ Last activity: 2026-02-26 - Completed 11-03-PLAN.md (ProductFormStep3 saveProduc
 | db-as-step-3 | DB lookup is step 3 in resolveSellerRailgunAddress (after two localStorage paths) | Seller's own device never hits API; only cross-device buyers reach DB call | 11-05 |
 | session-cache-db-result | DB-returned sellerRailgunAddress cached to localStorage after DB hit | Subsequent modal opens in same session use fast localStorage path | 11-05 |
 | async-iife-useeffect | priceWei useEffect uses (async () => {})() pattern | useEffect callbacks cannot be declared async directly | 11-05 |
+| buyer-secrets-composite-pk | Use (product_address, buyer_address) as composite PK; INSERT OR REPLACE handles upsert atomically | Single table covers full lifecycle for any buyer-product pair | 12-01 |
+| disclose-pubkey-unencrypted | disclosure_pubkey stored unencrypted alongside encrypted_blob | Seller must read pubkey during confirmOrder without buyer decryption key | 12-01 |
+| nullable-lifecycle-columns | c_pay, c_pay_proof, encrypted_opening, equality_proof are nullable; written in separate lifecycle steps | Each column is written by a different party at a different time | 12-01 |
 
 ### Issues Log
 
@@ -139,6 +144,13 @@ Last activity: 2026-02-26 - Completed 11-03-PLAN.md (ProductFormStep3 saveProduc
 
 All Phase 11 plans complete. Cross-device metadata persistence fully wired.
 
+**PHASE 12 IN PROGRESS** (1/7 plans done)
+
+- 12-01 COMPLETE: buyer_secrets table + REST API
+  - backend/api/db.js: buyer_secrets table with composite PK (product_address, buyer_address)
+  - backend/api/server.js: 4 prepared statements + POST/GET/2xPATCH /buyer-secrets routes
+  - All address params lowercased; nullable lifecycle columns (c_pay, c_pay_proof, encrypted_opening, equality_proof)
+
 ## Roadmap Evolution
 
 - Phase 11 added: SQLite metadata persistence for cross-device support (2026-02-26)
@@ -146,8 +158,8 @@ All Phase 11 plans complete. Cross-device metadata persistence fully wired.
 
 ## Session Continuity
 
-- **Last session:** 2026-02-26
-- **Stopped at:** Completed 11-04-PLAN.md (ProductDetail.jsx DB-first wiring)
+- **Last session:** 2026-03-04T10:49:01.254Z
+- **Stopped at:** Completed 12-01-PLAN.md (buyer_secrets table + REST API)
 - **Next:** 11-03 (ProductFormStep3.jsx - wire saveProductMeta after escrow deploy)
 - **Resume file:** None
 
