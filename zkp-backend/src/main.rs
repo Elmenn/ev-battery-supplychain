@@ -14,6 +14,7 @@ use zk::bp_plus_pedersen::{prove_txid_commitment as prove_plus, verify_txid_comm
 use zk::txid_pedersen_proof::{prove_txid_commitment, prove_txid_commitment_from_hex, prove_txid_commitment_from_hex_with_binding, verify_txid_commitment, verify_txid_commitment_with_binding};
 use bulletproofs::r1cs::ConstraintSystem;
 use zk::pedersen::{prove_value_commitment, prove_value_commitment_with_blinding, prove_value_commitment_with_binding, verify_value_commitment, verify_value_commitment_with_binding};
+use zk::equality_proof::{prove_equality, verify_equality, EqualityProof};
 
 
 fn bad_req(msg: &str) -> HttpResponse {
@@ -626,6 +627,125 @@ async fn verify_value_commitment_ep(input: web::Json<ValueVerifyInput>) -> impl 
     HttpResponse::Ok().json(ValueVerifyResult { verified })
 }
 
+// =============================================================================
+// Equality proof endpoints (Chaum-Pedersen DLEQ Schnorr sigma protocol)
+// =============================================================================
+
+#[derive(Deserialize)]
+struct EqualityProofRequest {
+    c_price_hex: String,      // 32-byte hex (64 chars), Pedersen commitment to price
+    c_pay_hex: String,        // 32-byte hex (64 chars), Pedersen commitment to payment
+    r_price_hex: String,      // 32-byte scalar hex — blinding of c_price
+    r_pay_hex: String,        // 32-byte scalar hex — blinding of c_pay
+    binding_context: serde_json::Value, // {productId, txRef, chainId, escrowAddr, stage}
+}
+
+#[derive(Serialize)]
+struct EqualityProofResponse {
+    proof_r_hex: String,   // hex of r_announcement (32 bytes)
+    proof_s_hex: String,   // hex of s_response (32 bytes)
+    verified: bool,        // immediate self-verification flag
+}
+
+#[derive(Deserialize)]
+struct EqualityVerifyRequest {
+    c_price_hex: String,
+    c_pay_hex: String,
+    proof_r_hex: String,
+    proof_s_hex: String,
+    binding_context: serde_json::Value,
+}
+
+#[derive(Serialize)]
+struct EqualityVerifyResponse {
+    verified: bool,
+}
+
+#[post("/zkp/generate-equality-proof")]
+async fn generate_equality_proof_ep(req: web::Json<EqualityProofRequest>) -> impl Responder {
+    println!("[API] /zkp/generate-equality-proof");
+
+    let parse_compressed = |hex_str: &str| -> Option<curve25519_dalek_ng::ristretto::CompressedRistretto> {
+        let bytes: [u8; 32] = <[u8; 32]>::from_hex(hex_str.trim_start_matches("0x")).ok()?;
+        Some(curve25519_dalek_ng::ristretto::CompressedRistretto(bytes))
+    };
+
+    let parse_scalar = |hex_str: &str| -> Option<Scalar> {
+        let bytes: [u8; 32] = <[u8; 32]>::from_hex(hex_str.trim_start_matches("0x")).ok()?;
+        Some(Scalar::from_bytes_mod_order(bytes))
+    };
+
+    let c_price = match parse_compressed(&req.c_price_hex) {
+        Some(c) => c,
+        None => return bad_req("invalid c_price_hex: must be 32 bytes (64 hex chars)"),
+    };
+    let c_pay = match parse_compressed(&req.c_pay_hex) {
+        Some(c) => c,
+        None => return bad_req("invalid c_pay_hex: must be 32 bytes (64 hex chars)"),
+    };
+    let r_price = match parse_scalar(&req.r_price_hex) {
+        Some(s) => s,
+        None => return bad_req("invalid r_price_hex"),
+    };
+    let r_pay = match parse_scalar(&req.r_pay_hex) {
+        Some(s) => s,
+        None => return bad_req("invalid r_pay_hex"),
+    };
+
+    let binding_bytes = serde_json::to_vec(&req.binding_context).unwrap_or_default();
+
+    match prove_equality(c_price, c_pay, r_price, r_pay, &binding_bytes) {
+        Ok(proof) => {
+            let verified = verify_equality(c_price, c_pay, &proof, &binding_bytes);
+            println!("[API] Equality proof generated, self-verified: {}", verified);
+            HttpResponse::Ok().json(EqualityProofResponse {
+                proof_r_hex: hex::encode(proof.r_announcement),
+                proof_s_hex: hex::encode(proof.s_response),
+                verified,
+            })
+        }
+        Err(e) => {
+            println!("[API] Equality proof generation failed: {}", e);
+            HttpResponse::InternalServerError().json(json!({ "error": e }))
+        }
+    }
+}
+
+#[post("/zkp/verify-equality-proof")]
+async fn verify_equality_proof_ep(req: web::Json<EqualityVerifyRequest>) -> impl Responder {
+    println!("[API] /zkp/verify-equality-proof");
+
+    let parse_compressed = |hex_str: &str| -> Option<curve25519_dalek_ng::ristretto::CompressedRistretto> {
+        let bytes: [u8; 32] = <[u8; 32]>::from_hex(hex_str.trim_start_matches("0x")).ok()?;
+        Some(curve25519_dalek_ng::ristretto::CompressedRistretto(bytes))
+    };
+
+    let c_price = match parse_compressed(&req.c_price_hex) {
+        Some(c) => c,
+        None => return bad_req("invalid c_price_hex"),
+    };
+    let c_pay = match parse_compressed(&req.c_pay_hex) {
+        Some(c) => c,
+        None => return bad_req("invalid c_pay_hex"),
+    };
+
+    let r_bytes: [u8; 32] = match <[u8; 32]>::from_hex(req.proof_r_hex.trim_start_matches("0x")) {
+        Ok(b) => b,
+        Err(_) => return bad_req("invalid proof_r_hex"),
+    };
+    let s_bytes: [u8; 32] = match <[u8; 32]>::from_hex(req.proof_s_hex.trim_start_matches("0x")) {
+        Ok(b) => b,
+        Err(_) => return bad_req("invalid proof_s_hex"),
+    };
+
+    let proof = EqualityProof { r_announcement: r_bytes, s_response: s_bytes };
+    let binding_bytes = serde_json::to_vec(&req.binding_context).unwrap_or_default();
+
+    let verified = verify_equality(c_price, c_pay, &proof, &binding_bytes);
+    println!("[API] Equality proof verification: {}", verified);
+    HttpResponse::Ok().json(EqualityVerifyResponse { verified })
+}
+
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {
     println!("[SERVER] =========================================");
@@ -648,6 +768,8 @@ async fn main() -> std::io::Result<()> {
             .service(generate_value_commitment_with_blinding_ep)
             .service(generate_value_commitment_with_binding_ep)
             .service(verify_value_commitment_ep)
+            .service(generate_equality_proof_ep)
+            .service(verify_equality_proof_ep)
     })
     .bind(("127.0.0.1", 5010))?
     .run()
