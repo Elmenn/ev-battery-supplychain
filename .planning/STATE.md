@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: executing
-stopped_at: Completed 12-02-PLAN.md (equality_proof.rs + actix-web endpoints)
-last_updated: "2026-03-04T10:51:13.075Z"
-last_activity: 2026-03-04 - Completed 12-01-PLAN.md (buyer_secrets table + REST API)
+stopped_at: "Completed 12-04-PLAN.md (utility extensions: vcBuilder + commitmentUtils + equalityProofClient)"
+last_updated: "2026-03-04T11:00:02.147Z"
+last_activity: 2026-03-04 - Completed 12-02-PLAN.md (equality_proof.rs + actix-web endpoints)
 progress:
   total_phases: 12
   completed_phases: 8
   total_plans: 39
-  completed_plans: 27
-  percent: 67
+  completed_plans: 28
+  percent: 69
 ---
 
 # Project State
@@ -21,12 +21,12 @@ progress:
 ## Current Position
 
 - **Phase:** 12 of 12 (Buyer Attestation + Deferred Equality Proving)
-- **Plan:** 2 of 7 in phase (12-02 complete)
+- **Plan:** 4 of 7 in phase (12-04 complete)
 - **Status:** In Progress
 
-Progress: [███████░░░] 69% (27/39 plans complete)
+Progress: [███████░░░] 72% (28/39 plans complete)
 
-Last activity: 2026-03-04 - Completed 12-02-PLAN.md (equality_proof.rs + actix-web endpoints)
+Last activity: 2026-03-04 - Completed 12-04-PLAN.md (utility extensions: vcBuilder + commitmentUtils + equalityProofClient)
 
 ## Living Memory
 
@@ -168,8 +168,8 @@ All Phase 11 plans complete. Cross-device metadata persistence fully wired.
 
 ## Session Continuity
 
-- **Last session:** 2026-03-04T10:51:13.055Z
-- **Stopped at:** Completed 12-02-PLAN.md (equality_proof.rs + actix-web endpoints)
+- **Last session:** 2026-03-04T11:00:02.128Z
+- **Stopped at:** Completed 12-04-PLAN.md (utility extensions: vcBuilder + commitmentUtils + equalityProofClient)
 - **Next:** 11-03 (ProductFormStep3.jsx - wire saveProductMeta after escrow deploy)
 - **Resume file:** None
 
