@@ -14,7 +14,18 @@ import {
   privateTransfer,
   checkWalletState,
 } from "../../lib/railgun-clean";
-import { getProductMeta } from "../../utils/productMetaApi";
+import { getProductMeta, updateVcCid } from "../../utils/productMetaApi";
+import { generateX25519Keypair } from '../../utils/ecies';
+import { saveBuyerSecretBlob } from '../../utils/buyerSecretApi';
+import { appendAttestationData } from '../../utils/vcBuilder.mjs';
+import { generateRandomBlinding } from '../../utils/commitmentUtils';
+import { generateValueCommitmentWithBlinding } from '../../utils/zkp/zkpClient';
+import { fetchJson, uploadJson } from '../../utils/ipfs';
+
+// Signing message for buyer-secret blob key derivation.
+// MUST differ from Railgun mnemonic signing message to prevent PBKDF2 key collision.
+// Fixed string (not per-product) for single-signature UX.
+const BUYER_BLOB_SIGNING_MSG = 'EV Supply Chain Buyer Privacy Key v1';
 
 const SEPOLIA_WETH_ADDRESS =
   NETWORK_CONFIG[NetworkName.EthereumSepolia]?.baseToken?.wrappedAddress ||
@@ -56,6 +67,45 @@ function CopyLine({ label, value }) {
       </button>
     </div>
   );
+}
+
+/**
+ * Encrypt the buyer-secret blob using AES-GCM + PBKDF2 wallet-derived key.
+ * AAD = `${chainId}/${productAddress.toLowerCase()}/${buyerAddress.toLowerCase()}`
+ * This binds the ciphertext to a specific product+buyer pair, preventing blob reuse.
+ */
+async function encryptBuyerBlob(plaintext, signature, aad) {
+  const encoder = new TextEncoder();
+  const salt = crypto.getRandomValues(new Uint8Array(16));
+  const keyMaterial = await crypto.subtle.importKey(
+    'raw',
+    encoder.encode(signature),
+    'PBKDF2',
+    false,
+    ['deriveKey']
+  );
+  const key = await crypto.subtle.deriveKey(
+    { name: 'PBKDF2', salt, iterations: 100000, hash: 'SHA-256' },
+    keyMaterial,
+    { name: 'AES-GCM', length: 256 },
+    false,
+    ['encrypt']
+  );
+  const iv = crypto.getRandomValues(new Uint8Array(12));
+  const aadBytes = encoder.encode(aad);
+  const plaintextBytes = encoder.encode(JSON.stringify(plaintext));
+  const ciphertextBuffer = await crypto.subtle.encrypt(
+    { name: 'AES-GCM', iv, additionalData: aadBytes },
+    key,
+    plaintextBytes
+  );
+  return {
+    ciphertext: Array.from(new Uint8Array(ciphertextBuffer)),
+    iv: Array.from(iv),
+    salt: Array.from(salt),
+    aad,
+    version: '1.0',
+  };
 }
 
 const PrivatePaymentModal = ({
@@ -457,6 +507,120 @@ const PrivatePaymentModal = ({
         recordTxHash,
       }));
       clearPendingPayment();
+
+      // ── Buyer Attestation (non-blocking) ────────────────────────────────────
+      // Runs after payment is confirmed. Failure here does NOT block the success state.
+      // The user will still see the payment success screen even if the blob save fails.
+      try {
+        // 1. Generate fresh x25519 keypair for this purchase
+        const { privKeyHex, pubKeyHex } = generateX25519Keypair();
+
+        // 2. Generate random r_pay blinding factor
+        const rPay = generateRandomBlinding();
+
+        // 3. Compute C_pay = Pedersen(priceValue, r_pay)
+        const priceValueNum = typeof parsedAmount === 'bigint' ? Number(parsedAmount) : Number(parsedAmount || 0);
+        let cPayResult = null;
+        try {
+          cPayResult = await generateValueCommitmentWithBlinding({
+            value: priceValueNum,
+            blindingHex: `0x${rPay}`,
+          });
+        } catch (zkpErr) {
+          console.warn('[Attestation] C_pay generation failed (ZKP backend unavailable):', zkpErr.message);
+        }
+
+        // 4. Encrypt buyer-secret blob with wallet-derived key
+        const browserProvider = new ethers.BrowserProvider(window.ethereum);
+        const signer = await browserProvider.getSigner();
+        const buyerAddr = await signer.getAddress();
+        const network = await browserProvider.getNetwork();
+        const chainId = String(network?.chainId || process.env.REACT_APP_CHAIN_ID || '1337');
+        const aad = `${chainId}/${product.address.toLowerCase()}/${buyerAddr.toLowerCase()}`;
+
+        const blobSignature = await signer.signMessage(BUYER_BLOB_SIGNING_MSG);
+        let encryptedBlob = null;
+        if (blobSignature) {
+          const plaintext = {
+            x25519_priv: privKeyHex,
+            r_pay: rPay,
+            meta: { productAddress: product.address, chainId, timestamp: Date.now() },
+          };
+          encryptedBlob = await encryptBuyerBlob(plaintext, blobSignature, aad);
+          encryptedBlob.pubkey = pubKeyHex;
+        }
+
+        // 5. Persist blob to backend DB (non-blocking)
+        if (encryptedBlob && buyerAddr) {
+          try {
+            await saveBuyerSecretBlob({
+              productAddress: product.address,
+              buyerAddress: buyerAddr,
+              encryptedBlob: JSON.stringify(encryptedBlob),
+              disclosurePubkey: pubKeyHex,
+              cPay: cPayResult?.commitment || null,
+              cPayProof: cPayResult?.proof || null,
+            });
+          } catch (dbErr) {
+            console.warn('[Attestation] saveBuyerSecretBlob failed:', dbErr.message);
+          }
+
+          // 6. Cache to localStorage for same-device convenience
+          try {
+            localStorage.setItem(
+              `buyerSecret_${product.address.toLowerCase()}_${buyerAddr.toLowerCase()}`,
+              JSON.stringify(encryptedBlob)
+            );
+          } catch {
+            // localStorage quota exceeded or unavailable — not critical
+          }
+        }
+
+        // 7. Write disclosurePubKey + buyerPaymentCommitment into the VC before IPFS re-upload
+        if (pubKeyHex) {
+          const attestationFields = {
+            disclosurePubKey: pubKeyHex,
+            ...(cPayResult ? {
+              buyerPaymentCommitment: {
+                commitment: cPayResult.commitment,
+                proof: cPayResult.proof,
+                bindingContext: {
+                  productId: String(product?.id ?? ''),
+                  txRef: product?.memoHash || '',
+                  chainId,
+                  escrowAddr: product.address,
+                  stage: 'payment',
+                },
+              },
+            } : {}),
+          };
+          try {
+            const metaData = await getProductMeta(product.address);
+            if (metaData?.vcCid) {
+              const currentVc = await fetchJson(metaData.vcCid);
+              if (currentVc) {
+                const updatedVc = appendAttestationData(currentVc, {
+                  attestationFields,
+                  previousVersionCid: metaData.vcCid,
+                });
+                const newCid = await uploadJson(updatedVc);
+                localStorage.setItem(`vcCid_${product.address}`, newCid);
+                try {
+                  await updateVcCid(product.address, newCid);
+                } catch (vcDbErr) {
+                  console.warn('[Attestation] updateVcCid failed:', vcDbErr.message);
+                }
+              }
+            }
+          } catch (vcErr) {
+            console.warn('[Attestation] VC attestation write failed:', vcErr.message);
+          }
+        }
+      } catch (attestErr) {
+        console.warn('[Attestation] Buyer attestation write failed (non-blocking):', attestErr.message);
+      }
+      // ── End Buyer Attestation ───────────────────────────────────────────────
+
       setStep("complete");
       setProgress("Payment complete.");
       toast.success("Private payment recorded on-chain.");
