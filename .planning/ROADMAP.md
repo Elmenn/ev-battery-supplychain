@@ -383,7 +383,7 @@ Note: Phase 8 (VC) could partially overlap with Phase 7 (Contract) since VC sche
 **Goal:** After private Railgun payment completes, buyer publishes C_pay + x25519 disclosure pubkey; seller encrypts {value, blinding_price} to buyer at confirmOrder via x25519 ECIES; buyer can locally verify exact price (Workstream A) and generate a Schnorr sigma equality proof that C_price and C_pay commit to the same value (Workstream B); auditor verifies full bundle via VerifyVCInline/VCViewer.
 **Requirements:** none (derived from phase goal)
 **Depends on:** Phase 11
-**Plans:** 3/7 plans executed
+**Plans:** 4/7 plans executed
 
 Plans:
 - [ ] 12-01-PLAN.md — DB schema (buyer_secrets table) + 4 REST routes (POST, GET, 2x PATCH)
