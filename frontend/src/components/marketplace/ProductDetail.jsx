@@ -551,6 +551,22 @@ const ProductDetail = ({ provider, currentUser }) => {
     }
   };
 
+  // Auto-run Workstream A silently when buyer panel becomes visible
+  // Deps: primitive values only — handleWorkstreamA intentionally excluded to avoid
+  // infinite re-render (new function reference each render). Same pattern as loadProductData.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    if (
+      role.role === 'buyer' &&
+      product?.phase >= Phase.OrderConfirmed &&
+      auditVC &&
+      workstreamAResult === null &&
+      !workstreamALoading
+    ) {
+      handleWorkstreamA();
+    }
+  }, [role.role, product?.phase, auditVC]); // eslint-disable-line react-hooks/exhaustive-deps
+
   const handleWorkstreamB = async () => {
     setWorkstreamBLoading(true);
     setWorkstreamError('');
@@ -875,31 +891,23 @@ const ProductDetail = ({ provider, currentUser }) => {
         </div>
       )}
 
-      {/* BUYER: Price Verification — Workstream A + B */}
+      {/* BUYER: Price Verification — Workstream A (auto) + B (manual) */}
       {role.role === "buyer" && product?.phase >= Phase.OrderConfirmed && auditVC && (
         <div className="border border-indigo-200 rounded-lg p-4 bg-indigo-50 space-y-3">
           <h4 className="text-sm font-semibold text-indigo-800">Price Verification</h4>
 
-          {/* Workstream A: Verify Price */}
-          {auditVC?.credentialSubject?.attestation?.encryptedOpening && (
-            <div className="space-y-2">
-              <Button
-                size="sm"
-                variant="outline"
-                onClick={handleWorkstreamA}
-                disabled={workstreamALoading}
-                className="border-indigo-400 text-indigo-700 hover:bg-indigo-100"
-              >
-                {workstreamALoading ? 'Verifying...' : 'Verify Price'}
-              </Button>
-              {workstreamAResult === true && (
-                <p className="text-xs text-green-700 font-medium">Price verified — commitment matches.</p>
-              )}
-              {workstreamAResult === false && (
-                <p className="text-xs text-red-700 font-medium">Verification failed — {workstreamError}</p>
-              )}
-            </div>
-          )}
+          {/* Workstream A: auto-runs silently — show status indicator only */}
+          <div className="space-y-1">
+            {workstreamALoading && (
+              <p className="text-xs text-indigo-600">Verifying price commitment...</p>
+            )}
+            {workstreamAResult === true && (
+              <p className="text-xs text-green-700 font-medium">Price verified — commitment matches listed price.</p>
+            )}
+            {workstreamAResult === false && (
+              <p className="text-xs text-red-700 font-medium">Verification failed — {workstreamError}</p>
+            )}
+          </div>
 
           {/* Workstream B: Generate Equality Proof — only shown after A passes */}
           {workstreamAResult === true && (
@@ -920,12 +928,6 @@ const ProductDetail = ({ provider, currentUser }) => {
                 <p className="text-xs text-red-700 font-medium">Proof failed — {workstreamError}</p>
               )}
             </div>
-          )}
-
-          {!auditVC?.credentialSubject?.attestation?.encryptedOpening && (
-            <p className="text-xs text-gray-500">
-              Price verification available once the seller confirms the order.
-            </p>
           )}
         </div>
       )}
