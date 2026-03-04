@@ -25,4 +25,20 @@ db.exec(`
   )
 `);
 
+db.exec(`
+  CREATE TABLE IF NOT EXISTS buyer_secrets (
+    product_address    TEXT NOT NULL,
+    buyer_address      TEXT NOT NULL,
+    encrypted_blob     TEXT NOT NULL,
+    disclosure_pubkey  TEXT NOT NULL,
+    c_pay              TEXT,
+    c_pay_proof        TEXT,
+    encrypted_opening  TEXT,
+    equality_proof     TEXT,
+    created_at         TEXT NOT NULL DEFAULT (datetime('now')),
+    updated_at         TEXT NOT NULL DEFAULT (datetime('now')),
+    PRIMARY KEY (product_address, buyer_address)
+  )
+`);
+
 module.exports = db;
