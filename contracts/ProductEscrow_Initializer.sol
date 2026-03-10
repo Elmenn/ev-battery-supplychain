@@ -55,8 +55,26 @@ error BondNotDeposited();
 error HashMismatch();
 error InsufficientBond();
 error DeliveryWindowExpired();
+error ZeroUnitPriceHash();
+error ZeroOrderId();
+error ActiveOrderExists();
+error OrderNotActive();
 
 contract ProductEscrow_Initializer is ReentrancyGuard {
+    struct OrderRecord {
+        address buyer;
+        bytes32 memoHash;
+        bytes32 railgunTxRef;
+        bytes32 quantityCommitment;
+        bytes32 totalCommitment;
+        bytes32 paymentCommitment;
+        bytes32 contextHash;
+        bytes32 vcHash;
+        uint64 purchaseTimestamp;
+        uint64 orderConfirmedTimestamp;
+        uint8 phase;
+        bool exists;
+    }
 
     // ═══════════════════════════════════════════════════════════════════
     //  Storage - Group 1
@@ -64,6 +82,8 @@ contract ProductEscrow_Initializer is ReentrancyGuard {
     uint256 public id;
     string public name;
     bytes32 public priceCommitment;
+    bytes32 public unitPriceHash;
+    bytes32 public activeOrderId;
 
     // ═══════════════════════════════════════════════════════════════════
     //  Storage - Group 2 (addresses)
@@ -119,6 +139,8 @@ contract ProductEscrow_Initializer is ReentrancyGuard {
     mapping(uint256 => bytes32) public productRailgunTxRefs;
     mapping(bytes32 => bool) public usedMemoHash;
     mapping(uint256 => address) public productPaidBy;
+    mapping(bytes32 => bool) public usedOrderIds;
+    mapping(bytes32 => OrderRecord) private orders;
 
     // ═══════════════════════════════════════════════════════════════════
     //  Modifiers
@@ -191,6 +213,27 @@ contract ProductEscrow_Initializer is ReentrancyGuard {
     event BondSlashed(uint256 indexed productId, address indexed from, address indexed to, uint256 amount, string reason, uint256 timestamp);
     event BondReturned(uint256 indexed productId, address indexed to, uint256 amount, uint256 timestamp);
     event BuyerDesignated(uint256 indexed productId, address indexed buyer, uint256 timestamp);
+    event UnitPriceHashAnchored(uint256 indexed productId, bytes32 unitPriceHash, uint256 timestamp);
+    event OrderPaymentRecorded(
+        bytes32 indexed orderId,
+        uint256 indexed productId,
+        address indexed buyer,
+        bytes32 memoHash,
+        bytes32 railgunTxRef,
+        bytes32 quantityCommitment,
+        bytes32 totalCommitment,
+        bytes32 paymentCommitment,
+        bytes32 contextHash,
+        uint256 timestamp
+    );
+    event OrderConfirmedById(
+        bytes32 indexed orderId,
+        uint256 indexed productId,
+        address indexed buyer,
+        bytes32 vcHash,
+        string vcCID,
+        uint256 timestamp
+    );
 
     // ═══════════════════════════════════════════════════════════════════
     //  Initialization
@@ -211,6 +254,32 @@ contract ProductEscrow_Initializer is ReentrancyGuard {
         uint256 _bondAmount,
         address _factory
     ) external payable {
+        _initializeCore(_id, _name, _priceCommitment, bytes32(0), _owner, _bondAmount, _factory);
+    }
+
+    /// @notice Initialize the V2 escrow clone with a separate unit-price hash anchor.
+    function initializeV2(
+        uint256 _id,
+        string memory _name,
+        bytes32 _priceCommitment,
+        bytes32 _unitPriceHash,
+        address _owner,
+        uint256 _bondAmount,
+        address _factory
+    ) external payable {
+        if (_unitPriceHash == bytes32(0)) revert ZeroUnitPriceHash();
+        _initializeCore(_id, _name, _priceCommitment, _unitPriceHash, _owner, _bondAmount, _factory);
+    }
+
+    function _initializeCore(
+        uint256 _id,
+        string memory _name,
+        bytes32 _priceCommitment,
+        bytes32 _unitPriceHash,
+        address _owner,
+        uint256 _bondAmount,
+        address _factory
+    ) internal {
         if (_initialized) revert AlreadyInitialized();
         if (_owner == address(0)) revert InvalidOwnerAddress();
         if (bytes(_name).length == 0) revert EmptyName();
@@ -225,6 +294,7 @@ contract ProductEscrow_Initializer is ReentrancyGuard {
         id = _id;
         name = _name;
         priceCommitment = _priceCommitment;
+        unitPriceHash = _unitPriceHash;
         owner = payable(_owner);
         bondAmount = _bondAmount;
         sellerBond = msg.value;
@@ -233,6 +303,9 @@ contract ProductEscrow_Initializer is ReentrancyGuard {
         phase = Phase.Listed;
 
         emit SellerBondDeposited(_id, _owner, msg.value, block.timestamp);
+        if (_unitPriceHash != bytes32(0)) {
+            emit UnitPriceHashAnchored(_id, _unitPriceHash, block.timestamp);
+        }
         emit ProductStateChanged(_id, owner, buyer, phase, block.timestamp, _priceCommitment, purchased, delivered);
         emit PhaseChanged(_id, Phase.Listed, Phase.Listed, msg.sender, block.timestamp, bytes32(0));
     }
@@ -266,25 +339,71 @@ contract ProductEscrow_Initializer is ReentrancyGuard {
         if (usedMemoHash[_memoHash]) revert MemoAlreadyUsed();
         if (privatePayments[_memoHash]) revert PaymentAlreadyRecorded();
 
-        // FCFS marketplace behavior: first successful buyer becomes the on-chain buyer.
-        buyer = payable(msg.sender);
-
-        purchased = true;
-        purchaseTimestamp = uint64(block.timestamp);
-
-        privatePayments[_memoHash] = true;
-        usedMemoHash[_memoHash] = true;
-        productMemoHashes[id] = _memoHash;
-        productRailgunTxRefs[id] = _railgunTxRef;
-        productPaidBy[id] = msg.sender;
-
-        Phase oldPhase = phase;
-        phase = Phase.Purchased;
+        _applyPurchaseState(msg.sender, _memoHash, _railgunTxRef);
 
         emit PurchasedPrivate(msg.sender, _memoHash, _railgunTxRef);
-        emit PhaseChanged(id, oldPhase, phase, msg.sender, block.timestamp, _memoHash);
+        emit PhaseChanged(id, Phase.Listed, phase, msg.sender, block.timestamp, _memoHash);
         emit ProductStateChanged(id, owner, buyer, phase, block.timestamp, priceCommitment, purchased, delivered);
         emit PrivatePaymentRecorded(id, _memoHash, _railgunTxRef, msg.sender, block.timestamp);
+    }
+
+    /// @notice Record a V2 private order payment bound to a unique orderId.
+    function recordPrivateOrderPayment(
+        bytes32 orderId,
+        bytes32 memoHash,
+        bytes32 railgunTxRef,
+        bytes32 quantityCommitment,
+        bytes32 totalCommitment,
+        bytes32 paymentCommitment,
+        bytes32 contextHash
+    ) external nonReentrant whenNotStopped {
+        if (unitPriceHash == bytes32(0)) revert ZeroUnitPriceHash();
+        if (orderId == bytes32(0)) revert ZeroOrderId();
+        if (memoHash == bytes32(0)) revert ZeroMemoHash();
+        if (railgunTxRef == bytes32(0)) revert ZeroTxRef();
+        if (phase != Phase.Listed) revert AlreadyPurchased();
+        if (msg.sender == owner) revert OwnerCannotPurchase();
+        if (activeOrderId != bytes32(0)) revert ActiveOrderExists();
+        if (usedOrderIds[orderId]) revert ActiveOrderExists();
+        if (productMemoHashes[id] != bytes32(0)) revert AlreadyPaid();
+        if (usedMemoHash[memoHash]) revert MemoAlreadyUsed();
+        if (privatePayments[memoHash]) revert PaymentAlreadyRecorded();
+
+        _applyPurchaseState(msg.sender, memoHash, railgunTxRef);
+
+        activeOrderId = orderId;
+        usedOrderIds[orderId] = true;
+        orders[orderId] = OrderRecord({
+            buyer: msg.sender,
+            memoHash: memoHash,
+            railgunTxRef: railgunTxRef,
+            quantityCommitment: quantityCommitment,
+            totalCommitment: totalCommitment,
+            paymentCommitment: paymentCommitment,
+            contextHash: contextHash,
+            vcHash: bytes32(0),
+            purchaseTimestamp: purchaseTimestamp,
+            orderConfirmedTimestamp: 0,
+            phase: uint8(Phase.Purchased),
+            exists: true
+        });
+
+        emit PurchasedPrivate(msg.sender, memoHash, railgunTxRef);
+        emit PhaseChanged(id, Phase.Listed, phase, msg.sender, block.timestamp, memoHash);
+        emit ProductStateChanged(id, owner, buyer, phase, block.timestamp, priceCommitment, purchased, delivered);
+        emit PrivatePaymentRecorded(id, memoHash, railgunTxRef, msg.sender, block.timestamp);
+        emit OrderPaymentRecorded(
+            orderId,
+            id,
+            msg.sender,
+            memoHash,
+            railgunTxRef,
+            quantityCommitment,
+            totalCommitment,
+            paymentCommitment,
+            contextHash,
+            block.timestamp
+        );
     }
 
     /// @notice Seller confirms order, uploads VC to IPFS, stores vcHash on-chain.
@@ -294,15 +413,33 @@ contract ProductEscrow_Initializer is ReentrancyGuard {
         if (!purchased) revert NotPurchased();
         if (block.timestamp > purchaseTimestamp + SELLER_WINDOW) revert SellerWindowExpired();
 
-        orderConfirmedTimestamp = uint64(block.timestamp);
-        phase = Phase.OrderConfirmed;
-
-        // Store hash only, emit full CID in event
-        vcHash = keccak256(bytes(vcCID));
+        _applyOrderConfirmation(vcCID);
 
         emit VcHashStored(id, vcHash, vcCID, block.timestamp);
         emit OrderConfirmed(buyer, owner, id, priceCommitment, vcCID, block.timestamp);
         emit PhaseChanged(id, Phase.Purchased, Phase.OrderConfirmed, msg.sender, block.timestamp, vcHash);
+    }
+
+    /// @notice Seller confirms a V2 order using the explicit orderId anchor.
+    function confirmOrderById(bytes32 orderId, string calldata vcCID) external onlySeller nonReentrant whenNotStopped {
+        if (orderId == bytes32(0)) revert ZeroOrderId();
+        if (activeOrderId != orderId) revert OrderNotActive();
+        if (!orders[orderId].exists) revert OrderNotActive();
+        if (phase != Phase.Purchased) revert WrongPhase();
+        if (!purchased) revert NotPurchased();
+        if (block.timestamp > purchaseTimestamp + SELLER_WINDOW) revert SellerWindowExpired();
+
+        _applyOrderConfirmation(vcCID);
+
+        OrderRecord storage order = orders[orderId];
+        order.vcHash = vcHash;
+        order.orderConfirmedTimestamp = orderConfirmedTimestamp;
+        order.phase = uint8(Phase.OrderConfirmed);
+
+        emit VcHashStored(id, vcHash, vcCID, block.timestamp);
+        emit OrderConfirmed(buyer, owner, id, priceCommitment, vcCID, block.timestamp);
+        emit PhaseChanged(id, Phase.Purchased, Phase.OrderConfirmed, msg.sender, block.timestamp, vcHash);
+        emit OrderConfirmedById(orderId, id, order.buyer, vcHash, vcCID, block.timestamp);
     }
 
     /// @notice Transporter registers a bid with fee quote and stakes bond.
@@ -533,6 +670,11 @@ contract ProductEscrow_Initializer is ReentrancyGuard {
         return keccak256(abi.encodePacked(value, salt));
     }
 
+    /// @notice Return the stored V2 order record. For legacy escrows, returns the zero-value struct.
+    function getOrder(bytes32 orderId) external view returns (OrderRecord memory) {
+        return orders[orderId];
+    }
+
     /// @notice Check if the contract is stopped (paused by factory).
     function isStopped() external view returns (bool) {
         return stopped;
@@ -562,5 +704,23 @@ contract ProductEscrow_Initializer is ReentrancyGuard {
 
     fallback() external payable {
         revert("ProductEscrow does not accept unexpected ETH");
+    }
+
+    function _applyPurchaseState(address payer, bytes32 memoHash, bytes32 railgunTxRef) internal {
+        buyer = payable(payer);
+        purchased = true;
+        purchaseTimestamp = uint64(block.timestamp);
+        privatePayments[memoHash] = true;
+        usedMemoHash[memoHash] = true;
+        productMemoHashes[id] = memoHash;
+        productRailgunTxRefs[id] = railgunTxRef;
+        productPaidBy[id] = payer;
+        phase = Phase.Purchased;
+    }
+
+    function _applyOrderConfirmation(string calldata vcCID) internal {
+        orderConfirmedTimestamp = uint64(block.timestamp);
+        phase = Phase.OrderConfirmed;
+        vcHash = keccak256(bytes(vcCID));
     }
 }

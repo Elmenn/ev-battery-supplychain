@@ -135,6 +135,12 @@ export async function generateValueCommitmentWithBindingWasm({
   }
 }
 
+export async function generateScalarCommitmentWithBlindingWasm() {
+  throw new Error(
+    "[ZKP][wasm] generate-scalar-commitment-with-blinding is not implemented. Use REACT_APP_ZKP_MODE=backend."
+  );
+}
+
 export async function verifyValueCommitmentWasm({
   commitment,
   proof,

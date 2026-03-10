@@ -7,209 +7,90 @@ import PrivateFundsDrawer from "./PrivateFundsDrawer";
 import { getEscrowContract } from "../../utils/escrowHelpers";
 import { decodeContractError, getExplorerUrl } from "../../utils/errorHandler";
 import { NetworkName, NETWORK_CONFIG } from "@railgun-community/shared-models";
-import {
-  connectRailgun,
-  refreshBalances,
-  getAllBalances,
-  privateTransfer,
-  checkWalletState,
-} from "../../lib/railgun-clean";
-import { getProductMeta, updateVcCid } from "../../utils/productMetaApi";
-import { generateX25519Keypair } from '../../utils/ecies';
-import { saveBuyerSecretBlob } from '../../utils/buyerSecretApi';
-import { appendAttestationData } from '../../utils/vcBuilder.mjs';
-import { generateRandomBlinding } from '../../utils/commitmentUtils';
-import { generateValueCommitmentWithBlinding } from '../../utils/zkp/zkpClient';
-import { fetchJson, uploadJson } from '../../utils/ipfs';
+import { connectRailgun, refreshBalances, getAllBalances, privateTransfer, checkWalletState } from "../../lib/railgun-clean";
+import { getProductMeta } from "../../utils/productMetaApi";
+import { generateX25519Keypair } from "../../utils/ecies";
+import { getOrderAttestation } from "../../utils/buyerSecretApi";
+import { getLatestOrderForProductBuyer, saveOrderRecoveryBundle, updateOrderStatus } from "../../utils/orderApi";
+import { assertScalarValue, computeOrderContextHash, generateOrderId, generateRandomBlinding, multiplyIntegerStrings, normalizeBytes32Hex, normalizeIntegerString } from "../../utils/commitmentUtils";
+import { generateQuantityTotalProof, generateTotalPaymentEqualityProof } from "../../utils/equalityProofClient";
+import { generateScalarCommitmentWithBlinding } from "../../utils/zkp/zkpClient";
 
-// Signing message for buyer-secret blob key derivation.
-// MUST differ from Railgun mnemonic signing message to prevent PBKDF2 key collision.
-// Fixed string (not per-product) for single-signature UX.
-const BUYER_BLOB_SIGNING_MSG = 'EV Supply Chain Buyer Privacy Key v1';
-
-const SEPOLIA_WETH_ADDRESS =
-  NETWORK_CONFIG[NetworkName.EthereumSepolia]?.baseToken?.wrappedAddress ||
-  "0xfFf9976782d46CC05630D1f6eBAb18b2324d6B14";
-
-const STEPS = ["connect", "balance", "pay", "recording", "complete"];
+const MSG = "EV Supply Chain Buyer Privacy Key v1";
+const SEPOLIA_WETH_ADDRESS = NETWORK_CONFIG[NetworkName.EthereumSepolia]?.baseToken?.wrappedAddress || "0xfFf9976782d46CC05630D1f6eBAb18b2324d6B14";
+const STEPS = ["connect", "pay", "recording", "complete"];
 
 function StepPill({ label, active, done }) {
-  const cls = done
-    ? "bg-green-600 text-white"
-    : active
-    ? "bg-blue-600 text-white"
-    : "bg-gray-200 text-gray-600";
-  return (
-    <span className={`rounded-full px-2 py-1 text-xs font-medium ${cls}`}>
-      {label}
-    </span>
-  );
+  const cls = done ? "bg-green-600 text-white" : active ? "bg-blue-600 text-white" : "bg-gray-200 text-gray-600";
+  return <span className={`rounded-full px-2 py-1 text-xs font-medium ${cls}`}>{label}</span>;
 }
 
 function CopyLine({ label, value }) {
   const [copied, setCopied] = useState(false);
-  const truncated = `${value.slice(0, 10)}...${value.slice(-8)}`;
   return (
     <div className="flex items-center gap-2">
       <span className="w-20 shrink-0 text-xs text-gray-500">{label}:</span>
-      <code className="truncate rounded bg-gray-100 px-2 py-1 font-mono text-xs text-gray-700">
-        {truncated}
-      </code>
-      <button
-        className="text-xs text-blue-600 hover:text-blue-800"
-        onClick={() => {
-          navigator.clipboard.writeText(value);
-          setCopied(true);
-          setTimeout(() => setCopied(false), 1500);
-        }}
-      >
-        {copied ? "Copied!" : "Copy"}
-      </button>
+      <code className="truncate rounded bg-gray-100 px-2 py-1 font-mono text-xs text-gray-700">{value.slice(0, 10)}...{value.slice(-8)}</code>
+      <button className="text-xs text-blue-600 hover:text-blue-800" onClick={() => {
+        navigator.clipboard.writeText(value);
+        setCopied(true);
+        setTimeout(() => setCopied(false), 1500);
+      }}>{copied ? "Copied!" : "Copy"}</button>
     </div>
   );
 }
 
-/**
- * Encrypt the buyer-secret blob using AES-GCM + PBKDF2 wallet-derived key.
- * AAD = `${chainId}/${productAddress.toLowerCase()}/${buyerAddress.toLowerCase()}`
- * This binds the ciphertext to a specific product+buyer pair, preventing blob reuse.
- */
-async function encryptBuyerBlob(plaintext, signature, aad) {
+async function encryptBlob(plaintext, signature, aad) {
   const encoder = new TextEncoder();
   const salt = crypto.getRandomValues(new Uint8Array(16));
-  const keyMaterial = await crypto.subtle.importKey(
-    'raw',
-    encoder.encode(signature),
-    'PBKDF2',
-    false,
-    ['deriveKey']
-  );
+  const keyMaterial = await crypto.subtle.importKey("raw", encoder.encode(signature), "PBKDF2", false, ["deriveKey"]);
   const key = await crypto.subtle.deriveKey(
-    { name: 'PBKDF2', salt, iterations: 100000, hash: 'SHA-256' },
+    { name: "PBKDF2", salt, iterations: 100000, hash: "SHA-256" },
     keyMaterial,
-    { name: 'AES-GCM', length: 256 },
+    { name: "AES-GCM", length: 256 },
     false,
-    ['encrypt']
+    ["encrypt"]
   );
   const iv = crypto.getRandomValues(new Uint8Array(12));
-  const aadBytes = encoder.encode(aad);
-  const plaintextBytes = encoder.encode(JSON.stringify(plaintext));
-  const ciphertextBuffer = await crypto.subtle.encrypt(
-    { name: 'AES-GCM', iv, additionalData: aadBytes },
+  const cipher = await crypto.subtle.encrypt(
+    { name: "AES-GCM", iv, additionalData: encoder.encode(aad) },
     key,
-    plaintextBytes
+    encoder.encode(JSON.stringify(plaintext))
   );
-  return {
-    ciphertext: Array.from(new Uint8Array(ciphertextBuffer)),
-    iv: Array.from(iv),
-    salt: Array.from(salt),
-    aad,
-    version: '1.0',
-  };
+  return { ciphertext: Array.from(new Uint8Array(cipher)), iv: Array.from(iv), salt: Array.from(salt), aad, version: "2.0" };
 }
 
-const PrivatePaymentModal = ({
-  product,
-  isOpen,
-  onClose,
-  onSuccess,
-  currentUser,
-}) => {
+const PrivatePaymentModal = ({ product, isOpen, onClose, onSuccess, currentUser }) => {
   const [step, setStep] = useState("connect");
-  const [amount, setAmount] = useState("");
+  const [quantity, setQuantity] = useState("");
   const [privateBalance, setPrivateBalance] = useState(0n);
   const [loading, setLoading] = useState(false);
   const [progress, setProgress] = useState("");
-  const [txResult, setTxResult] = useState(null);
+  const [result, setResult] = useState(null);
+  const [error, setError] = useState("");
   const [showFundsDrawer, setShowFundsDrawer] = useState(false);
-  const [actionError, setActionError] = useState("");
-  const [sellerRailgunAddressInput, setSellerRailgunAddressInput] = useState("");
-  const [pendingRecord, setPendingRecord] = useState(null);
+  const [sellerRailgunAddress, setSellerRailgunAddress] = useState("");
+  const [unitPriceWei, setUnitPriceWei] = useState("");
+  const [unitPriceHash, setUnitPriceHash] = useState("");
+  const [pendingOrder, setPendingOrder] = useState(null);
 
-  const parsedAmount = useMemo(() => {
-    if (!amount) return null;
+  const currentStepIndex = STEPS.indexOf(step);
+  const quantityValue = useMemo(() => {
     try {
-      const value = ethers.parseEther(amount);
-      if (value <= 0n) return null;
-      return value;
+      return quantity ? normalizeIntegerString(quantity, "quantity") : null;
     } catch {
       return null;
     }
-  }, [amount]);
-
-  const pendingPaymentKey = useMemo(
-    () =>
-      product?.address
-        ? `pending_private_payment_${product.address}`
-        : "pending_private_payment_unknown",
-    [product?.address]
-  );
-
-  const hasEnough = parsedAmount != null && privateBalance >= parsedAmount;
-  const currentStepIndex = STEPS.indexOf(step);
-
-  const findLocalStorageValueByAddress = useCallback((prefix, addr) => {
-    if (!addr || typeof window === "undefined") return null;
-    const lower = addr.toLowerCase();
-
-    const direct = localStorage.getItem(`${prefix}${addr}`);
-    if (direct) return direct;
-
-    const directLower = localStorage.getItem(`${prefix}${lower}`);
-    if (directLower) return directLower;
-
-    for (let i = 0; i < localStorage.length; i++) {
-      const key = localStorage.key(i);
-      if (!key || !key.startsWith(prefix)) continue;
-      const suffix = key.slice(prefix.length);
-      if (suffix.toLowerCase() === lower) {
-        return localStorage.getItem(key);
-      }
+  }, [quantity]);
+  const totalWei = useMemo(() => {
+    if (!unitPriceWei || !quantityValue) return null;
+    try {
+      return multiplyIntegerStrings(unitPriceWei, quantityValue, "orderTotal");
+    } catch {
+      return null;
     }
-    return null;
-  }, []);
-
-  const resolveSellerRailgunAddress = useCallback(async () => {
-    if (!product?.address) return null;
-
-    // 1) localStorage fast path (same device as seller — most common case)
-    const existing = findLocalStorageValueByAddress(
-      "sellerRailgunAddress_",
-      product?.address
-    );
-    if (existing && existing.startsWith("0zk")) {
-      return existing;
-    }
-
-    // 2) Extract from localStorage productMeta (legacy same-device path)
-    const rawMeta = findLocalStorageValueByAddress("productMeta_", product?.address);
-    if (rawMeta) {
-      try {
-        const meta = JSON.parse(rawMeta);
-        const resolved = String(meta?.sellerRailgunAddress || "").trim();
-        if (resolved.startsWith("0zk")) {
-          localStorage.setItem(`sellerRailgunAddress_${product.address}`, resolved);
-          return resolved;
-        }
-      } catch {
-        // ignore invalid metadata
-      }
-    }
-
-    // 3) DB lookup — cross-device path (buyer on different device)
-    // getProductMeta returns null for 404 or network errors (never throws)
-    const dbData = await getProductMeta(product.address);
-    if (dbData?.sellerRailgunAddress?.startsWith("0zk")) {
-      // Cache locally so subsequent calls in this session are fast
-      localStorage.setItem(
-        `sellerRailgunAddress_${product.address}`,
-        dbData.sellerRailgunAddress
-      );
-      return dbData.sellerRailgunAddress;
-    }
-
-    return null;
-  }, [findLocalStorageValueByAddress, product?.address]);
+  }, [quantityValue, unitPriceWei]);
+  const hasEnough = totalWei != null && privateBalance >= BigInt(totalWei);
 
   const syncBalance = useCallback(async () => {
     await refreshBalances();
@@ -219,201 +100,152 @@ const PrivatePaymentModal = ({
     return BigInt(weth);
   }, []);
 
-  const hydratePendingPayment = useCallback(() => {
-    if (!product?.address) return null;
-    try {
-      const raw = localStorage.getItem(pendingPaymentKey);
-      if (!raw) return null;
-      const parsed = JSON.parse(raw);
-      if (!parsed?.memoHash || !parsed?.railgunTxRef) return null;
-      setPendingRecord(parsed);
-      setTxResult((prev) => ({
-        ...(prev || {}),
-        memoHash: parsed.memoHash,
-        railgunTxRef: parsed.railgunTxRef,
-        railgunTxHash: parsed.railgunTxHash,
-        recordTxHash: parsed.recordTxHash,
-      }));
-      if (!parsed.recordTxHash) {
-        setStep("pay");
+  const hydrateListingData = useCallback(async () => {
+    if (!product?.address) return;
+    const dbData = await getProductMeta(product.address);
+    setUnitPriceWei(String(dbData?.unitPriceWei || ""));
+    setUnitPriceHash(String(dbData?.unitPriceHash || product?.unitPriceHash || ""));
+    setSellerRailgunAddress(String(dbData?.sellerRailgunAddress || ""));
+
+    if (currentUser) {
+      const latestOrder = await getLatestOrderForProductBuyer(product.address, currentUser);
+      if (latestOrder?.status === "payment_pending_recording") {
+        const latestAttestation = await getOrderAttestation(latestOrder.orderId);
+        const recoveredPending = {
+          ...latestOrder,
+          disclosurePubkey: latestAttestation?.disclosurePubkey || null,
+          encryptedBlob: latestAttestation?.encryptedBlob || null,
+          encryptedQuantityOpening: latestAttestation?.encryptedQuantityOpening || null,
+          encryptedTotalOpening: latestAttestation?.encryptedTotalOpening || null,
+          quantityTotalProof: latestAttestation?.quantityTotalProof || null,
+          paymentEqualityProof: latestAttestation?.paymentEqualityProof || null,
+        };
+        setPendingOrder(recoveredPending);
+        setResult(recoveredPending);
       }
-      return parsed;
-    } catch {
-      return null;
     }
-  }, [pendingPaymentKey, product?.address]);
+  }, [currentUser, product?.address, product?.unitPriceHash]);
 
-  const persistPendingPayment = (payload) => {
-    localStorage.setItem(pendingPaymentKey, JSON.stringify(payload));
-    setPendingRecord(payload);
-  };
-
-  const clearPendingPayment = () => {
-    localStorage.removeItem(pendingPaymentKey);
-    setPendingRecord(null);
-  };
-
-  const preflightRecordPrivatePayment = async () => {
-    const browserProvider = new ethers.BrowserProvider(window.ethereum);
-    const signer = await browserProvider.getSigner();
-    const me = (await signer.getAddress()).toLowerCase();
+  const preflight = useCallback(async () => {
+    const provider = new ethers.BrowserProvider(window.ethereum);
+    const signer = await provider.getSigner();
     const contract = getEscrowContract(product.address, signer);
-
-    const [productId, buyer, owner, phase, purchased] = await Promise.all([
+    const [phase, purchased, activeOrderId, productId] = await Promise.all([
+      contract.phase(),
+      contract.purchased(),
+      contract.activeOrderId(),
       contract.id(),
-      contract.buyer(),
-      contract.owner(),
-      contract.phase(),
-      contract.purchased(),
     ]);
+    if (Number(phase) !== 0 || purchased) throw new Error("Product is no longer available.");
+    if (activeOrderId !== ethers.ZeroHash) throw new Error("An active order already exists for this product.");
+    return { signer, contract, productId: String(productId) };
+  }, [product.address]);
 
-    if (Number(phase) !== 0) {
-      throw new Error("Product is no longer in Listed phase.");
-    }
-    if (purchased) {
-      throw new Error("Product is already purchased.");
-    }
+  const normalizeOrderPayload = useCallback((payload) => ({
+    ...payload,
+    orderId: normalizeBytes32Hex(payload.orderId, "orderId"),
+    memoHash: normalizeBytes32Hex(payload.memoHash, "memoHash"),
+    railgunTxRef: normalizeBytes32Hex(payload.railgunTxRef, "railgunTxRef"),
+    unitPriceHash: normalizeBytes32Hex(payload.unitPriceHash, "unitPriceHash"),
+    quantityCommitment: normalizeBytes32Hex(payload.quantityCommitment, "quantityCommitment"),
+    totalCommitment: normalizeBytes32Hex(payload.totalCommitment, "totalCommitment"),
+    paymentCommitment: normalizeBytes32Hex(payload.paymentCommitment, "paymentCommitment"),
+    contextHash: normalizeBytes32Hex(payload.contextHash, "contextHash"),
+  }), []);
 
-    const buyerLc = buyer.toLowerCase();
-    const ownerLc = owner.toLowerCase();
-    const isDesignated =
-      buyerLc !== ethers.ZeroAddress.toLowerCase() && buyerLc === me;
-    const isOwner = ownerLc === me;
-
-    if (buyerLc !== ethers.ZeroAddress.toLowerCase() && !isDesignated && !isOwner) {
-      throw new Error(
-        `This product is already reserved by another buyer (${buyer}).`
-      );
-    }
-
-    return { contract, productId };
-  };
-
-  const recordPrivatePaymentOnChain = async ({ memoHash, railgunTxRef }) => {
-    const { contract, productId } = await preflightRecordPrivatePayment();
-    const recorder = await contract.runner.getAddress();
-    const gasEstimate = await contract.recordPrivatePayment.estimateGas(
-      productId,
-      memoHash,
-      railgunTxRef
-    );
-    const tx = await contract.recordPrivatePayment(productId, memoHash, railgunTxRef, {
-      gasLimit: (gasEstimate * 120n) / 100n,
+  const saveRecoveryBundle = useCallback(async (payload, status = "payment_pending_recording") => {
+    const normalized = normalizeOrderPayload(payload);
+    return saveOrderRecoveryBundle({
+      order: {
+        orderId: normalized.orderId,
+        productAddress: product.address,
+        productId: normalized.productId,
+        escrowAddress: product.address,
+        chainId: normalized.chainId,
+        sellerAddress: product.owner,
+        buyerAddress: normalized.buyerAddress,
+        status,
+        memoHash: normalized.memoHash,
+        railgunTxRef: normalized.railgunTxRef,
+        unitPriceWei: normalized.unitPriceWei,
+        unitPriceHash: normalized.unitPriceHash,
+        quantityCommitment: normalized.quantityCommitment,
+        quantityProof: {
+          proof: normalized.quantityCommitmentProof ?? null,
+          proofType: normalized.quantityCommitmentProofType || "pedersen-scalar-v2",
+        },
+        totalCommitment: normalized.totalCommitment,
+        totalProof: {
+          proof: normalized.totalCommitmentProof ?? null,
+          proofType: normalized.totalCommitmentProofType || "pedersen-scalar-v2",
+        },
+        paymentCommitment: normalized.paymentCommitment,
+        paymentProof: {
+          proof: normalized.paymentCommitmentProof ?? null,
+          proofType: normalized.paymentCommitmentProofType || "pedersen-scalar-v2",
+        },
+        contextHash: normalized.contextHash,
+      },
+      attestation: {
+        orderId: normalized.orderId,
+        productAddress: product.address,
+        buyerAddress: normalized.buyerAddress,
+        encryptedBlob: normalized.encryptedBlob,
+        disclosurePubkey: normalized.disclosurePubkey,
+        encryptedQuantityOpening: normalized.encryptedQuantityOpening,
+        encryptedTotalOpening: normalized.encryptedTotalOpening,
+        quantityTotalProof: normalized.quantityTotalProof,
+        paymentEqualityProof: normalized.paymentEqualityProof,
+        proofBundle: {
+          quantityTotalProof: normalized.quantityTotalProof,
+          paymentEqualityProof: normalized.paymentEqualityProof,
+        },
+      },
     });
-    await tx.wait();
-
-    // FCFS invariant: successful record should set buyer to recorder and phase to Purchased.
-    const [buyerAfter, phaseAfter, purchasedAfter] = await Promise.all([
-      contract.buyer(),
-      contract.phase(),
-      contract.purchased(),
-    ]);
-    if (buyerAfter.toLowerCase() !== recorder.toLowerCase()) {
-      throw new Error(
-        `Post-check failed: buyer mismatch after recording (${buyerAfter}).`
-      );
-    }
-    if (Number(phaseAfter) !== 1 || !purchasedAfter) {
-      throw new Error("Post-check failed: product did not move to Purchased phase.");
-    }
-    return tx.hash;
-  };
+  }, [normalizeOrderPayload, product.address, product.owner]);
 
   useEffect(() => {
     if (!isOpen) return;
     setStep("connect");
-    setAmount("");
+    setError("");
     setProgress("");
-    setTxResult(null);
-    setPendingRecord(null);
-    setActionError("");
-    setSellerRailgunAddressInput("");
-    hydratePendingPayment();
-
-    const checkState = async () => {
+    setResult(null);
+    setPendingOrder(null);
+    hydrateListingData();
+    (async () => {
       try {
         const state = await checkWalletState(currentUser);
         if (state?.success && state?.data?.walletID) {
-          const weth = await syncBalance();
-          if (weth > 0n) {
-            setStep("pay");
-          } else {
-            setStep("balance");
-          }
+          await syncBalance();
+          setStep("pay");
         }
       } catch {
         // keep connect step
       }
-
-      const cachedSeller =
-        findLocalStorageValueByAddress("sellerRailgunAddress_", product?.address) ||
-        (await resolveSellerRailgunAddress());
-      if (cachedSeller) {
-        setSellerRailgunAddressInput(cachedSeller);
-      }
-    };
-    checkState();
-  }, [
-    currentUser,
-    findLocalStorageValueByAddress,
-    hydratePendingPayment,
-    isOpen,
-    product?.address,
-    resolveSellerRailgunAddress,
-    syncBalance,
-  ]);
-
-  useEffect(() => {
-    if (!isOpen || !product?.address) return;
-    if (sellerRailgunAddressInput) return;
-
-    const hydrateSellerAddress = async () => {
-      const resolved = await resolveSellerRailgunAddress();
-      if (resolved) {
-        setSellerRailgunAddressInput(resolved);
-      }
-    };
-    hydrateSellerAddress();
-  }, [isOpen, product?.address, resolveSellerRailgunAddress, sellerRailgunAddressInput]);
-
-  useEffect(() => {
-    if (!isOpen || !product?.address) return;
-    if (amount) return;
-
-    (async () => {
-      // 1) localStorage fast path
-      const priceWei = findLocalStorageValueByAddress("priceWei_", product.address);
-      if (priceWei) {
-        try {
-          setAmount(ethers.formatEther(BigInt(priceWei)));
-          return;
-        } catch {
-          // ignore malformed legacy value, fall through to DB
-        }
-      }
-
-      // 2) DB lookup for priceWei (cross-device path)
-      // getProductMeta returns null on 404 or network error — no throw
-      const dbData = await getProductMeta(product.address);
-      if (dbData?.priceWei) {
-        try {
-          setAmount(ethers.formatEther(BigInt(dbData.priceWei)));
-        } catch {
-          // ignore malformed DB value
-        }
-      }
     })();
-  }, [amount, findLocalStorageValueByAddress, isOpen, product?.address]);
+  }, [currentUser, hydrateListingData, isOpen, syncBalance]);
+
+  const recordOnChain = useCallback(async (payload) => {
+    const { contract } = await preflight();
+    const normalized = normalizeOrderPayload(payload);
+    const gasEstimate = await contract.recordPrivateOrderPayment.estimateGas(
+      normalized.orderId, normalized.memoHash, normalized.railgunTxRef, normalized.quantityCommitment, normalized.totalCommitment, normalized.paymentCommitment, normalized.contextHash
+    );
+    const tx = await contract.recordPrivateOrderPayment(
+      normalized.orderId, normalized.memoHash, normalized.railgunTxRef, normalized.quantityCommitment, normalized.totalCommitment, normalized.paymentCommitment, normalized.contextHash,
+      { gasLimit: (gasEstimate * 120n) / 100n }
+    );
+    await tx.wait();
+    return tx.hash;
+  }, [normalizeOrderPayload, preflight]);
 
   const handleConnect = async () => {
     setLoading(true);
     try {
-      const result = await connectRailgun({ userAddress: currentUser });
-      if (!result?.success) {
-        throw new Error(result?.error || "Could not connect Railgun.");
-      }
-      const weth = await syncBalance();
-      setStep(weth > 0n ? "pay" : "balance");
+      const res = await connectRailgun({ userAddress: currentUser });
+      if (!res?.success) throw new Error(res?.error || "Could not connect Railgun.");
+      await syncBalance();
+      setStep("pay");
       toast.success("Railgun connected.");
     } catch (err) {
       toast.error(err.message || "Connection failed.");
@@ -422,255 +254,174 @@ const PrivatePaymentModal = ({
     }
   };
 
-  const handleContinue = () => {
-    if (!parsedAmount || !hasEnough) return;
-    setStep("pay");
-  };
-
   const handlePay = async () => {
-    if (!parsedAmount) {
-      toast.error("Enter a valid amount.");
+    if (!quantityValue || !totalWei || !unitPriceWei || !unitPriceHash) {
+      toast.error("Quantity or listing price data is missing.");
       return;
     }
-    setActionError("");
     setLoading(true);
-    setProgress("Preparing transfer...");
-    let transferSucceeded = false;
+    setError("");
     let transferResult = null;
     try {
-      await preflightRecordPrivatePayment();
+      const { signer, productId } = await preflight();
+      const buyerAddress = await signer.getAddress();
+      const network = await signer.provider.getNetwork();
+      const chainId = String(network?.chainId || product?.chainId || "1337");
+      assertScalarValue(unitPriceWei, "unitPriceWei");
+      assertScalarValue(quantityValue, "quantity");
+      assertScalarValue(totalWei, "totalWei");
 
-      const sellerRailgunAddress = findLocalStorageValueByAddress(
-        "sellerRailgunAddress_",
-        product.address
-      );
-      let sellerRailgunAddressFinal =
-        (sellerRailgunAddressInput || sellerRailgunAddress || "").trim();
-      if (!sellerRailgunAddressFinal) {
-        const resolved = await resolveSellerRailgunAddress();
-        if (resolved) {
-          sellerRailgunAddressFinal = resolved;
-          setSellerRailgunAddressInput(resolved);
-        }
-      }
-      if (!sellerRailgunAddressFinal) {
-        throw new Error(
-          "Seller Railgun address is missing for this product metadata."
-        );
-      }
-      if (!sellerRailgunAddressFinal.startsWith("0zk")) {
-        throw new Error("Seller Railgun address must start with 0zk.");
-      }
+      const sellerAddress = sellerRailgunAddress.trim();
+      if (!sellerAddress.startsWith("0zk")) throw new Error("Seller Railgun address is missing or invalid.");
 
-      localStorage.setItem(
-        `sellerRailgunAddress_${product.address}`,
-        sellerRailgunAddressFinal
-      );
-
+      setProgress("Processing private transfer...");
       transferResult = await privateTransfer({
-        toRailgunAddress: sellerRailgunAddressFinal,
-        amountWei: parsedAmount,
+        toRailgunAddress: sellerAddress,
+        amountWei: BigInt(totalWei),
         tokenAddress: SEPOLIA_WETH_ADDRESS,
         productId: String(product.id ?? 0),
-        onProgress: (state) =>
-          setProgress(state?.message || "Processing transfer..."),
+        onProgress: (state) => setProgress(state?.message || "Processing private transfer..."),
       });
-      if (!transferResult?.success) {
-        throw new Error(transferResult?.error || "Private transfer failed.");
-      }
-      transferSucceeded = true;
+      if (!transferResult?.success) throw new Error(transferResult?.error || "Private transfer failed.");
 
-      const pendingPayload = {
+      const orderId = generateOrderId();
+      const contextHash = computeOrderContextHash({
+        orderId,
+        memoHash: transferResult.memoHash,
+        railgunTxRef: transferResult.railgunTxRef,
+        productId,
+        chainId,
+        escrowAddr: product.address,
+        unitPriceHash,
+      });
+
+      const { privKeyHex, pubKeyHex } = generateX25519Keypair();
+      const rQuantity = generateRandomBlinding();
+      const rTotal = generateRandomBlinding();
+      const rPay = generateRandomBlinding();
+
+      const [qCommit, tCommit, pCommit] = await Promise.all([
+        generateScalarCommitmentWithBlinding({ value: quantityValue, blindingHex: `0x${rQuantity}` }),
+        generateScalarCommitmentWithBlinding({ value: totalWei, blindingHex: `0x${rTotal}` }),
+        generateScalarCommitmentWithBlinding({ value: totalWei, blindingHex: `0x${rPay}` }),
+      ]);
+
+      const [quantityTotalProof, paymentEqualityProof] = await Promise.all([
+        generateQuantityTotalProof({
+          cQuantityHex: qCommit.commitment,
+          cTotalHex: tCommit.commitment,
+          unitPriceWei,
+          rQuantityHex: `0x${rQuantity}`,
+          rTotalHex: `0x${rTotal}`,
+          contextHashHex: contextHash,
+        }),
+        generateTotalPaymentEqualityProof({
+          cTotalHex: tCommit.commitment,
+          cPayHex: pCommit.commitment,
+          rTotalHex: `0x${rTotal}`,
+          rPayHex: `0x${rPay}`,
+          contextHashHex: contextHash,
+        }),
+      ]);
+
+      const signature = await signer.signMessage(MSG);
+      const aad = `${chainId}/${product.address.toLowerCase()}/${buyerAddress.toLowerCase()}/${orderId.toLowerCase()}`;
+      const encryptedBlob = await encryptBlob({
+        x25519_priv: privKeyHex,
+        orderId,
+        quantity: quantityValue,
+        unitPriceWei,
+        totalWei,
+        r_quantity: rQuantity,
+        r_total: rTotal,
+        r_pay: rPay,
+        meta: { chainId, productId, contextHash, productAddress: product.address, timestamp: Date.now() },
+      }, signature, aad);
+      encryptedBlob.pubkey = pubKeyHex;
+
+      const [encryptedQuantityOpening, encryptedTotalOpening] = await Promise.all([
+        encryptBlob({ value: quantityValue, blinding: rQuantity }, signature, `${aad}/quantity`),
+        encryptBlob({ value: totalWei, blinding: rTotal }, signature, `${aad}/total`),
+      ]);
+
+      const payload = normalizeOrderPayload({
+        orderId,
+        productId,
+        chainId,
+        buyerAddress,
+        quantity: quantityValue,
+        unitPriceWei,
+        unitPriceHash,
+        totalWei,
         memoHash: transferResult.memoHash,
         railgunTxRef: transferResult.railgunTxRef,
         railgunTxHash: transferResult.txHash,
-        amount,
-        timestamp: Date.now(),
-      };
-      persistPendingPayment(pendingPayload);
-
-      setTxResult({
-        memoHash: transferResult.memoHash,
-        railgunTxRef: transferResult.railgunTxRef,
-        railgunTxHash: transferResult.txHash,
+        quantityCommitment: qCommit.commitment,
+        totalCommitment: tCommit.commitment,
+        paymentCommitment: pCommit.commitment,
+        quantityCommitmentProof: qCommit.proof,
+        quantityCommitmentProofType: qCommit.proof_type,
+        totalCommitmentProof: tCommit.proof,
+        totalCommitmentProofType: tCommit.proof_type,
+        paymentCommitmentProof: pCommit.proof,
+        paymentCommitmentProofType: pCommit.proof_type,
+        contextHash,
+        disclosurePubkey: pubKeyHex,
+        encryptedBlob,
+        encryptedQuantityOpening,
+        encryptedTotalOpening,
+        quantityTotalProof,
+        paymentEqualityProof,
       });
+      setPendingOrder(payload);
+      setResult(payload);
+
+      await saveRecoveryBundle(payload, "payment_pending_recording");
 
       setStep("recording");
-      setProgress("Recording payment on-chain...");
-      const recordTxHash = await recordPrivatePaymentOnChain({
-        memoHash: transferResult.memoHash,
-        railgunTxRef: transferResult.railgunTxRef,
-      });
-
-      setTxResult((prev) => ({
-        ...(prev || {}),
-        recordTxHash,
-      }));
-      clearPendingPayment();
-
-      // ── Buyer Attestation (non-blocking) ────────────────────────────────────
-      // Runs after payment is confirmed. Failure here does NOT block the success state.
-      // The user will still see the payment success screen even if the blob save fails.
-      try {
-        // 1. Generate fresh x25519 keypair for this purchase
-        const { privKeyHex, pubKeyHex } = generateX25519Keypair();
-
-        // 2. Generate random r_pay blinding factor
-        const rPay = generateRandomBlinding();
-
-        // 3. Compute C_pay = Pedersen(priceValue, r_pay)
-        const priceValueNum = typeof parsedAmount === 'bigint' ? Number(parsedAmount) : Number(parsedAmount || 0);
-        let cPayResult = null;
-        try {
-          cPayResult = await generateValueCommitmentWithBlinding({
-            value: priceValueNum,
-            blindingHex: `0x${rPay}`,
-          });
-        } catch (zkpErr) {
-          console.warn('[Attestation] C_pay generation failed (ZKP backend unavailable):', zkpErr.message);
-        }
-
-        // 4. Encrypt buyer-secret blob with wallet-derived key
-        const browserProvider = new ethers.BrowserProvider(window.ethereum);
-        const signer = await browserProvider.getSigner();
-        const buyerAddr = await signer.getAddress();
-        const network = await browserProvider.getNetwork();
-        const chainId = String(network?.chainId || process.env.REACT_APP_CHAIN_ID || '1337');
-        const aad = `${chainId}/${product.address.toLowerCase()}/${buyerAddr.toLowerCase()}`;
-
-        const blobSignature = await signer.signMessage(BUYER_BLOB_SIGNING_MSG);
-        let encryptedBlob = null;
-        if (blobSignature) {
-          const plaintext = {
-            x25519_priv: privKeyHex,
-            r_pay: rPay,
-            meta: { productAddress: product.address, chainId, timestamp: Date.now() },
-          };
-          encryptedBlob = await encryptBuyerBlob(plaintext, blobSignature, aad);
-          encryptedBlob.pubkey = pubKeyHex;
-        }
-
-        // 5. Persist blob to backend DB (non-blocking)
-        if (encryptedBlob && buyerAddr) {
-          try {
-            await saveBuyerSecretBlob({
-              productAddress: product.address,
-              buyerAddress: buyerAddr,
-              encryptedBlob: JSON.stringify(encryptedBlob),
-              disclosurePubkey: pubKeyHex,
-              cPay: cPayResult?.commitment || null,
-              cPayProof: cPayResult?.proof || null,
-            });
-          } catch (dbErr) {
-            console.warn('[Attestation] saveBuyerSecretBlob failed:', dbErr.message);
-          }
-
-          // 6. Cache to localStorage for same-device convenience
-          try {
-            localStorage.setItem(
-              `buyerSecret_${product.address.toLowerCase()}_${buyerAddr.toLowerCase()}`,
-              JSON.stringify(encryptedBlob)
-            );
-          } catch {
-            // localStorage quota exceeded or unavailable — not critical
-          }
-        }
-
-        // 7. Write disclosurePubKey + buyerPaymentCommitment into the VC before IPFS re-upload
-        if (pubKeyHex) {
-          const attestationFields = {
-            disclosurePubKey: pubKeyHex,
-            ...(cPayResult ? {
-              buyerPaymentCommitment: {
-                commitment: cPayResult.commitment,
-                proof: cPayResult.proof,
-                bindingContext: {
-                  productId: String(product?.id ?? ''),
-                  txRef: product?.memoHash || '',
-                  chainId,
-                  escrowAddr: product.address,
-                  stage: 'payment',
-                },
-              },
-            } : {}),
-          };
-          try {
-            const metaData = await getProductMeta(product.address);
-            if (metaData?.vcCid) {
-              const currentVc = await fetchJson(metaData.vcCid);
-              if (currentVc) {
-                const updatedVc = appendAttestationData(currentVc, {
-                  attestationFields,
-                  previousVersionCid: metaData.vcCid,
-                });
-                const newCid = await uploadJson(updatedVc);
-                localStorage.setItem(`vcCid_${product.address}`, newCid);
-                try {
-                  await updateVcCid(product.address, newCid);
-                } catch (vcDbErr) {
-                  console.warn('[Attestation] updateVcCid failed:', vcDbErr.message);
-                }
-              }
-            }
-          } catch (vcErr) {
-            console.warn('[Attestation] VC attestation write failed:', vcErr.message);
-          }
-        }
-      } catch (attestErr) {
-        console.warn('[Attestation] Buyer attestation write failed (non-blocking):', attestErr.message);
-      }
-      // ── End Buyer Attestation ───────────────────────────────────────────────
-
+      setProgress("Recording order payment on-chain...");
+      const recordTxHash = await recordOnChain(payload);
+      await updateOrderStatus(payload.orderId, "payment_recorded");
+      setPendingOrder(null);
+      setResult({ ...payload, recordTxHash });
       setStep("complete");
-      setProgress("Payment complete.");
-      toast.success("Private payment recorded on-chain.");
+      toast.success("Private order payment recorded on-chain.");
     } catch (err) {
-      const decoded = decodeContractError(err) || err.message;
-      const message =
-        transferSucceeded && transferResult?.memoHash && transferResult?.railgunTxRef
-          ? `Private transfer succeeded, but on-chain recording failed: ${decoded}. Use Retry Recording.`
-          : decoded;
-      toast.error("Payment failed: " + message);
-      setActionError(message);
+      const msg = decodeContractError(err) || err.message;
+      setError(
+        transferResult?.memoHash
+          ? `Private transfer succeeded, but on-chain recording failed: ${msg}. Use Retry Recording.`
+          : msg
+      );
       setStep("pay");
-      setProgress("");
+      toast.error(`Payment failed: ${msg}`);
     } finally {
       setLoading(false);
     }
   };
 
-  const handleRetryRecord = async () => {
-    const payment = pendingRecord || txResult;
-    if (!payment?.memoHash || !payment?.railgunTxRef) {
-      toast.error("No pending payment found to record.");
+  const handleRetry = async () => {
+    if (!pendingOrder?.orderId) {
+      toast.error("No pending order found.");
       return;
     }
     setLoading(true);
+    setError("");
     setStep("recording");
-    setProgress("Retrying on-chain payment record...");
-    setActionError("");
+    setProgress("Retrying on-chain record...");
     try {
-      const recordTxHash = await recordPrivatePaymentOnChain({
-        memoHash: payment.memoHash,
-        railgunTxRef: payment.railgunTxRef,
-      });
-      clearPendingPayment();
-      setTxResult((prev) => ({
-        ...(prev || {}),
-        memoHash: payment.memoHash,
-        railgunTxRef: payment.railgunTxRef,
-        railgunTxHash: payment.railgunTxHash,
-        recordTxHash,
-      }));
+      await saveRecoveryBundle(pendingOrder, "payment_pending_recording");
+      const recordTxHash = await recordOnChain(pendingOrder);
+      await updateOrderStatus(pendingOrder.orderId, "payment_recorded");
+      setPendingOrder(null);
+      setResult({ ...pendingOrder, recordTxHash });
       setStep("complete");
-      setProgress("Payment complete.");
-      toast.success("Pending payment recorded on-chain.");
+      toast.success("Pending order recorded on-chain.");
     } catch (err) {
-      const decoded = decodeContractError(err) || err.message;
-      setActionError(decoded);
+      const msg = decodeContractError(err) || err.message;
+      setError(msg);
       setStep("pay");
-      setProgress("");
-      toast.error("Retry failed: " + decoded);
+      toast.error(`Retry failed: ${msg}`);
     } finally {
       setLoading(false);
     }
@@ -683,178 +434,100 @@ const PrivatePaymentModal = ({
       <div className="fixed inset-0 z-50 flex items-center justify-end bg-black bg-opacity-50">
         <div className="h-full w-full max-w-md overflow-y-auto bg-white p-5 shadow-xl">
           <div className="mb-4 flex items-center justify-between">
-            <h2 className="text-lg font-bold">Buy with Railgun</h2>
-            <button
-              onClick={onClose}
-              className="text-xl text-gray-500 hover:text-gray-700"
-            >
-              x
-            </button>
+            <h2 className="text-lg font-bold">Create Private Order</h2>
+            <button onClick={onClose} className="text-xl text-gray-500 hover:text-gray-700">x</button>
           </div>
 
           <div className="mb-5 flex flex-wrap gap-2">
             <StepPill label="Connect" active={currentStepIndex === 0} done={currentStepIndex > 0} />
-            <StepPill label="Balance" active={currentStepIndex === 1} done={currentStepIndex > 1} />
-            <StepPill label="Pay" active={currentStepIndex === 2 || currentStepIndex === 3} done={currentStepIndex > 3} />
-            <StepPill label="Done" active={currentStepIndex === 4} done={currentStepIndex === 4} />
+            <StepPill label="Order" active={currentStepIndex === 1 || currentStepIndex === 2} done={currentStepIndex > 2} />
+            <StepPill label="Done" active={currentStepIndex === 3} done={currentStepIndex === 3} />
           </div>
 
           {step === "connect" && (
             <div className="space-y-4">
-              <p className="text-sm text-gray-700">
-                Connect your Railgun wallet to make a private payment.
-              </p>
+              <p className="text-sm text-gray-700">Connect your Railgun wallet to create a private quantity-based order.</p>
               <RailgunConnectionButton currentUser={currentUser} />
               <div className="flex gap-2">
-                <Button onClick={handleConnect} disabled={loading} isLoading={loading}>
-                  Connect & Continue
-                </Button>
-                <Button variant="ghost" onClick={onClose}>
-                  Cancel
-                </Button>
+                <Button onClick={handleConnect} disabled={loading} isLoading={loading}>Connect & Continue</Button>
+                <Button variant="ghost" onClick={onClose}>Cancel</Button>
               </div>
             </div>
           )}
 
-          {(step === "balance" || step === "pay") && (
+          {(step === "pay" || step === "recording") && (
             <div className="space-y-4">
               <div className="rounded border bg-gray-50 p-3 text-sm">
-                <p>
-                  Private WETH Balance:{" "}
-                  <span className="font-semibold">
-                    {ethers.formatEther(privateBalance)} WETH
-                  </span>
-                </p>
+                <p>Public unit price: <span className="font-semibold">{unitPriceWei ? `${ethers.formatEther(unitPriceWei)} WETH` : "Unavailable"}</span></p>
+                <p className="mt-1">Private WETH balance: <span className="font-semibold">{ethers.formatEther(privateBalance)} WETH</span></p>
               </div>
 
-              <div>
-                <label className="mb-1 block text-sm font-medium text-gray-700">
-                  Payment amount (ETH)
-                </label>
-                <input
-                  type="number"
-                  step="0.0001"
-                  min="0"
-                  value={amount}
-                  onChange={(e) => setAmount(e.target.value)}
-                  className="w-full rounded border border-gray-300 px-3 py-2 text-sm outline-none focus:border-blue-500"
-                  placeholder="Enter agreed amount"
-                />
-              </div>
-
-              {parsedAmount != null && (
-                <p
-                  className={`text-sm font-medium ${
-                    hasEnough ? "text-green-700" : "text-red-700"
-                  }`}
-                >
-                  {hasEnough ? "Sufficient balance" : "Insufficient balance"}
-                </p>
-              )}
-
-              <div className="flex flex-wrap gap-2">
-                <Button
-                  onClick={step === "balance" ? handleContinue : handlePay}
-                  disabled={!parsedAmount || !hasEnough || loading}
-                  isLoading={loading}
-                >
-                  {step === "balance" ? "Continue to Pay" : "Send Private Payment"}
-                </Button>
-                <Button variant="ghost" onClick={syncBalance}>
-                  Refresh Balance
-                </Button>
-                <Button variant="ghost" onClick={() => setShowFundsDrawer(true)}>
-                  Open Private Funds
-                </Button>
-                {((pendingRecord && !pendingRecord.recordTxHash) ||
-                  (txResult?.memoHash && txResult?.railgunTxRef && !txResult?.recordTxHash)) && (
-                  <Button variant="ghost" onClick={handleRetryRecord} disabled={loading}>
-                    Retry Recording
-                  </Button>
-                )}
-              </div>
-
-              {(pendingRecord || txResult?.memoHash) &&
-                !(txResult?.recordTxHash || pendingRecord?.recordTxHash) && (
-                  <div className="rounded border border-blue-200 bg-blue-50 px-3 py-2 text-xs text-blue-800">
-                    Pending on-chain recording detected. Use <strong>Retry Recording</strong> to
-                    finalize without sending funds again.
+              {step === "pay" && (
+                <>
+                  <div>
+                    <label className="mb-1 block text-sm font-medium text-gray-700">Private order quantity</label>
+                    <input
+                      type="number"
+                      step="1"
+                      min="1"
+                      value={quantity}
+                      onChange={(event) => setQuantity(event.target.value)}
+                      className="w-full rounded border border-gray-300 px-3 py-2 text-sm outline-none focus:border-blue-500"
+                      placeholder="Enter quantity"
+                    />
                   </div>
-                )}
-
-              {!findLocalStorageValueByAddress(
-                "sellerRailgunAddress_",
-                product?.address
-              ) && (
-                <div className="space-y-2 rounded border border-amber-200 bg-amber-50 p-3">
-                  <label className="block text-sm font-medium text-amber-800">
-                    Seller Railgun Address (0zk...)
-                  </label>
-                  <input
-                    type="text"
-                    value={sellerRailgunAddressInput}
-                    onChange={(e) => setSellerRailgunAddressInput(e.target.value)}
-                    placeholder="0zk1..."
-                    className="w-full rounded border border-amber-300 bg-white px-3 py-2 text-sm font-mono outline-none focus:border-amber-500"
-                  />
-                  <p className="text-xs text-amber-700">
-                    This product is missing cached seller Railgun metadata. Paste
-                    seller address once; it will be saved locally for next time.
-                  </p>
-                </div>
+                  {totalWei && <div className="rounded border border-blue-200 bg-blue-50 p-3 text-sm text-blue-900">Private total: {ethers.formatEther(totalWei)} WETH</div>}
+                  {quantityValue && totalWei && <p className={`text-sm font-medium ${hasEnough ? "text-green-700" : "text-red-700"}`}>{hasEnough ? "Sufficient balance" : "Insufficient balance"}</p>}
+                  {!sellerRailgunAddress && (
+                    <div className="space-y-2 rounded border border-amber-200 bg-amber-50 p-3">
+                      <label className="block text-sm font-medium text-amber-800">Seller Railgun Address (0zk...)</label>
+                      <input
+                        type="text"
+                        value={sellerRailgunAddress}
+                        onChange={(event) => setSellerRailgunAddress(event.target.value)}
+                        className="w-full rounded border border-amber-300 bg-white px-3 py-2 text-sm font-mono outline-none focus:border-amber-500"
+                        placeholder="0zk1..."
+                      />
+                    </div>
+                  )}
+                  <div className="flex flex-wrap gap-2">
+                    <Button onClick={handlePay} disabled={!quantityValue || !totalWei || !hasEnough || loading} isLoading={loading}>Send Private Payment</Button>
+                    <Button variant="ghost" onClick={syncBalance}>Refresh Balance</Button>
+                    <Button variant="ghost" onClick={() => setShowFundsDrawer(true)}>Open Private Funds</Button>
+                    {pendingOrder?.orderId && <Button variant="ghost" onClick={handleRetry} disabled={loading}>Retry Recording</Button>}
+                  </div>
+                </>
               )}
-
-              {actionError && (
-                <div className="rounded border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
-                  {actionError}
-                </div>
+              {step === "recording" && (
+                <>
+                  <p className="text-sm text-gray-700">{progress || "Recording..."}</p>
+                  <div className="h-2 w-full overflow-hidden rounded bg-gray-200"><div className="h-full w-2/3 animate-pulse bg-blue-600" /></div>
+                </>
               )}
+              {error && <div className="rounded border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</div>}
             </div>
           )}
 
-          {step === "recording" && (
-            <div className="space-y-3">
-              <p className="text-sm text-gray-700">{progress || "Recording..."}</p>
-              <div className="h-2 w-full overflow-hidden rounded bg-gray-200">
-                <div className="h-full w-2/3 animate-pulse bg-blue-600" />
-              </div>
-            </div>
-          )}
-
-          {step === "complete" && txResult && (
+          {step === "complete" && result && (
             <div className="space-y-4">
-              <div className="rounded border border-green-200 bg-green-50 p-3 text-green-800">
-                Payment recorded on-chain.
-              </div>
-              {txResult.memoHash && <CopyLine label="Memo" value={txResult.memoHash} />}
-              {txResult.railgunTxRef && (
-                <CopyLine label="Tx Ref" value={txResult.railgunTxRef} />
-              )}
-              {txResult.recordTxHash && (
-                <a
-                  href={getExplorerUrl(txResult.recordTxHash)}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="inline-block text-xs text-blue-700 underline"
-                >
-                  View recording tx
-                </a>
+              <div className="rounded border border-green-200 bg-green-50 p-3 text-green-800">Private order payment recorded on-chain.</div>
+              <CopyLine label="Order ID" value={result.orderId} />
+              <CopyLine label="Memo" value={result.memoHash} />
+              <CopyLine label="Tx Ref" value={result.railgunTxRef} />
+              <div className="text-sm text-gray-700">Private total paid: <span className="font-semibold">{ethers.formatEther(result.totalWei)} WETH</span></div>
+              {result.recordTxHash && getExplorerUrl(result.recordTxHash) && (
+                <a href={getExplorerUrl(result.recordTxHash)} target="_blank" rel="noreferrer" className="inline-block text-xs text-blue-700 underline">View recording tx</a>
               )}
               <div className="flex gap-2">
                 <Button onClick={() => onSuccess?.()}>Close</Button>
-                <Button variant="ghost" onClick={onClose}>
-                  Dismiss
-                </Button>
+                <Button variant="ghost" onClick={onClose}>Dismiss</Button>
               </div>
             </div>
           )}
         </div>
       </div>
 
-      <PrivateFundsDrawer
-        open={showFundsDrawer}
-        onClose={() => setShowFundsDrawer(false)}
-      />
+      <PrivateFundsDrawer open={showFundsDrawer} onClose={() => setShowFundsDrawer(false)} />
     </>
   );
 };

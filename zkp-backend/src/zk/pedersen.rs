@@ -7,6 +7,13 @@ use merlin::Transcript;
 use rand::rngs::OsRng;
 use rand::RngCore;
 
+pub fn commit_scalar_with_blinding(
+    value: Scalar,
+    blinding: Scalar,
+) -> CompressedRistretto {
+    PedersenGens::default().commit(value, blinding).compress()
+}
+
 pub fn prove_equal_42() {
     // Step 1: Secret value
     let secret_value: u64 = 42;
@@ -305,5 +312,22 @@ mod value_commitment_tests {
         // Test: Verify proof without binding tag (backward compatible)
         let verified_no_tag = verify_value_commitment_with_binding(commitment, proof_bytes.clone(), None);
         assert!(verified_no_tag, "Proof generated without binding tag should verify without binding tag");
+    }
+
+    #[test]
+    fn test_commit_scalar_with_blinding_supports_values_above_u64() {
+        let value_bytes = [
+            0xff, 0xee, 0xdd, 0xcc, 0xbb, 0xaa, 0x99, 0x88,
+            0x77, 0x66, 0x55, 0x44, 0x33, 0x22, 0x11, 0x00,
+            0x10, 0x32, 0x54, 0x76, 0x98, 0xba, 0xdc, 0xfe,
+            0x01, 0x23, 0x45, 0x67, 0x00, 0x00, 0x00, 0x00,
+        ];
+        let value = Scalar::from_canonical_bytes(value_bytes).expect("canonical scalar");
+        let blinding = Scalar::from_bytes_mod_order([0x24u8; 32]);
+
+        let commitment_a = commit_scalar_with_blinding(value, blinding);
+        let commitment_b = commit_scalar_with_blinding(value, blinding);
+
+        assert_eq!(commitment_a, commitment_b, "same value and blinding must produce the same commitment");
     }
 }

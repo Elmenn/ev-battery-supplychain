@@ -11,6 +11,7 @@ contract("EscrowRedesign – Full Lifecycle", accounts => {
   const VCID = "ipfs://QmTestVcCid12345";
 
   let factory, impl, esc, escAddr, commitment;
+  let unitPriceHash;
 
   // Helper: deploy fresh factory + create one product
   async function deployAndCreate() {
@@ -24,6 +25,22 @@ contract("EscrowRedesign – Full Lifecycle", accounts => {
       value: BOND
     });
     const ev = tx.logs.find(l => l.event === "ProductCreated");
+    escAddr = ev.args.product;
+    esc = await ProductEscrow_Initializer.at(escAddr);
+    await esc.designateBuyer(buyer, { from: seller });
+  }
+
+  async function deployAndCreateV2() {
+    impl = await ProductEscrow_Initializer.new({ from: deployer });
+    factory = await ProductFactory.new(impl.address, { from: deployer });
+    await factory.setBondAmount(BOND, { from: deployer });
+
+    unitPriceHash = randomHex(32);
+    const tx = await factory.createProductV2("Private Quantity Battery", unitPriceHash, {
+      from: seller,
+      value: BOND
+    });
+    const ev = tx.logs.find(l => l.event === "ProductCreatedV2");
     escAddr = ev.args.product;
     esc = await ProductEscrow_Initializer.at(escAddr);
     await esc.designateBuyer(buyer, { from: seller });
@@ -84,6 +101,107 @@ contract("EscrowRedesign – Full Lifecycle", accounts => {
       await truffleAssert.reverts(
         factory2.createProduct("No Bond", randomHex(32), { from: seller, value: BOND })
       );
+    });
+  });
+
+  describe("V2 order skeleton", () => {
+    beforeEach(async () => {
+      await deployAndCreateV2();
+    });
+
+    it("anchors unitPriceHash and starts with no active order", async () => {
+      assert.equal(await esc.unitPriceHash(), unitPriceHash);
+      assert.equal(await esc.activeOrderId(), "0x0000000000000000000000000000000000000000000000000000000000000000");
+    });
+
+    it("records a V2 order payment and stores the order record", async () => {
+      const orderId = randomHex(32);
+      const memoHash = randomHex(32);
+      const railgunTxRef = randomHex(32);
+      const quantityCommitment = randomHex(32);
+      const totalCommitment = randomHex(32);
+      const paymentCommitment = randomHex(32);
+      const contextHash = randomHex(32);
+
+      const tx = await esc.recordPrivateOrderPayment(
+        orderId,
+        memoHash,
+        railgunTxRef,
+        quantityCommitment,
+        totalCommitment,
+        paymentCommitment,
+        contextHash,
+        { from: buyer }
+      );
+
+      const order = await esc.getOrder(orderId);
+
+      assert.equal((await esc.phase()).toNumber(), 1, "Phase should be Purchased (1)");
+      assert.equal(await esc.activeOrderId(), orderId);
+      assert.equal(order.buyer, buyer);
+      assert.equal(order.memoHash, memoHash);
+      assert.equal(order.railgunTxRef, railgunTxRef);
+      assert.equal(order.quantityCommitment, quantityCommitment);
+      assert.equal(order.totalCommitment, totalCommitment);
+      assert.equal(order.paymentCommitment, paymentCommitment);
+      assert.equal(order.contextHash, contextHash);
+      assert.equal(order.exists, true);
+      assert.equal(Number(order.phase), 1);
+
+      truffleAssert.eventEmitted(tx, "OrderPaymentRecorded", ev => ev.orderId === orderId);
+    });
+
+    it("prevents a second active order on the same escrow", async () => {
+      await esc.recordPrivateOrderPayment(
+        randomHex(32),
+        randomHex(32),
+        randomHex(32),
+        randomHex(32),
+        randomHex(32),
+        randomHex(32),
+        randomHex(32),
+        { from: buyer }
+      );
+
+      await truffleAssert.reverts(
+        esc.recordPrivateOrderPayment(
+          randomHex(32),
+          randomHex(32),
+          randomHex(32),
+          randomHex(32),
+          randomHex(32),
+          randomHex(32),
+          randomHex(32),
+          { from: anyone }
+        )
+      );
+    });
+
+    it("confirms a V2 order by orderId and stores vcHash on the order", async () => {
+      const orderId = randomHex(32);
+
+      await esc.recordPrivateOrderPayment(
+        orderId,
+        randomHex(32),
+        randomHex(32),
+        randomHex(32),
+        randomHex(32),
+        randomHex(32),
+        randomHex(32),
+        { from: buyer }
+      );
+
+      const tx = await esc.confirmOrderById(orderId, VCID, { from: seller });
+      const order = await esc.getOrder(orderId);
+      const expectedHash = soliditySha3({ type: "string", value: VCID });
+
+      assert.equal((await esc.phase()).toNumber(), 2, "Phase should be OrderConfirmed (2)");
+      assert.equal(await esc.vcHash(), expectedHash);
+      assert.equal(order.vcHash, expectedHash);
+      assert.equal(Number(order.phase), 2);
+      assert.isAbove(Number(order.orderConfirmedTimestamp), 0);
+
+      truffleAssert.eventEmitted(tx, "OrderConfirmedById", ev => ev.orderId === orderId && ev.vcHash === expectedHash);
     });
   });
 

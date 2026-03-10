@@ -1,174 +1,230 @@
 # Buyer Exact-Value and Auditor Consistency Roadmap
 
+This file now reflects the shipped order-based quantity/private-total model.
+The older price-only `C_price == C_pay` roadmap is superseded by the current implementation.
+
 ## Purpose
-This roadmap defines how the system guarantees confidential price integrity for buyers and auditors.
+The current system aims to guarantee:
+1. the public listing unit price is anchored and signed
+2. the private order total is consistent with that unit price and the buyer's private quantity
+3. the private payment amount equals the private order total
 
-Core guarantees:
-1. Buyer verifies that the listed price matches the seller commitment.
-2. Auditor verifies that seller and buyer commitments hide the same amount.
-
-All default verification remains privacy-preserving and off-chain.
+All default verification remains privacy-preserving and off-chain, with on-chain anchor hashes only.
 
 ---
 
 ## Current System Baseline
 
 ### Commitments
-- `C_price`: seller Pedersen commitment to price.
-- `C_pay`: buyer Pedersen commitment to paid amount.
-- `quantity` is currently descriptive metadata and not part of the active ZK equality relation.
+- `C_qty`: buyer commitment to private quantity
+- `C_total`: buyer commitment to private order total
+- `C_pay`: buyer commitment to the Railgun payment amount
+
+### Public vs private values
+Public:
+- `unitPriceWei`
+- `unitPriceHash`
+- `productId`
+- `chainId`
+- `escrowAddr`
+- `orderId`
+- `memoHash`
+- `railgunTxRef`
+- `contextHash`
+
+Private:
+- `quantity`
+- `totalWei`
+- openings / blindings for `C_qty`, `C_total`, `C_pay`
 
 ### Anchors and references
-- Transaction anchors: `memoHash`, `railgunTxRef`.
-- VC anchor on-chain: `vcHash = keccak256(CID)` at `confirmOrder`.
-- Equality proof storage: backend sidecar (`buyer_secrets.equality_proof`) to keep anchored VC immutable.
+- on-chain listing anchor: `unitPriceHash`
+- payment references: `memoHash`, `railgunTxRef`
+- per-order identifier: `orderId`
+- canonical binding hash:
+  - `contextHash = keccak256(abi.encode(orderId, memoHash, railgunTxRef, productId, chainId, escrowAddr, unitPriceHash))`
+- VC anchor on-chain: `vcHash = keccak256(CID)` at `confirmOrderById`
+
+### Active storage paths
+- listing metadata: `product_metadata`
+- order records: `product_orders`
+- proof / attestation sidecar: `order_private_attestations`
+- archived VC JSON: `vc_archives`
+- credential-status registry: `vc_status`
 
 ### Active verification paths
-- Buyer pre-payment `Verify Price` uses DB/VC commitment records (`priceWei`, `priceCommitment`) plus deterministic `r_price`.
-- Buyer post-payment Workstream A runs automatically when VC is loaded and validates commitment consistency.
-- Buyer Workstream B generates Schnorr sigma equality proof for `C_price == C_pay`.
-- Auditor verifies proof bundle from VC or sidecar source.
+- credential-status check verifies the VC is currently `active`
+- quantity-total proof verifies `totalWei = unitPriceWei * quantity`
+- total-payment equality proof verifies `C_total == C_pay`
+- auditor verification binds both checks to the same `contextHash`
 
 ---
 
-## Workstream A: Buyer Exact-Value Verification
+## Current Math Statements
 
-### Statement
-Buyer verifies:
-- `C_price == Pedersen(value, r_price)`
+## Statement A: Quantity-Total Relation
+The system proves:
 
-### Inputs
-- `value` from metadata (`priceWei`)
-- `C_price` from metadata/VC commitment record
-- `r_price` from deterministic derivation `generateDeterministicBlinding(productAddress, sellerAddress)`
+`totalWei = unitPriceWei * quantity`
 
-### UX behavior
-- Buyer can run `Verify Price` before payment.
-- Result states: verified, mismatch warning, verifier/data unavailable (retry).
-- Payment action remains user-controlled.
+without revealing `quantity` or `totalWei`.
 
-### Acceptance
-- Correct inputs: pass.
-- Wrong value or blinding context: fail.
-- No public disclosure of exact value.
+Public inputs:
+- `unitPriceWei`
+- `C_qty`
+- `C_total`
+- `contextHash`
 
----
+Private witness:
+- `quantity`
+- `totalWei`
+- openings / blindings for `C_qty` and `C_total`
 
-## Workstream B: Auditor Price-Payment Consistency
+Acceptance:
+- correct private quantity and total for the public unit price: pass
+- wrong unit price, wrong quantity relation, or wrong bound context: fail
 
-### Statement
-Auditor verifies, without learning value:
-- `C_price` and `C_pay` commit to the same hidden scalar.
-- Proof is bound to context:
-  - `productId`
-  - `txRef`
-  - `chainId`
-  - `escrowAddr`
-  - `stage`
+## Statement B: Total-Payment Equality
+The system proves:
 
-### Proof system
-- Schnorr sigma equality proof (Chaum-Pedersen style relation).
-- Backend endpoints:
-  - `POST /zkp/generate-equality-proof`
-  - `POST /zkp/verify-equality-proof`
-- Current implementation path is backend mode for equality proof generation/verification.
+`C_total` and `C_pay` commit to the same hidden scalar
 
-### Data flow
-1. Buyer payment flow writes disclosure material and `C_pay` to backend.
-2. Seller confirmOrder writes encrypted opening data for disclosure workflows.
-3. Buyer generates equality proof using `C_price`, `C_pay`, `r_price`, `r_pay`, and binding context.
-4. Proof is stored in sidecar backend record.
-5. Auditor verifies proof with commitment pair and binding context.
+without revealing that scalar.
 
-### Acceptance
-- Valid relation and context: pass.
-- Replay/swap/tamper/context mismatch: fail.
-- Exact amount remains hidden in default audit mode.
+Public inputs:
+- `C_total`
+- `C_pay`
+- `contextHash`
+
+Private witness:
+- openings / blindings for `C_total` and `C_pay`
+
+Acceptance:
+- matching total and payment under the same context: pass
+- tampered commitments, swapped proof, or different context: fail
 
 ---
 
-## VC and Schema Conventions
+## Current Data Flow
+1. Seller lists with public `unitPriceWei` and on-chain `unitPriceHash`.
+2. Buyer chooses private `quantity`.
+3. Frontend computes `totalWei`.
+4. Frontend generates `C_qty`, `C_total`, `C_pay`.
+5. Frontend generates:
+   - quantity-total proof
+   - total-payment equality proof
+6. Buyer completes Railgun transfer and captures `memoHash` / `railgunTxRef`.
+7. Frontend writes a backend recovery bundle for the order and attestation rows.
+8. Frontend records the order on-chain via `recordPrivateOrderPayment(...)`.
+9. Backend reconciliation / indexer can refresh the canonical order row from chain.
+10. Seller builds and signs the final order VC.
+11. Frontend uploads and archives the VC.
+12. Seller anchors the VC CID on-chain with `confirmOrderById(...)`.
+13. Auditor loads the VC, status row, and sidecar proof bundle and verifies the active checks.
 
-Primary fields used by this roadmap:
-- `credentialSubject.priceCommitment`
-- `credentialSubject.payment.memoHash`
-- `credentialSubject.payment.railgunTxRef`
-- `credentialSubject.attestation.disclosurePubKey`
-- `credentialSubject.attestation.buyerPaymentCommitment`
-- `credentialSubject.attestation.encryptedOpening`
-- `credentialSubject.attestation.paymentEqualityProof` (when embedded)
+---
+
+## Current VC / Sidecar Conventions
+
+Primary VC fields:
+- `credentialSubject.listing.unitPriceWei`
+- `credentialSubject.listing.unitPriceHash`
+- `credentialSubject.listing.listingSnapshotCid`
+- `credentialSubject.order.orderId`
+- `credentialSubject.order.productId`
+- `credentialSubject.order.escrowAddr`
+- `credentialSubject.order.chainId`
+- `credentialSubject.order.buyerAddress`
+- `credentialSubject.order.memoHash`
+- `credentialSubject.order.railgunTxRef`
+- `credentialSubject.commitments.quantityCommitment`
+- `credentialSubject.commitments.totalCommitment`
+- `credentialSubject.commitments.paymentCommitment`
+- `credentialSubject.attestation.contextHash`
+- `credentialSubject.attestation.proofSource`
+
+Primary sidecar fields:
+- `orderId`
+- `encryptedBlob`
+- `disclosurePubkey`
+- `encryptedQuantityOpening`
+- `encryptedTotalOpening`
+- `quantityTotalProof`
+- `paymentEqualityProof`
+- `proofBundle`
 
 Operational rule:
-- Auditor verifier accepts proof source from VC attestation or sidecar record.
+- the VC carries the stable anchors and proof-source reference
+- proof payloads are loaded from sidecar by `orderId`
 
 ---
 
 ## Testing Plan
 
 ### Unit tests
-- Commitment open/verify:
-  - valid value/blinding
-  - wrong value
-  - wrong blinding
-- Equality proof:
-  - matching hidden amounts
-  - mismatched hidden amounts
+- commitment generation for `quantity`, `total`, and `payment`
+- `contextHash` canonicalization
+- quantity-total proof verification
+- total-payment equality verification
 
 ### Integration tests
-- Buyer flow:
-  - pre-payment verify
-  - payment attestation persistence
-  - Workstream A auto verification
-  - Workstream B proof generation and storage
-- Auditor flow:
-  - verify from VC proof source
-  - verify from sidecar proof source
+- create listing with `createProductV2`
+- buyer private quantity order flow
+- sidecar persistence for order and attestation rows
+- seller `confirmOrderById`
+- auditor verify from VC + sidecar
 
 ### Security tests
-- Replay with different `productId` or `txRef` -> fail.
-- Cross-product proof swap -> fail.
-- Proof/commitment/context tamper -> fail.
+- replay with different `orderId`: fail
+- replay with different `memoHash` or `railgunTxRef`: fail
+- cross-product proof swap: fail
+- wrong `unitPriceWei`: fail
+- proof / commitment / context tamper: fail
 
 ### Performance tests
-- Measure proof generation/verification latency.
-- Ensure UI responsiveness (worker path where applicable).
+- proof generation latency for both proofs
+- proof verification latency in auditor flow
+- UI responsiveness while proofs are generated
 
 ---
 
 ## Risks and Mitigations
-
-- Risk: buyer-side payment commitment is self-attested.
-  - Mitigation: strict binding context, transaction anchors, explicit claim boundaries.
-- Risk: prover latency on constrained devices.
-  - Mitigation: async UX, worker execution, benchmark thresholds.
-- Risk: schema drift across VC versions.
-  - Mitigation: versioned proof objects and strict parser checks.
-- Risk: accidental disclosure of value.
-  - Mitigation: privacy-by-default UX and explicit disclosure controls.
-
----
-
-## Decision Gates
-
-- Gate G1: buyer verify-price and Workstream A are stable and reproducible.
-- Gate G2: equality proof performance and verification reliability meet baseline.
-- Gate G3: auditor end-to-end replay/swap/tamper tests pass.
-- Gate G4: decision on Railgun-native cryptographic amount binding scope.
+- Risk: current binding is application-level, not Railgun-native amount binding.
+  - Mitigation: strict `contextHash` binding using Railgun references and order anchors.
+- Risk: numeric drift in JavaScript.
+  - Mitigation: exact integer-string handling in frontend and strict scalar-path normalization before proof calls.
+- Risk: proof / VC schema drift.
+  - Mitigation: explicit field names, schema versions, and order-based sidecar storage.
+- Risk: browser crash or device switch during payment flow.
+  - Mitigation: backend recovery bundle, reconcile route, and event-driven indexer refresh.
+- Risk: single IPFS gateway / pin failure during audit retrieval.
+  - Mitigation: backend `vc_archives` plus archive-first fetch with multi-gateway fallback.
+- Risk: a structurally valid VC remains usable after it should be operationally retired.
+  - Mitigation: backend `vc_status` registry with auditor credential-status verification.
+- Risk: one active order per escrow is a current product-model constraint.
+  - Mitigation: treat the shipped design as single-active-order and extend to multi-order only with an explicit contract redesign.
 
 ---
 
-## Future Scope: Railgun-Native Amount Binding
-
-This roadmap binds commitments and transaction anchors at application level.
-A dedicated future scope can extend to direct cryptographic binding against Railgun internal payment-amount witnesses.
+## Decision Gates Ahead
+- Gate G1: Sepolia end-to-end V2 flow is reproducible for seller, buyer, and auditor
+- Gate G1a: backend recovery / indexer / archive / status hardening works in the Sepolia flow
+- Gate G2: proof performance is acceptable on target devices
+- Gate G3: auditor export/report format is stable enough for external review
+- Gate G4: decide whether future work should move from two proofs to a more unified circuit
+- Gate G5: decide whether future work should pursue Railgun-native amount binding
 
 ---
+
+## Future Scope
+- merge the two current proofs into a more compact proof system if warranted
+- support true multi-order-per-product contract semantics
+- add stronger historical listing snapshot guarantees
+- explore direct Railgun-native cryptographic amount binding
 
 ## References
-- Bulletproofs paper: https://eprint.iacr.org/2017/1066
-- Railgun docs: https://docs.railgun.org/
-- Internal docs:
-  - `docs/current/02-railgun-integration.md`
-  - `docs/current/03-auditor-verification.md`
-  - `docs/current/04-did-signing-and-verification-standards.md`
-  - `docs/phase12-buyer-attestation.md`
+- `docs/current/01-end-to-end-flow.md`
+- `docs/current/02-railgun-integration.md`
+- `docs/current/03-auditor-verification.md`
+- `docs/current/04-did-signing-and-verification-standards.md`
+- `docs/phase12-buyer-attestation.md`

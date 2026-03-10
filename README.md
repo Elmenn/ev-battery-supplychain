@@ -8,11 +8,12 @@ Privacy-preserving EV battery marketplace prototype with:
 - Railgun private payment integration
 
 ## Current Implementation (Important)
-- Active user flow is **private FCFS purchase** (Sepolia-focused).
-- Buyer payment is recorded via `recordPrivatePayment(productId, memoHash, railgunTxRef)`.
-- Seller confirms order with VC CID via `confirmOrder(cid)` (on-chain stores `keccak256(cid)`).
+- Active user flow is **private order-based purchase** (Sepolia-focused).
+- Buyer payment is recorded via `recordPrivateOrderPayment(orderId, memoHash, railgunTxRef, quantityCommitment, totalCommitment, paymentCommitment, contextHash)`.
+- Seller confirms order with VC CID via `confirmOrderById(orderId, cid)` (on-chain stores `keccak256(cid)`).
 - Transporter confirms delivery with `confirmDelivery(hash)` where `hash == vcHash`.
 - Railgun wallet connection is required for the active private payment flow.
+- Backend recovery, indexing, VC archival, and credential-status checks are part of the active operational model.
 
 Reference docs:
 - `docs/current/01-end-to-end-flow.md`
@@ -68,6 +69,10 @@ Then edit `frontend/.env`:
 - `REACT_APP_ZKP_BACKEND_URL` (default `http://localhost:5010`)
 - `REACT_APP_VC_BACKEND_URL` (default `http://localhost:5000`)
 - `REACT_APP_QR_BASE_URL` (optional, for phone-scannable QR links)
+- optional backend-read envs also picked up from `frontend/.env`:
+  - `INDEXER_BATCH_SIZE`
+  - `INDEXER_START_BLOCK`
+  - `VC_STATUS_ADMIN_TOKEN`
 
 ## 4) Deploy Contracts
 ```bash
@@ -134,13 +139,17 @@ cargo test
 ## 8) Auditor Verification (Current)
 `VerifyVCInline` "Run All" currently checks:
 1. VC signatures (`POST /verify-vc`)
-2. ZKP price proof
+2. Credential status (`GET /vc-status/:cid`)
 3. Current VC hash anchor (`keccak256(cid)` vs `getVcHash()`)
 4. Provenance continuity
 5. Governance consistency
 6. Chain-wide on-chain anchors
+7. Quantity-total proof
+8. Total-payment equality proof
 
 Signature check uses EIP-712 recovery plus `did:ethr` registry-based DID resolution.
+
+VC retrieval is archive-first from backend storage and falls back to multiple IPFS gateways.
 
 Details: `docs/current/03-auditor-verification.md`
 Standards subsection in auditor doc: `docs/current/03-auditor-verification.md` (`Standards Basis`)

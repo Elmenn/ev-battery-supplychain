@@ -8,6 +8,26 @@ function normalizeHex(value) {
   return typeof value === "string" ? value.trim() : "";
 }
 
+function normalizeIntegerValue(value) {
+  if (typeof value === "bigint") {
+    return value.toString();
+  }
+  if (typeof value === "number") {
+    if (!Number.isInteger(value) || value < 0) {
+      throw new Error("value must be a non-negative integer");
+    }
+    return String(value);
+  }
+  if (typeof value === "string") {
+    const trimmed = value.trim();
+    if (!/^\d+$/.test(trimmed)) {
+      throw new Error("value must be a decimal integer string");
+    }
+    return trimmed;
+  }
+  throw new Error("value must be a bigint, integer number, or decimal string");
+}
+
 async function postJson(url, body) {
   const response = await fetch(url, {
     method: "POST",
@@ -31,7 +51,20 @@ export async function generateValueCommitmentWithBlindingBackend({
   const baseUrl = resolveBackendUrl(zkpBackendUrl);
 
   return postJson(`${baseUrl}/zkp/generate-value-commitment-with-blinding`, {
-    value,
+    value: normalizeIntegerValue(value),
+    blinding_hex: normalizeHex(blindingHex),
+  });
+}
+
+export async function generateScalarCommitmentWithBlindingBackend({
+  value,
+  blindingHex,
+  zkpBackendUrl,
+}) {
+  const baseUrl = resolveBackendUrl(zkpBackendUrl);
+
+  return postJson(`${baseUrl}/zkp/generate-scalar-commitment-with-blinding`, {
+    value: normalizeIntegerValue(value),
     blinding_hex: normalizeHex(blindingHex),
   });
 }
@@ -45,7 +78,7 @@ export async function generateValueCommitmentWithBindingBackend({
   const baseUrl = resolveBackendUrl(zkpBackendUrl);
 
   return postJson(`${baseUrl}/zkp/generate-value-commitment-with-binding`, {
-    value,
+    value: normalizeIntegerValue(value),
     blinding_hex: normalizeHex(blindingHex),
     binding_tag_hex: normalizeHex(bindingTagHex),
   });
@@ -81,4 +114,3 @@ export async function verifyProofByEndpointBackend({
     ...(bindingTagHex ? { binding_tag_hex: normalizeHex(bindingTagHex) } : {}),
   });
 }
-

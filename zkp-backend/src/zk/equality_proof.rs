@@ -113,3 +113,53 @@ pub fn verify_equality(
     let rhs = r_point + &c * d;
     lhs.compress() == rhs.compress()
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn commitment(value: u64, blinding_byte: u8) -> (CompressedRistretto, Scalar) {
+        let pc_gens = PedersenGens::default();
+        let blinding = Scalar::from_bytes_mod_order([blinding_byte; 32]);
+        let commitment = pc_gens.commit(Scalar::from(value), blinding);
+        (commitment.compress(), blinding)
+    }
+
+    #[test]
+    fn valid_equality_proof_verifies() {
+        let context_hash = [0x11u8; 32];
+        let (c_price, r_price) = commitment(42, 0x22);
+        let (c_pay, r_pay) = commitment(42, 0x33);
+
+        let proof = prove_equality(c_price, c_pay, r_price, r_pay, &context_hash)
+            .expect("proof generation should succeed");
+
+        assert!(verify_equality(c_price, c_pay, &proof, &context_hash));
+    }
+
+    #[test]
+    fn wrong_context_hash_fails() {
+        let proof_context = [0x44u8; 32];
+        let verify_context = [0x55u8; 32];
+        let (c_price, r_price) = commitment(42, 0x66);
+        let (c_pay, r_pay) = commitment(42, 0x77);
+
+        let proof = prove_equality(c_price, c_pay, r_price, r_pay, &proof_context)
+            .expect("proof generation should succeed");
+
+        assert!(!verify_equality(c_price, c_pay, &proof, &verify_context));
+    }
+
+    #[test]
+    fn mismatched_commitment_fails() {
+        let context_hash = [0x88u8; 32];
+        let (c_price, r_price) = commitment(42, 0x99);
+        let (c_pay, r_pay) = commitment(42, 0xaau8);
+        let (c_other, _) = commitment(41, 0xbbu8);
+
+        let proof = prove_equality(c_price, c_pay, r_price, r_pay, &context_hash)
+            .expect("proof generation should succeed");
+
+        assert!(!verify_equality(c_price, c_other, &proof, &context_hash));
+    }
+}

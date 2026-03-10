@@ -70,6 +70,74 @@ const EIP712_TYPES = {
   ],
 };
 
+const V2_TYPED_EIP712_TYPES = {
+  Credential: [
+    { name: 'id', type: 'string' },
+    { name: '@context', type: 'string[]' },
+    { name: 'type', type: 'string[]' },
+    { name: 'schemaVersion', type: 'string' },
+    { name: 'issuer', type: 'Party' },
+    { name: 'holder', type: 'Party' },
+    { name: 'issuanceDate', type: 'string' },
+    { name: 'credentialSubject', type: 'CredentialSubjectV2' },
+  ],
+  Party: [
+    { name: 'id', type: 'string' },
+    { name: 'name', type: 'string' },
+  ],
+  CredentialSubjectV2: [
+    { name: 'id', type: 'string' },
+    { name: 'productName', type: 'string' },
+    { name: 'batch', type: 'string' },
+    { name: 'quantity', type: 'uint256' },
+    { name: 'previousCredential', type: 'string' },
+    { name: 'listing', type: 'Listing' },
+    { name: 'order', type: 'Order' },
+    { name: 'commitments', type: 'Commitments' },
+    { name: 'attestation', type: 'Attestation' },
+  ],
+  Listing: [
+    { name: 'unitPriceWei', type: 'string' },
+    { name: 'unitPriceHash', type: 'string' },
+    { name: 'listingSnapshotCid', type: 'string' },
+    { name: 'sellerRailgunAddress', type: 'string' },
+    { name: 'certificateCredential', type: 'Certificate' },
+    { name: 'componentCredentials', type: 'string[]' },
+  ],
+  Certificate: [
+    { name: 'name', type: 'string' },
+    { name: 'cid', type: 'string' },
+  ],
+  Order: [
+    { name: 'orderId', type: 'string' },
+    { name: 'productId', type: 'string' },
+    { name: 'escrowAddr', type: 'string' },
+    { name: 'chainId', type: 'string' },
+    { name: 'buyerAddress', type: 'string' },
+    { name: 'memoHash', type: 'string' },
+    { name: 'railgunTxRef', type: 'string' },
+  ],
+  Commitments: [
+    { name: 'quantityCommitment', type: 'string' },
+    { name: 'totalCommitment', type: 'string' },
+    { name: 'paymentCommitment', type: 'string' },
+  ],
+  Attestation: [
+    { name: 'attestationVersion', type: 'string' },
+    { name: 'contextHash', type: 'string' },
+    { name: 'disclosurePubKey', type: 'string' },
+    { name: 'proofSource', type: 'ProofSource' },
+  ],
+  ProofSource: [
+    { name: 'type', type: 'string' },
+    { name: 'orderId', type: 'string' },
+    { name: 'version', type: 'string' },
+  ],
+};
+
+const VC_SIGN_PAYLOAD_FORMAT_LEGACY = 'eip712-legacy-price-string';
+const VC_SIGN_PAYLOAD_FORMAT_V2_TYPED = 'eip712-v2-order-typed';
+
 const didLibState = {
   loadPromise: null,
   resolverByChain: new Map(),
@@ -78,6 +146,211 @@ const didLibState = {
 
 function normalizeId(value) {
   return typeof value === 'string' ? value.toLowerCase() : value;
+}
+
+function normalizeMaybeString(value) {
+  return value == null ? null : String(value);
+}
+
+function normalizeHexMaybe(value) {
+  return typeof value === 'string' && value.trim().length > 0 ? value.trim() : null;
+}
+
+function buildVcSigningAnchorPayload(credentialSubject = {}) {
+  const listing = credentialSubject?.listing || {};
+  const order = credentialSubject?.order || {};
+  const commitments = credentialSubject?.commitments || {};
+  const attestation = credentialSubject?.attestation || {};
+
+  const payload = {
+    listing: {
+      unitPriceWei: normalizeMaybeString(listing.unitPriceWei),
+      unitPriceHash: normalizeHexMaybe(listing.unitPriceHash),
+      listingSnapshotCid: normalizeMaybeString(listing.listingSnapshotCid),
+      sellerRailgunAddress: normalizeMaybeString(listing.sellerRailgunAddress),
+      certificateCredential: {
+        name: String(listing.certificateCredential?.name || ''),
+        cid: String(listing.certificateCredential?.cid || ''),
+      },
+      componentCredentials: Array.isArray(listing.componentCredentials)
+        ? listing.componentCredentials.map((item) => String(item))
+        : [],
+    },
+    order: {
+      orderId: normalizeMaybeString(order.orderId),
+      productId: normalizeMaybeString(order.productId),
+      escrowAddr: normalizeMaybeString(order.escrowAddr),
+      chainId: normalizeMaybeString(order.chainId),
+      buyerAddress: normalizeMaybeString(order.buyerAddress),
+      memoHash: normalizeHexMaybe(order.memoHash),
+      railgunTxRef: normalizeHexMaybe(order.railgunTxRef),
+    },
+    commitments: {
+      quantityCommitment: normalizeHexMaybe(commitments.quantityCommitment),
+      totalCommitment: normalizeHexMaybe(commitments.totalCommitment),
+      paymentCommitment: normalizeHexMaybe(commitments.paymentCommitment),
+    },
+    attestation: {
+      contextHash: normalizeHexMaybe(attestation.contextHash),
+      proofSource:
+        attestation.proofSource && typeof attestation.proofSource === 'object'
+          ? {
+              type: String(attestation.proofSource.type || ''),
+              orderId: normalizeMaybeString(attestation.proofSource.orderId),
+              version: String(attestation.proofSource.version || ''),
+            }
+          : null,
+    },
+  };
+
+  const hasV2Data = Object.values(payload.listing).some(Boolean)
+    || Object.values(payload.order).some(Boolean)
+    || Object.values(payload.commitments).some(Boolean)
+    || Boolean(payload.attestation.contextHash)
+    || Boolean(payload.attestation.proofSource);
+
+  return hasV2Data ? payload : null;
+}
+
+function buildBaseClone(vc) {
+  const clone = JSON.parse(JSON.stringify(vc || {}));
+
+  delete clone.proof;
+  delete clone.proofs;
+
+  if (!clone.credentialSubject || typeof clone.credentialSubject !== 'object') {
+    clone.credentialSubject = {};
+  }
+
+  delete clone.credentialSubject.vcHash;
+  delete clone.credentialSubject.transactionId;
+  delete clone.credentialSubject.txHashCommitment;
+  delete clone.credentialSubject.purchaseTxHashCommitment;
+
+  delete clone.credentialSubject.payment;
+  delete clone.credentialSubject.delivery;
+  delete clone.previousVersion;
+
+  if (!clone.schemaVersion) clone.schemaVersion = '1.0';
+  if (!clone.issuer) clone.issuer = { id: '', name: '' };
+  if (!clone.holder) clone.holder = { id: '', name: '' };
+
+  if (clone.credentialSubject.id == null) clone.credentialSubject.id = String(clone.issuer?.id || '');
+  if (clone.credentialSubject.productName == null) clone.credentialSubject.productName = '';
+  if (clone.credentialSubject.batch == null) clone.credentialSubject.batch = '';
+  if (clone.credentialSubject.quantity == null) clone.credentialSubject.quantity = 0;
+  if (clone.credentialSubject.previousCredential == null) clone.credentialSubject.previousCredential = '';
+
+  if (clone.issuer?.id) clone.issuer.id = normalizeId(clone.issuer.id);
+  if (clone.holder?.id) clone.holder.id = normalizeId(clone.holder.id);
+  if (clone.credentialSubject?.id) clone.credentialSubject.id = normalizeId(clone.credentialSubject.id);
+
+  return clone;
+}
+
+function buildLegacyPayload(vc) {
+  const clone = buildBaseClone(vc);
+  const stableAnchorPayload = buildVcSigningAnchorPayload(clone.credentialSubject);
+
+  delete clone.credentialSubject.order;
+  delete clone.credentialSubject.commitments;
+  delete clone.credentialSubject.attestation;
+
+  const signedPricePayload = {};
+  if (clone.credentialSubject.priceCommitment && typeof clone.credentialSubject.priceCommitment === 'object') {
+    signedPricePayload.priceCommitment = clone.credentialSubject.priceCommitment;
+    delete clone.credentialSubject.priceCommitment;
+  }
+  if (stableAnchorPayload) {
+    signedPricePayload.v2OrderAnchors = stableAnchorPayload;
+  }
+
+  if (Object.keys(signedPricePayload).length > 0) {
+    try {
+      clone.credentialSubject.price = JSON.stringify(signedPricePayload);
+    } catch {
+      clone.credentialSubject.price = String(signedPricePayload);
+    }
+  }
+
+  if (clone.credentialSubject.listing && typeof clone.credentialSubject.listing === 'object') {
+    clone.credentialSubject.certificateCredential =
+      clone.credentialSubject.listing.certificateCredential || { name: '', cid: '' };
+    clone.credentialSubject.componentCredentials = clone.credentialSubject.listing.componentCredentials || [];
+    clone.credentialSubject.sellerRailgunAddress = clone.credentialSubject.listing.sellerRailgunAddress || '';
+    delete clone.credentialSubject.listing;
+  }
+
+  if (!clone.credentialSubject.certificateCredential) {
+    clone.credentialSubject.certificateCredential = { name: '', cid: '' };
+  }
+  clone.credentialSubject.certificateCredential.name = String(clone.credentialSubject.certificateCredential.name || '');
+  clone.credentialSubject.certificateCredential.cid = String(clone.credentialSubject.certificateCredential.cid || '');
+
+  if (!Array.isArray(clone.credentialSubject.componentCredentials)) clone.credentialSubject.componentCredentials = [];
+  clone.credentialSubject.componentCredentials = clone.credentialSubject.componentCredentials
+    .filter((item) => item != null)
+    .map((item) => String(item));
+
+  if (clone.credentialSubject.price == null) clone.credentialSubject.price = '';
+  if (typeof clone.credentialSubject.sellerRailgunAddress !== 'string') clone.credentialSubject.sellerRailgunAddress = '';
+
+  return clone;
+}
+
+function buildTypedV2Payload(vc) {
+  const clone = buildBaseClone(vc);
+  const listing = clone.credentialSubject?.listing || {};
+  const order = clone.credentialSubject?.order || {};
+  const commitments = clone.credentialSubject?.commitments || {};
+  const attestation = clone.credentialSubject?.attestation || {};
+
+  clone.credentialSubject = {
+    id: clone.credentialSubject.id,
+    productName: clone.credentialSubject.productName,
+    batch: clone.credentialSubject.batch,
+    quantity: clone.credentialSubject.quantity,
+    previousCredential: String(clone.credentialSubject.previousCredential || ''),
+    listing: {
+      unitPriceWei: normalizeMaybeString(listing.unitPriceWei),
+      unitPriceHash: normalizeMaybeString(listing.unitPriceHash),
+      listingSnapshotCid: normalizeMaybeString(listing.listingSnapshotCid),
+      sellerRailgunAddress: normalizeMaybeString(listing.sellerRailgunAddress),
+      certificateCredential: {
+        name: String(listing.certificateCredential?.name || ''),
+        cid: String(listing.certificateCredential?.cid || ''),
+      },
+      componentCredentials: Array.isArray(listing.componentCredentials)
+        ? listing.componentCredentials.filter((item) => item != null).map((item) => String(item))
+        : [],
+    },
+    order: {
+      orderId: normalizeMaybeString(order.orderId),
+      productId: normalizeMaybeString(order.productId),
+      escrowAddr: normalizeMaybeString(order.escrowAddr),
+      chainId: normalizeMaybeString(order.chainId),
+      buyerAddress: normalizeMaybeString(order.buyerAddress),
+      memoHash: normalizeMaybeString(order.memoHash),
+      railgunTxRef: normalizeMaybeString(order.railgunTxRef),
+    },
+    commitments: {
+      quantityCommitment: normalizeMaybeString(commitments.quantityCommitment),
+      totalCommitment: normalizeMaybeString(commitments.totalCommitment),
+      paymentCommitment: normalizeMaybeString(commitments.paymentCommitment),
+    },
+    attestation: {
+      attestationVersion: String(attestation.attestationVersion || '2.0'),
+      contextHash: normalizeMaybeString(attestation.contextHash),
+      disclosurePubKey: normalizeMaybeString(attestation.disclosurePubKey),
+      proofSource: {
+        type: String(attestation.proofSource?.type || ''),
+        orderId: normalizeMaybeString(attestation.proofSource?.orderId),
+        version: String(attestation.proofSource?.version || ''),
+      },
+    },
+  };
+
+  return clone;
 }
 
 function stripFragment(value) {
@@ -158,6 +431,7 @@ function getRpcUrlForChain(chainId) {
     process.env.VC_DID_RPC_URL,
     process.env.VC_RPC_URL,
     process.env.RPC_URL,
+    process.env.REACT_APP_RPC_URL,
     DEFAULT_RPC_BY_CHAIN[chainId],
   ];
   return candidates.find((value) => typeof value === 'string' && value.trim().length > 0) || null;
@@ -216,7 +490,7 @@ async function getResolverForChain(chainId) {
   if (!rpcUrl) {
     throw new Error(
       `No RPC URL configured for DID resolution on chain ${chainId}. ` +
-      `Set VC_DID_RPC_URL_${chainId}, VC_RPC_URL_${chainId}, VC_DID_RPC_URL, VC_RPC_URL, or RPC_URL.`
+      `Set VC_DID_RPC_URL_${chainId}, VC_RPC_URL_${chainId}, VC_DID_RPC_URL, VC_RPC_URL, RPC_URL, or REACT_APP_RPC_URL.`
     );
   }
 
@@ -311,81 +585,18 @@ function collectAllowedMethodIdsForPurpose(didDocument, proofPurpose) {
   return ids;
 }
 
-function preparePayloadForVerification(vc) {
-  const clone = JSON.parse(JSON.stringify(vc || {}));
-
-  delete clone.proof;
-  delete clone.proofs;
-
-  if (!clone.credentialSubject || typeof clone.credentialSubject !== 'object') {
-    clone.credentialSubject = {};
+function preparePayloadForVerification(vc, payloadFormat) {
+  if (payloadFormat === VC_SIGN_PAYLOAD_FORMAT_V2_TYPED) {
+    return {
+      payload: buildTypedV2Payload(vc),
+      types: V2_TYPED_EIP712_TYPES,
+    };
   }
 
-  // Exclude mutable post-signing fields from payload verification.
-  delete clone.credentialSubject.vcHash;
-  delete clone.credentialSubject.transactionId;
-
-  if (clone.credentialSubject.payment !== undefined) {
-    delete clone.credentialSubject.payment;
-  }
-  if (clone.credentialSubject.delivery !== undefined) {
-    delete clone.credentialSubject.delivery;
-  }
-  if (clone.previousVersion !== undefined) {
-    delete clone.previousVersion;
-  }
-
-  if (clone.credentialSubject.priceCommitment && typeof clone.credentialSubject.priceCommitment === 'object') {
-    try {
-      clone.credentialSubject.price = JSON.stringify(clone.credentialSubject.priceCommitment);
-    } catch {
-      clone.credentialSubject.price = String(clone.credentialSubject.priceCommitment);
-    }
-    delete clone.credentialSubject.priceCommitment;
-  }
-
-  if (clone.credentialSubject.price !== undefined && typeof clone.credentialSubject.price !== 'string') {
-    try {
-      clone.credentialSubject.price = JSON.stringify(clone.credentialSubject.price);
-    } catch {
-      clone.credentialSubject.price = String(clone.credentialSubject.price);
-    }
-  }
-
-  if (clone.credentialSubject.listing && typeof clone.credentialSubject.listing === 'object') {
-    clone.credentialSubject.certificateCredential =
-      clone.credentialSubject.listing.certificateCredential || { name: '', cid: '' };
-    clone.credentialSubject.componentCredentials = clone.credentialSubject.listing.componentCredentials || [];
-    clone.credentialSubject.sellerRailgunAddress = clone.credentialSubject.listing.sellerRailgunAddress || '';
-    delete clone.credentialSubject.listing;
-  }
-
-  if (!clone.credentialSubject.certificateCredential) {
-    clone.credentialSubject.certificateCredential = { name: '', cid: '' };
-  }
-  clone.credentialSubject.certificateCredential.name = String(clone.credentialSubject.certificateCredential.name || '');
-  clone.credentialSubject.certificateCredential.cid = String(clone.credentialSubject.certificateCredential.cid || '');
-
-  if (clone.credentialSubject.id == null) clone.credentialSubject.id = String(clone.issuer?.id || '');
-  if (clone.credentialSubject.productName == null) clone.credentialSubject.productName = '';
-  if (clone.credentialSubject.batch == null) clone.credentialSubject.batch = '';
-  if (clone.credentialSubject.quantity == null) clone.credentialSubject.quantity = 0;
-  if (clone.credentialSubject.previousCredential == null) clone.credentialSubject.previousCredential = '';
-  if (!Array.isArray(clone.credentialSubject.componentCredentials)) clone.credentialSubject.componentCredentials = [];
-
-  clone.credentialSubject.componentCredentials = clone.credentialSubject.componentCredentials
-    .filter((item) => item != null)
-    .map((item) => String(item));
-
-  if (clone.credentialSubject.price == null) clone.credentialSubject.price = '';
-  if (typeof clone.credentialSubject.sellerRailgunAddress !== 'string') clone.credentialSubject.sellerRailgunAddress = '';
-  if (!clone.schemaVersion) clone.schemaVersion = '1.0';
-
-  if (clone.issuer?.id) clone.issuer.id = normalizeId(clone.issuer.id);
-  if (clone.holder?.id) clone.holder.id = normalizeId(clone.holder.id);
-  if (clone.credentialSubject?.id) clone.credentialSubject.id = normalizeId(clone.credentialSubject.id);
-
-  return clone;
+  return {
+    payload: buildLegacyPayload(vc),
+    types: EIP712_TYPES,
+  };
 }
 
 function buildProofArray(vc) {
@@ -394,7 +605,7 @@ function buildProofArray(vc) {
   return [];
 }
 
-async function verifyProof({ proof, dataToVerify, role, expectedDid, chainId, contractAddress }) {
+async function verifyProof({ proof, dataToVerify, payloadTypes, role, expectedDid, chainId, contractAddress }) {
   const result = {
     matching_vc: false,
     matching_signer: false,
@@ -482,13 +693,13 @@ async function verifyProof({ proof, dataToVerify, role, expectedDid, chainId, co
   let lastError = null;
   for (const domain of domains) {
     try {
-      const payloadHash = TypedDataEncoder.hash(domain, EIP712_TYPES, dataToVerify);
+      const payloadHash = TypedDataEncoder.hash(domain, payloadTypes, dataToVerify);
       if (proof.payloadHash && proof.payloadHash !== payloadHash) {
         lastError = `Payload hash mismatch for ${role}`;
         continue;
       }
 
-      const recovered = verifyTypedData(domain, EIP712_TYPES, dataToVerify, proof.jws);
+      const recovered = verifyTypedData(domain, payloadTypes, dataToVerify, proof.jws);
       result.recovered_address = recovered;
       result.matching_signer = recovered.toLowerCase() === expectedAddress;
       result.signature_verified = result.matching_signer;
@@ -508,13 +719,14 @@ async function verifyVC(vcJsonData, contractAddress = null) {
   const proofArr = buildProofArray(vcJsonData);
   if (!proofArr.length) throw new Error('No proofs found in VC');
 
-  const dataToVerify = preparePayloadForVerification(vcJsonData);
-  const issuerDid = dataToVerify.issuer?.id?.toLowerCase();
-  const holderDid = dataToVerify.holder?.id?.toLowerCase();
-
   const issuerProof =
     proofArr.find((p) => p?.role === 'seller') ||
-    proofArr.find((p) => p?.verificationMethod?.toLowerCase().includes(issuerDid));
+    proofArr.find((p) => p?.verificationMethod?.toLowerCase().includes(vcJsonData?.issuer?.id?.toLowerCase?.() || ''));
+
+  const payloadFormat = issuerProof?.payloadFormat || VC_SIGN_PAYLOAD_FORMAT_LEGACY;
+  const { payload: dataToVerify, types: payloadTypes } = preparePayloadForVerification(vcJsonData, payloadFormat);
+  const issuerDid = dataToVerify.issuer?.id?.toLowerCase();
+  const holderDid = dataToVerify.holder?.id?.toLowerCase();
 
   const holderProof =
     proofArr.find((p) => p?.role === 'holder' || p?.role === 'buyer') ||
@@ -533,6 +745,7 @@ async function verifyVC(vcJsonData, contractAddress = null) {
   const issuerResult = await verifyProof({
     proof: issuerProof,
     dataToVerify,
+    payloadTypes,
     role: 'issuer',
     expectedDid: dataToVerify.issuer?.id,
     chainId: issuerChainId,
@@ -554,6 +767,7 @@ async function verifyVC(vcJsonData, contractAddress = null) {
     holderResult = await verifyProof({
       proof: holderProof,
       dataToVerify,
+      payloadTypes,
       role: 'holder',
       expectedDid: dataToVerify.holder?.id,
       chainId: holderChainId,

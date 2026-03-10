@@ -2,8 +2,16 @@
 // Centralized escrow contract interaction helpers.
 // All components should use these instead of creating contract instances directly.
 
-import { Contract, ZeroAddress } from "ethers";
+import { Contract, Interface, ZeroAddress, ZeroHash } from "ethers";
 import ProductEscrowABI from "../abis/ProductEscrow_Initializer.json";
+
+const V2_ESCROW_FRAGMENTS = [
+  "function unitPriceHash() view returns (bytes32)",
+  "function activeOrderId() view returns (bytes32)",
+  "function getOrder(bytes32 orderId) view returns ((address buyer, bytes32 memoHash, bytes32 railgunTxRef, bytes32 quantityCommitment, bytes32 totalCommitment, bytes32 paymentCommitment, bytes32 contextHash, bytes32 vcHash, uint64 purchaseTimestamp, uint64 orderConfirmedTimestamp, uint8 phase, bool exists))",
+  "function recordPrivateOrderPayment(bytes32 orderId, bytes32 memoHash, bytes32 railgunTxRef, bytes32 quantityCommitment, bytes32 totalCommitment, bytes32 paymentCommitment, bytes32 contextHash)",
+  "function confirmOrderById(bytes32 orderId, string vcCID)",
+];
 
 // ─── Phase Enum ─────────────────────────────────────────────────────────────
 // Matches contract: enum Phase { Listed, Purchased, OrderConfirmed, Bound, Delivered, Expired }
@@ -40,7 +48,45 @@ export const DELIVERY_WINDOW = 2 * 24 * 60 * 60;
  * @returns {import("ethers").Contract}
  */
 export function getEscrowContract(address, signerOrProvider) {
-  return new Contract(address, ProductEscrowABI.abi, signerOrProvider);
+  return new Contract(
+    address,
+    [...ProductEscrowABI.abi, ...V2_ESCROW_FRAGMENTS],
+    signerOrProvider
+  );
+}
+
+const OPTIONAL_V2_INTERFACE = new Interface(V2_ESCROW_FRAGMENTS.slice(0, 3));
+
+async function readOptionalV2Value(provider, address, functionName, args = []) {
+  try {
+    const data = OPTIONAL_V2_INTERFACE.encodeFunctionData(functionName, args);
+    const result = await provider.call({ to: address, data });
+    const [decoded] = OPTIONAL_V2_INTERFACE.decodeFunctionResult(functionName, result);
+    return decoded;
+  } catch {
+    return null;
+  }
+}
+
+function normalizeOrder(order) {
+  if (!order || !order.exists) {
+    return null;
+  }
+
+  return {
+    buyer: order.buyer,
+    memoHash: order.memoHash,
+    railgunTxRef: order.railgunTxRef,
+    quantityCommitment: order.quantityCommitment,
+    totalCommitment: order.totalCommitment,
+    paymentCommitment: order.paymentCommitment,
+    contextHash: order.contextHash,
+    vcHash: order.vcHash,
+    purchaseTimestamp: Number(order.purchaseTimestamp),
+    orderConfirmedTimestamp: Number(order.orderConfirmedTimestamp),
+    phase: Number(order.phase),
+    exists: Boolean(order.exists),
+  };
 }
 
 // ─── Full State Reader ──────────────────────────────────────────────────────
@@ -99,6 +145,19 @@ export async function getProductState(address, provider) {
     contract.productRailgunTxRefs(productId),
   ]);
 
+  const [unitPriceHashValue, activeOrderIdValue] = await Promise.all([
+    readOptionalV2Value(provider, address, "unitPriceHash"),
+    readOptionalV2Value(provider, address, "activeOrderId"),
+  ]);
+
+  const unitPriceHash = unitPriceHashValue ?? ZeroHash;
+  const activeOrderId = activeOrderIdValue ?? ZeroHash;
+  const activeOrderRaw =
+    activeOrderId !== ZeroHash
+      ? await readOptionalV2Value(provider, address, "getOrder", [activeOrderId])
+      : null;
+  const activeOrder = normalizeOrder(activeOrderRaw);
+
   return {
     address,
     name,
@@ -119,6 +178,9 @@ export async function getProductState(address, provider) {
     id: Number(productId),
     memoHash,
     railgunTxRef,
+    unitPriceHash,
+    activeOrderId,
+    activeOrder,
   };
 }
 

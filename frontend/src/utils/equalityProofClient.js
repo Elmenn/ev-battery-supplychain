@@ -9,6 +9,10 @@
  * Equality proof backend endpoints (port 5010):
  *   POST /zkp/generate-equality-proof
  *   POST /zkp/verify-equality-proof
+ *   POST /zkp/generate-quantity-total-proof
+ *   POST /zkp/verify-quantity-total-proof
+ *   POST /zkp/generate-total-payment-equality-proof
+ *   POST /zkp/verify-total-payment-equality-proof
  */
 
 import { getZkpMode, ZKP_MODE_BACKEND, ZKP_MODE_WASM } from './zkp/zkpClient';
@@ -40,6 +44,7 @@ async function generateEqualityProofBackend({
   rPriceHex,
   rPayHex,
   bindingContext,
+  contextHashHex,
 }) {
   return postJson(`${resolveBackendUrl()}/zkp/generate-equality-proof`, {
     c_price_hex: cPriceHex,
@@ -47,6 +52,7 @@ async function generateEqualityProofBackend({
     r_price_hex: rPriceHex,
     r_pay_hex: rPayHex,
     binding_context: bindingContext,
+    context_hash_hex: contextHashHex || undefined,
   });
 }
 
@@ -56,6 +62,7 @@ async function verifyEqualityProofBackend({
   proofRHex,
   proofSHex,
   bindingContext,
+  contextHashHex,
 }) {
   return postJson(`${resolveBackendUrl()}/zkp/verify-equality-proof`, {
     c_price_hex: cPriceHex,
@@ -63,6 +70,75 @@ async function verifyEqualityProofBackend({
     proof_r_hex: proofRHex,
     proof_s_hex: proofSHex,
     binding_context: bindingContext,
+    context_hash_hex: contextHashHex || undefined,
+  });
+}
+
+async function generateQuantityTotalProofBackend({
+  cQuantityHex,
+  cTotalHex,
+  unitPriceWei,
+  rQuantityHex,
+  rTotalHex,
+  contextHashHex,
+}) {
+  return postJson(`${resolveBackendUrl()}/zkp/generate-quantity-total-proof`, {
+    c_quantity_hex: cQuantityHex,
+    c_total_hex: cTotalHex,
+    unit_price_wei: unitPriceWei,
+    r_quantity_hex: rQuantityHex,
+    r_total_hex: rTotalHex,
+    context_hash_hex: contextHashHex,
+  });
+}
+
+async function verifyQuantityTotalProofBackend({
+  cQuantityHex,
+  cTotalHex,
+  unitPriceWei,
+  proofRHex,
+  proofSHex,
+  contextHashHex,
+}) {
+  return postJson(`${resolveBackendUrl()}/zkp/verify-quantity-total-proof`, {
+    c_quantity_hex: cQuantityHex,
+    c_total_hex: cTotalHex,
+    unit_price_wei: unitPriceWei,
+    proof_r_hex: proofRHex,
+    proof_s_hex: proofSHex,
+    context_hash_hex: contextHashHex,
+  });
+}
+
+async function generateTotalPaymentEqualityProofBackend({
+  cTotalHex,
+  cPayHex,
+  rTotalHex,
+  rPayHex,
+  contextHashHex,
+}) {
+  return postJson(`${resolveBackendUrl()}/zkp/generate-total-payment-equality-proof`, {
+    c_total_hex: cTotalHex,
+    c_pay_hex: cPayHex,
+    r_total_hex: rTotalHex,
+    r_pay_hex: rPayHex,
+    context_hash_hex: contextHashHex,
+  });
+}
+
+async function verifyTotalPaymentEqualityProofBackend({
+  cTotalHex,
+  cPayHex,
+  proofRHex,
+  proofSHex,
+  contextHashHex,
+}) {
+  return postJson(`${resolveBackendUrl()}/zkp/verify-total-payment-equality-proof`, {
+    c_total_hex: cTotalHex,
+    c_pay_hex: cPayHex,
+    proof_r_hex: proofRHex,
+    proof_s_hex: proofSHex,
+    context_hash_hex: contextHashHex,
   });
 }
 
@@ -77,6 +153,30 @@ async function generateEqualityProofWasm(_params) {
 async function verifyEqualityProofWasm(_params) {
   throw new Error(
     '[EqualityProof] WASM backend not yet implemented. Set REACT_APP_ZKP_MODE=backend.'
+  );
+}
+
+async function generateQuantityTotalProofWasm(_params) {
+  throw new Error(
+    '[EqualityProof] WASM quantity-total backend not yet implemented. Set REACT_APP_ZKP_MODE=backend.'
+  );
+}
+
+async function verifyQuantityTotalProofWasm(_params) {
+  throw new Error(
+    '[EqualityProof] WASM quantity-total backend not yet implemented. Set REACT_APP_ZKP_MODE=backend.'
+  );
+}
+
+async function generateTotalPaymentEqualityProofWasm(_params) {
+  throw new Error(
+    '[EqualityProof] WASM total-payment equality backend not yet implemented. Set REACT_APP_ZKP_MODE=backend.'
+  );
+}
+
+async function verifyTotalPaymentEqualityProofWasm(_params) {
+  throw new Error(
+    '[EqualityProof] WASM total-payment equality backend not yet implemented. Set REACT_APP_ZKP_MODE=backend.'
   );
 }
 
@@ -157,6 +257,46 @@ export async function verifyEqualityProof(params) {
     params,
     backendFn: verifyEqualityProofBackend,
     wasmFn: verifyEqualityProofWasm,
+    comparer: compareVerifyResult,
+  });
+}
+
+export async function generateQuantityTotalProof(params) {
+  return dispatchEqualityWithMode({
+    operation: 'generate-quantity-total-proof',
+    params,
+    backendFn: generateQuantityTotalProofBackend,
+    wasmFn: generateQuantityTotalProofWasm,
+    comparer: compareEqualityProofResult,
+  });
+}
+
+export async function verifyQuantityTotalProof(params) {
+  return dispatchEqualityWithMode({
+    operation: 'verify-quantity-total-proof',
+    params,
+    backendFn: verifyQuantityTotalProofBackend,
+    wasmFn: verifyQuantityTotalProofWasm,
+    comparer: compareVerifyResult,
+  });
+}
+
+export async function generateTotalPaymentEqualityProof(params) {
+  return dispatchEqualityWithMode({
+    operation: 'generate-total-payment-equality-proof',
+    params,
+    backendFn: generateTotalPaymentEqualityProofBackend,
+    wasmFn: generateTotalPaymentEqualityProofWasm,
+    comparer: compareEqualityProofResult,
+  });
+}
+
+export async function verifyTotalPaymentEqualityProof(params) {
+  return dispatchEqualityWithMode({
+    operation: 'verify-total-payment-equality-proof',
+    params,
+    backendFn: verifyTotalPaymentEqualityProofBackend,
+    wasmFn: verifyTotalPaymentEqualityProofWasm,
     comparer: compareVerifyResult,
   });
 }

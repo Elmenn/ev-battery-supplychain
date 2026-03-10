@@ -38,6 +38,12 @@ export async function saveProductMeta({
   priceWei,
   priceCommitment,
   sellerRailgunAddress,
+  unitPriceWei,
+  unitPriceHash,
+  listingSnapshotCid,
+  listingSnapshotJson,
+  listingSnapshotSig,
+  schemaVersion,
 }) {
   const res = await fetch(`${BACKEND_URL}/metadata`, {
     method: 'POST',
@@ -48,6 +54,12 @@ export async function saveProductMeta({
       priceWei,
       priceCommitment,
       sellerRailgunAddress,
+      unitPriceWei: unitPriceWei || null,
+      unitPriceHash: unitPriceHash || null,
+      listingSnapshotCid: listingSnapshotCid || null,
+      listingSnapshotJson: listingSnapshotJson || null,
+      listingSnapshotSig: listingSnapshotSig || null,
+      schemaVersion: schemaVersion || null,
     }),
   });
   if (!res.ok) {

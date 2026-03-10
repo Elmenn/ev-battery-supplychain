@@ -1,118 +1,172 @@
-import React from "react";
+import React, { useMemo, useState } from "react";
 
-function truncate(text, length = 12) {
+function truncate(text, length = 18) {
   if (!text || text.length <= length) return text;
-  const start = text.slice(0, 6);
-  const end = text.slice(-4);
+  const start = text.slice(0, 8);
+  const end = text.slice(-6);
   return `${start}...${end}`;
 }
 
-function Copyable({ value }) {
+function Copyable({ value, mono = true }) {
+  const [copied, setCopied] = useState(false);
+  if (!value) return <span>-</span>;
   return (
-    <span
-      className="copyable"
-      title={value}
-      onClick={() => navigator.clipboard.writeText(value)}
+    <button
+      className={`${mono ? "font-mono" : ""} text-left text-blue-700 hover:text-blue-900`}
+      title={String(value)}
+      onClick={() => {
+        navigator.clipboard.writeText(String(value));
+        setCopied(true);
+        setTimeout(() => setCopied(false), 1200);
+      }}
     >
-      {truncate(value)}
-    </span>
+      {copied ? "Copied" : truncate(String(value))}
+    </button>
   );
 }
 
-const VCViewer = ({ vc }) => {
+function Section({ title, defaultOpen = true, children }) {
+  const [open, setOpen] = useState(defaultOpen);
+  return (
+    <div className="border border-gray-200 rounded-lg bg-white">
+      <button
+        className="w-full flex items-center justify-between px-4 py-3 text-left"
+        onClick={() => setOpen((value) => !value)}
+      >
+        <span className="font-medium text-gray-900">{title}</span>
+        <span className="text-xs text-gray-500">{open ? "Hide" : "Show"}</span>
+      </button>
+      {open && <div className="px-4 pb-4 space-y-3">{children}</div>}
+    </div>
+  );
+}
+
+function Field({ label, value, mono = false, source }) {
+  if (value == null || value === "") return null;
+  return (
+    <div className="text-sm">
+      <div className="flex items-center justify-between gap-2">
+        <span className="font-medium text-gray-700">{label}</span>
+        <div className="flex items-center gap-2">
+          {source && <span className="rounded-full border border-gray-300 px-2 py-0.5 text-[10px] uppercase tracking-wide text-gray-500">{source}</span>}
+          <Copyable value={value} mono={mono} />
+        </div>
+      </div>
+      <div className={`${mono ? "font-mono" : ""} text-xs text-gray-600 break-all mt-1`}>{String(value)}</div>
+    </div>
+  );
+}
+
+const VCViewer = ({ vc, sidecar, report }) => {
+  const [showRaw, setShowRaw] = useState(false);
+  const safeVc = vc || {};
+  const subject = safeVc.credentialSubject || {};
+  const listing = subject.listing || {};
+  const order = subject.order || {};
+  const commitments = subject.commitments || {};
+  const attestation = subject.attestation || {};
+  const proofs = Array.isArray(safeVc.proof) ? safeVc.proof : [];
+
+  const summary = useMemo(() => ({
+    issuer: safeVc.issuer?.id || "-",
+    holder: safeVc.holder?.id || "-",
+    productName: subject.productName || "-",
+    productId: subject.productId || order.productId || "-",
+    contractAddress: subject.productContract || order.escrowAddr || "-",
+    orderId: order.orderId || "-",
+    contextHash: attestation.contextHash || "-",
+  }), [attestation.contextHash, order.escrowAddr, order.orderId, order.productId, safeVc.holder?.id, safeVc.issuer?.id, subject.productContract, subject.productId, subject.productName]);
+
   if (!vc) return null;
 
-  const issuer = vc.issuer?.id || "-";
-  const issuerName = vc.issuer?.name || "";
-  const holder = vc.holder?.id || "-";
-  const holderName = vc.holder?.name || "";
-  const subject = vc.credentialSubject || {};
-  const issuanceDate = vc.issuanceDate || "-";
-
-  const productContract = subject.productContract;
-  const previousVersion = vc.previousVersion;
-  const componentCredentials = Array.isArray(subject.listing?.componentCredentials)
-    ? subject.listing.componentCredentials
-    : [];
-  const certificateCid = subject.listing?.certificateCredential?.cid;
-  const sellerRailgunAddress = subject.listing?.sellerRailgunAddress;
-
-  const priceCommitment = subject.priceCommitment || null;
-  const proofs = Array.isArray(vc.proof) ? vc.proof : [];
-
   return (
-    <div className="vc-result-box">
-      <div className="vc-result-header">Verifiable Credential</div>
+    <div className="space-y-4">
+      <div className="rounded-lg border border-blue-200 bg-blue-50 p-4">
+        <div className="text-sm font-semibold text-blue-900 mb-3">VC Summary</div>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+          <Field label="Issuer" value={summary.issuer} mono source="vc" />
+          <Field label="Holder" value={summary.holder} mono source="vc" />
+          <Field label="Product" value={summary.productName} source="vc" />
+          <Field label="Product ID" value={summary.productId} source="vc" />
+          <Field label="Contract" value={summary.contractAddress} mono source="vc" />
+          <Field label="Order ID" value={summary.orderId} mono source="vc" />
+          <Field label="Context Hash" value={summary.contextHash} mono source="vc" />
+          <Field label="Audit All Passed" value={report?.summary?.allPassed} source="report" />
+        </div>
+      </div>
 
-      <div className="vc-section">
-        <strong>Issuer:</strong> <Copyable value={issuer} /> {issuerName && `(${issuerName})`}
-      </div>
-      <div className="vc-section">
-        <strong>Holder:</strong> <Copyable value={holder} /> {holderName && `(${holderName})`}
-      </div>
-      <div className="vc-section">
-        <strong>Issuance Date:</strong> {issuanceDate}
-      </div>
-
-      <div className="vc-section">
-        <strong>Product:</strong> {subject.productName || "-"} <br />
-        <strong>Batch:</strong> {subject.batch || "-"} <br />
-        <strong>Quantity:</strong> {subject.quantity || "-"} <br />
-        {subject.productId && (
-          <>
-            <strong>Product ID:</strong> {subject.productId} <br />
-          </>
-        )}
-        {productContract && (
-          <>
-            <strong>Contract:</strong> <Copyable value={productContract} /> <br />
-          </>
-        )}
-        {sellerRailgunAddress && (
-          <>
-            <strong>Seller Railgun:</strong> <Copyable value={sellerRailgunAddress} /> <br />
-          </>
-        )}
-        {previousVersion && (
-          <>
-            <strong>Previous VC CID:</strong> <Copyable value={previousVersion} /> <br />
-          </>
-        )}
-        {componentCredentials.length > 0 && (
-          <>
-            <strong>Component VCs ({componentCredentials.length}):</strong> <br />
-            {componentCredentials.map((cid, idx) => (
-              <span key={idx} style={{ display: "block", marginLeft: "1rem", fontSize: "0.9em" }}>
-                - <Copyable value={cid} />
-              </span>
+      <Section title="Listing">
+        <Field label="Unit Price Wei" value={listing.unitPriceWei} source="vc" />
+        <Field label="Unit Price Hash" value={listing.unitPriceHash} mono source="vc" />
+        <Field label="Listing Snapshot CID" value={listing.listingSnapshotCid} mono source="vc" />
+        <Field label="Seller Railgun Address" value={listing.sellerRailgunAddress} mono source="vc" />
+        <Field label="Certificate CID" value={listing.certificateCredential?.cid} mono source="vc" />
+        {Array.isArray(listing.componentCredentials) && listing.componentCredentials.length > 0 && (
+          <div className="space-y-2">
+            <div className="font-medium text-gray-700 text-sm">Component Credentials</div>
+            {listing.componentCredentials.map((entry, index) => (
+              <Field key={`${entry}-${index}`} label={`Component ${index + 1}`} value={entry} mono source="vc" />
             ))}
-            <br />
-          </>
+          </div>
         )}
-        {certificateCid && (
-          <>
-            <strong>Certificate CID:</strong> <Copyable value={certificateCid} /> <br />
-          </>
+      </Section>
+
+      <Section title="Order">
+        <Field label="Buyer DID" value={order.buyerAddress} mono source="vc" />
+        <Field label="Memo Hash" value={order.memoHash} mono source="vc" />
+        <Field label="Railgun Tx Ref" value={order.railgunTxRef} mono source="vc" />
+        <Field label="Escrow Address" value={order.escrowAddr} mono source="vc" />
+        <Field label="Chain ID" value={order.chainId} source="vc" />
+      </Section>
+
+      <Section title="Commitments">
+        <Field label="Quantity Commitment" value={commitments.quantityCommitment} mono source="vc" />
+        <Field label="Total Commitment" value={commitments.totalCommitment} mono source="vc" />
+        <Field label="Payment Commitment" value={commitments.paymentCommitment} mono source="vc" />
+      </Section>
+
+      <Section title="Attestation">
+        <Field label="Context Hash" value={attestation.contextHash} mono source="vc" />
+        <Field label="Proof Source Type" value={attestation.proofSource?.type} source="vc" />
+        <Field label="Proof Source Order ID" value={attestation.proofSource?.orderId} mono source="vc" />
+        <Field label="Proof Source Version" value={attestation.proofSource?.version} source="vc" />
+        <Field label="Disclosure Public Key" value={attestation.disclosurePubKey || attestation.disclosurePubkey} mono source="vc" />
+        {sidecar && (
+          <div className="rounded border border-gray-200 bg-gray-50 p-3 space-y-2">
+            <div className="font-medium text-gray-700 text-sm">Resolved Sidecar</div>
+            <Field label="Sidecar Order ID" value={sidecar.orderId} mono source="sidecar" />
+            <Field label="Sidecar Buyer Address" value={sidecar.buyerAddress} mono source="sidecar" />
+            <Field label="Quantity Proof Present" value={Boolean(sidecar.quantityTotalProof)} source="sidecar" />
+            <Field label="Payment Proof Present" value={Boolean(sidecar.paymentEqualityProof)} source="sidecar" />
+          </div>
         )}
-      </div>
+      </Section>
 
-      {priceCommitment?.commitment && (
-        <div className="vc-section">
-          <strong>Price Commitment:</strong> <Copyable value={priceCommitment.commitment} />
-        </div>
-      )}
+      <Section title="Proof Entries">
+        <Field label="VC Proof Count" value={proofs.length} source="vc" />
+        {proofs.map((proof, index) => (
+          <div key={`${proof.verificationMethod || "proof"}-${index}`} className="rounded border border-gray-200 p-3 space-y-2">
+            <Field label="Role" value={proof.role} source="vc" />
+            <Field label="Verification Method" value={proof.verificationMethod} mono source="vc" />
+            <Field label="Payload Hash" value={proof.payloadHash} mono source="vc" />
+            <Field label="Created" value={proof.created} source="vc" />
+          </div>
+        ))}
+      </Section>
 
-      {priceCommitment?.proof && (
-        <div className="vc-section">
-          <strong>ZKP Proof:</strong> <Copyable value={priceCommitment.proof} />
-        </div>
-      )}
-
-      {proofs.length > 0 && (
-        <div className="vc-section">
-          <strong>Proof Entries:</strong> {proofs.length}
-        </div>
-      )}
+      <Section title="Raw JSON" defaultOpen={false}>
+        <button
+          className="mb-3 text-sm text-blue-700 hover:text-blue-900"
+          onClick={() => setShowRaw((value) => !value)}
+        >
+          {showRaw ? "Hide Raw JSON" : "Show Raw JSON"}
+        </button>
+        {showRaw && (
+          <pre className="rounded bg-gray-900 text-gray-100 p-4 text-xs overflow-auto">
+            {JSON.stringify(vc, null, 2)}
+          </pre>
+        )}
+      </Section>
     </div>
   );
 };

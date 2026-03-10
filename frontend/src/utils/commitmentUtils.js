@@ -1,8 +1,123 @@
-import { getAddress, solidityPackedKeccak256 } from "ethers";
+import {
+  AbiCoder,
+  getAddress,
+  hexlify,
+  keccak256,
+  randomBytes,
+  solidityPackedKeccak256,
+} from "ethers";
 import {
   generateValueCommitmentWithBinding,
   generateValueCommitmentWithBlinding,
 } from "./zkp/zkpClient";
+
+const abiCoder = AbiCoder.defaultAbiCoder();
+const MAX_U64 = (1n << 64n) - 1n;
+const MAX_CURVE25519_SCALAR =
+  7237005577332262213973186563042994240857116359379907606001950938285454250988n;
+
+export function normalizeIntegerString(value, fieldName = "value") {
+  if (typeof value === "bigint") {
+    if (value < 0n) {
+      throw new Error(`${fieldName} must be non-negative`);
+    }
+    return value.toString();
+  }
+
+  if (typeof value === "number") {
+    if (!Number.isInteger(value) || value < 0) {
+      throw new Error(`${fieldName} must be a non-negative integer`);
+    }
+    return String(value);
+  }
+
+  if (typeof value === "string") {
+    const trimmed = value.trim();
+    if (!/^\d+$/.test(trimmed)) {
+      throw new Error(`${fieldName} must be a decimal integer string`);
+    }
+    return trimmed;
+  }
+
+  throw new Error(`${fieldName} must be a bigint, integer number, or decimal string`);
+}
+
+export function assertU64Value(value, fieldName = "value") {
+  const normalized = normalizeIntegerString(value, fieldName);
+  const asBigInt = BigInt(normalized);
+  if (asBigInt > MAX_U64) {
+    throw new Error(`${fieldName} exceeds the current 64-bit commitment backend limit`);
+  }
+  return normalized;
+}
+
+export function assertScalarValue(value, fieldName = "value") {
+  const normalized = normalizeIntegerString(value, fieldName);
+  const asBigInt = BigInt(normalized);
+  if (asBigInt > MAX_CURVE25519_SCALAR) {
+    throw new Error(`${fieldName} exceeds the current scalar commitment backend limit`);
+  }
+  return normalized;
+}
+
+export function computeUnitPriceHash(unitPriceWei) {
+  const normalizedUnitPrice = normalizeIntegerString(unitPriceWei, "unitPriceWei");
+  return keccak256(abiCoder.encode(["uint256"], [normalizedUnitPrice]));
+}
+
+export function ensureHexPrefix(value) {
+  if (typeof value !== "string") {
+    throw new Error("hex value must be a string");
+  }
+  const trimmed = value.trim();
+  if (!trimmed) {
+    throw new Error("hex value must not be empty");
+  }
+  return trimmed.startsWith("0x") ? trimmed : `0x${trimmed}`;
+}
+
+export function normalizeBytes32Hex(value, fieldName = "value") {
+  const normalized = ensureHexPrefix(value).toLowerCase();
+  if (!/^0x[0-9a-f]{64}$/.test(normalized)) {
+    throw new Error(`${fieldName} must be a 32-byte hex string`);
+  }
+  return normalized;
+}
+
+export function generateOrderId() {
+  return hexlify(randomBytes(32));
+}
+
+export function computeOrderContextHash({
+  orderId,
+  memoHash,
+  railgunTxRef,
+  productId,
+  chainId,
+  escrowAddr,
+  unitPriceHash,
+}) {
+  return keccak256(
+    abiCoder.encode(
+      ["bytes32", "bytes32", "bytes32", "uint256", "uint256", "address", "bytes32"],
+      [
+        orderId,
+        memoHash,
+        railgunTxRef,
+        normalizeIntegerString(productId, "productId"),
+        normalizeIntegerString(chainId, "chainId"),
+        getAddress(escrowAddr),
+        unitPriceHash,
+      ]
+    )
+  );
+}
+
+export function multiplyIntegerStrings(leftValue, rightValue, fieldName = "value") {
+  const left = BigInt(normalizeIntegerString(leftValue, `${fieldName}Left`));
+  const right = BigInt(normalizeIntegerString(rightValue, `${fieldName}Right`));
+  return (left * right).toString();
+}
 
 /**
  * Generate deterministic blinding factor for Pedersen commitment
@@ -51,14 +166,10 @@ export async function generateCommitmentWithDeterministicBlinding(
   // Generate deterministic blinding
   const blindingHex = generateDeterministicBlinding(productAddress, sellerAddress);
 
-  // Convert value to u64 (ensure it's a number)
-  const valueNum = typeof value === 'bigint' ? Number(value) : Number(value);
-  if (isNaN(valueNum) || valueNum < 0 || valueNum > Number.MAX_SAFE_INTEGER) {
-    throw new Error(`Invalid value: ${value}. Must be a valid u64 number`);
-  }
+  const normalizedValue = assertU64Value(value, "value");
 
   const data = await generateValueCommitmentWithBlinding({
-    value: valueNum,
+    value: normalizedValue,
     blindingHex: `0x${blindingHex}`,
     zkpBackendUrl,
   });
@@ -108,14 +219,10 @@ export async function generateCommitmentWithBindingTag(
     previousVCCid,
   });
 
-  // Convert value to u64 (ensure it's a number)
-  const valueNum = typeof value === 'bigint' ? Number(value) : typeof value === 'string' ? Number(value) : value;
-  if (isNaN(valueNum) || valueNum < 0 || valueNum > Number.MAX_SAFE_INTEGER) {
-    throw new Error(`Invalid value: ${value}. Must be a valid u64 number`);
-  }
+  const normalizedValue = assertU64Value(value, "value");
 
   const data = await generateValueCommitmentWithBinding({
-    value: valueNum,
+    value: normalizedValue,
     blindingHex: `0x${blindingHex}`,
     bindingTagHex: `0x${bindingTag}`,
     zkpBackendUrl,
@@ -322,8 +429,9 @@ export function generateRandomBlinding() {
  * @returns {Promise<{ verified: boolean, cCheck: string }>}
  */
 export async function openAndVerifyCommitment({ value, blindingPrice, cPriceHex }) {
+  const normalizedValue = assertU64Value(value, "value");
   const result = await generateValueCommitmentWithBlinding({
-    value: typeof value === 'bigint' ? Number(value) : Number(value),
+    value: normalizedValue,
     blindingHex: blindingPrice.startsWith('0x') ? blindingPrice : `0x${blindingPrice}`,
   });
 

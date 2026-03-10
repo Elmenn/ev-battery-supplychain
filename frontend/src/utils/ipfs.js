@@ -10,6 +10,7 @@ if (!JWT) {
 }
 
 const IPFS_GATEWAY = "https://ipfs.io/ipfs";
+const VC_BACKEND_URL = process.env.REACT_APP_VC_BACKEND_URL || "http://localhost:5000";
 
 /**
  * Retry helper with exponential backoff.
@@ -82,6 +83,20 @@ export async function uploadJson(obj) {
     }
 
     const { IpfsHash } = await res.json()
+    try {
+      await fetch(`${VC_BACKEND_URL}/vc-archive`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          cid: IpfsHash,
+          vc: obj,
+          source: "frontend-upload",
+        }),
+      });
+    } catch (archiveError) {
+      console.warn(`VC archive write failed for ${IpfsHash}: ${archiveError.message}`);
+    }
+
     return IpfsHash
   });
 }

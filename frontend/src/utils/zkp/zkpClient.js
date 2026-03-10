@@ -1,10 +1,12 @@
 import {
+  generateScalarCommitmentWithBlindingBackend,
   generateValueCommitmentWithBindingBackend,
   generateValueCommitmentWithBlindingBackend,
   verifyProofByEndpointBackend,
   verifyValueCommitmentBackend,
 } from "./providers/backendProvider";
 import {
+  generateScalarCommitmentWithBlindingWasm,
   generateValueCommitmentWithBindingWasm,
   generateValueCommitmentWithBlindingWasm,
   verifyValueCommitmentWasm,
@@ -106,6 +108,16 @@ export async function generateValueCommitmentWithBlinding(params) {
   });
 }
 
+export async function generateScalarCommitmentWithBlinding(params) {
+  return dispatchWithMode({
+    operation: "generate-scalar-commitment-with-blinding",
+    params,
+    backendFn: generateScalarCommitmentWithBlindingBackend,
+    wasmFn: generateScalarCommitmentWithBlindingWasm,
+    comparer: compareGenerationResult,
+  });
+}
+
 export async function generateValueCommitmentWithBinding(params) {
   return dispatchWithMode({
     operation: "generate-value-commitment-with-binding",
@@ -157,4 +169,3 @@ export async function verifyProofByEndpoint({
     zkpBackendUrl,
   });
 }
-

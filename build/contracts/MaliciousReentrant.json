@@ -1295,7 +1295,7 @@
                 }
               ]
             },
-            "name": "abi_encode_tuple_t_contract$_IProductEscrow_$3388__to_t_address__fromStack_reversed",
+            "name": "abi_encode_tuple_t_contract$_IProductEscrow_$4087__to_t_address__fromStack_reversed",
             "nativeSrc": "940:226:9",
             "nodeType": "YulFunctionDefinition",
             "parameters": [
@@ -1327,7 +1327,7 @@
           }
         ]
       },
-      "contents": "{\n    { }\n    function abi_encode_tuple_t_bytes32__to_t_bytes32__fromStack_reversed(headStart, value0) -> tail\n    {\n        tail := add(headStart, 32)\n        mstore(headStart, value0)\n    }\n    function abi_decode_tuple_t_uint256(headStart, dataEnd) -> value0\n    {\n        if slt(sub(dataEnd, headStart), 32) { revert(0, 0) }\n        value0 := calldataload(headStart)\n    }\n    function abi_encode_tuple_t_bool__to_t_bool__fromStack_reversed(headStart, value0) -> tail\n    {\n        tail := add(headStart, 32)\n        mstore(headStart, iszero(iszero(value0)))\n    }\n    function abi_decode_tuple_t_bytes32(headStart, dataEnd) -> value0\n    {\n        if slt(sub(dataEnd, headStart), 32) { revert(0, 0) }\n        value0 := calldataload(headStart)\n    }\n    function abi_encode_tuple_t_uint256__to_t_uint256__fromStack_reversed(headStart, value0) -> tail\n    {\n        tail := add(headStart, 32)\n        mstore(headStart, value0)\n    }\n    function abi_encode_tuple_t_contract$_IProductEscrow_$3388__to_t_address__fromStack_reversed(headStart, value0) -> tail\n    {\n        tail := add(headStart, 32)\n        mstore(headStart, and(value0, sub(shl(160, 1), 1)))\n    }\n}",
+      "contents": "{\n    { }\n    function abi_encode_tuple_t_bytes32__to_t_bytes32__fromStack_reversed(headStart, value0) -> tail\n    {\n        tail := add(headStart, 32)\n        mstore(headStart, value0)\n    }\n    function abi_decode_tuple_t_uint256(headStart, dataEnd) -> value0\n    {\n        if slt(sub(dataEnd, headStart), 32) { revert(0, 0) }\n        value0 := calldataload(headStart)\n    }\n    function abi_encode_tuple_t_bool__to_t_bool__fromStack_reversed(headStart, value0) -> tail\n    {\n        tail := add(headStart, 32)\n        mstore(headStart, iszero(iszero(value0)))\n    }\n    function abi_decode_tuple_t_bytes32(headStart, dataEnd) -> value0\n    {\n        if slt(sub(dataEnd, headStart), 32) { revert(0, 0) }\n        value0 := calldataload(headStart)\n    }\n    function abi_encode_tuple_t_uint256__to_t_uint256__fromStack_reversed(headStart, value0) -> tail\n    {\n        tail := add(headStart, 32)\n        mstore(headStart, value0)\n    }\n    function abi_encode_tuple_t_contract$_IProductEscrow_$4087__to_t_address__fromStack_reversed(headStart, value0) -> tail\n    {\n        tail := add(headStart, 32)\n        mstore(headStart, and(value0, sub(shl(160, 1), 1)))\n    }\n}",
       "id": 9,
       "language": "Yul",
       "name": "#utility.yul"
@@ -1341,18 +1341,18 @@
     "absolutePath": "project:/contracts/helpers/MaliciousReentrant.sol",
     "exportedSymbols": {
       "IProductEscrow": [
-        3388
+        4087
       ],
       "MaliciousReentrant": [
-        3589
+        4288
       ]
     },
-    "id": 3590,
+    "id": 4289,
     "license": "MIT",
     "nodeType": "SourceUnit",
     "nodes": [
       {
-        "id": 3360,
+        "id": 4059,
         "literals": [
           "solidity",
           "^",
@@ -1369,9 +1369,9 @@
         "contractDependencies": [],
         "contractKind": "interface",
         "fullyImplemented": false,
-        "id": 3388,
+        "id": 4087,
         "linearizedBaseContracts": [
-          3388
+          4087
         ],
         "name": "IProductEscrow",
         "nameLocation": "70:14:8",
@@ -1379,7 +1379,7 @@
         "nodes": [
           {
             "functionSelector": "74950ffd",
-            "id": 3365,
+            "id": 4064,
             "implemented": false,
             "kind": "function",
             "modifiers": [],
@@ -1387,17 +1387,17 @@
             "nameLocation": "101:15:8",
             "nodeType": "FunctionDefinition",
             "parameters": {
-              "id": 3363,
+              "id": 4062,
               "nodeType": "ParameterList",
               "parameters": [
                 {
                   "constant": false,
-                  "id": 3362,
+                  "id": 4061,
                   "mutability": "mutable",
                   "name": "hash",
                   "nameLocation": "125:4:8",
                   "nodeType": "VariableDeclaration",
-                  "scope": 3365,
+                  "scope": 4064,
                   "src": "117:12:8",
                   "stateVariable": false,
                   "storageLocation": "default",
@@ -1406,7 +1406,7 @@
                     "typeString": "bytes32"
                   },
                   "typeName": {
-                    "id": 3361,
+                    "id": 4060,
                     "name": "bytes32",
                     "nodeType": "ElementaryTypeName",
                     "src": "117:7:8",
@@ -1421,12 +1421,12 @@
               "src": "116:14:8"
             },
             "returnParameters": {
-              "id": 3364,
+              "id": 4063,
               "nodeType": "ParameterList",
               "parameters": [],
               "src": "139:0:8"
             },
-            "scope": 3388,
+            "scope": 4087,
             "src": "92:48:8",
             "stateMutability": "nonpayable",
             "virtual": false,
@@ -1434,7 +1434,7 @@
           },
           {
             "functionSelector": "37271cc7",
-            "id": 3368,
+            "id": 4067,
             "implemented": false,
             "kind": "function",
             "modifiers": [],
@@ -1442,18 +1442,18 @@
             "nameLocation": "155:11:8",
             "nodeType": "FunctionDefinition",
             "parameters": {
-              "id": 3366,
+              "id": 4065,
               "nodeType": "ParameterList",
               "parameters": [],
               "src": "166:2:8"
             },
             "returnParameters": {
-              "id": 3367,
+              "id": 4066,
               "nodeType": "ParameterList",
               "parameters": [],
               "src": "177:0:8"
             },
-            "scope": 3388,
+            "scope": 4087,
             "src": "146:32:8",
             "stateMutability": "nonpayable",
             "virtual": false,
@@ -1461,7 +1461,7 @@
           },
           {
             "functionSelector": "dc9c5035",
-            "id": 3371,
+            "id": 4070,
             "implemented": false,
             "kind": "function",
             "modifiers": [],
@@ -1469,18 +1469,18 @@
             "nameLocation": "193:15:8",
             "nodeType": "FunctionDefinition",
             "parameters": {
-              "id": 3369,
+              "id": 4068,
               "nodeType": "ParameterList",
               "parameters": [],
               "src": "208:2:8"
             },
             "returnParameters": {
-              "id": 3370,
+              "id": 4069,
               "nodeType": "ParameterList",
               "parameters": [],
               "src": "219:0:8"
             },
-            "scope": 3388,
+            "scope": 4087,
             "src": "184:36:8",
             "stateMutability": "nonpayable",
             "virtual": false,
@@ -1488,7 +1488,7 @@
           },
           {
             "functionSelector": "dc2a7e5f",
-            "id": 3374,
+            "id": 4073,
             "implemented": false,
             "kind": "function",
             "modifiers": [],
@@ -1496,18 +1496,18 @@
             "nameLocation": "235:13:8",
             "nodeType": "FunctionDefinition",
             "parameters": {
-              "id": 3372,
+              "id": 4071,
               "nodeType": "ParameterList",
               "parameters": [],
               "src": "248:2:8"
             },
             "returnParameters": {
-              "id": 3373,
+              "id": 4072,
               "nodeType": "ParameterList",
               "parameters": [],
               "src": "259:0:8"
             },
-            "scope": 3388,
+            "scope": 4087,
             "src": "226:34:8",
             "stateMutability": "nonpayable",
             "virtual": false,
@@ -1515,7 +1515,7 @@
           },
           {
             "functionSelector": "94090d0b",
-            "id": 3377,
+            "id": 4076,
             "implemented": false,
             "kind": "function",
             "modifiers": [],
@@ -1523,18 +1523,18 @@
             "nameLocation": "275:10:8",
             "nodeType": "FunctionDefinition",
             "parameters": {
-              "id": 3375,
+              "id": 4074,
               "nodeType": "ParameterList",
               "parameters": [],
               "src": "285:2:8"
             },
             "returnParameters": {
-              "id": 3376,
+              "id": 4075,
               "nodeType": "ParameterList",
               "parameters": [],
               "src": "296:0:8"
             },
-            "scope": 3388,
+            "scope": 4087,
             "src": "266:31:8",
             "stateMutability": "nonpayable",
             "virtual": false,
@@ -1542,7 +1542,7 @@
           },
           {
             "functionSelector": "d8f133f9",
-            "id": 3382,
+            "id": 4081,
             "implemented": false,
             "kind": "function",
             "modifiers": [],
@@ -1550,17 +1550,17 @@
             "nameLocation": "312:17:8",
             "nodeType": "FunctionDefinition",
             "parameters": {
-              "id": 3380,
+              "id": 4079,
               "nodeType": "ParameterList",
               "parameters": [
                 {
                   "constant": false,
-                  "id": 3379,
+                  "id": 4078,
                   "mutability": "mutable",
                   "name": "_feeInWei",
                   "nameLocation": "338:9:8",
                   "nodeType": "VariableDeclaration",
-                  "scope": 3382,
+                  "scope": 4081,
                   "src": "330:17:8",
                   "stateVariable": false,
                   "storageLocation": "default",
@@ -1569,7 +1569,7 @@
                     "typeString": "uint256"
                   },
                   "typeName": {
-                    "id": 3378,
+                    "id": 4077,
                     "name": "uint256",
                     "nodeType": "ElementaryTypeName",
                     "src": "330:7:8",
@@ -1584,12 +1584,12 @@
               "src": "329:19:8"
             },
             "returnParameters": {
-              "id": 3381,
+              "id": 4080,
               "nodeType": "ParameterList",
               "parameters": [],
               "src": "365:0:8"
             },
-            "scope": 3388,
+            "scope": 4087,
             "src": "303:63:8",
             "stateMutability": "payable",
             "virtual": false,
@@ -1597,7 +1597,7 @@
           },
           {
             "functionSelector": "9c8dadae",
-            "id": 3387,
+            "id": 4086,
             "implemented": false,
             "kind": "function",
             "modifiers": [],
@@ -1605,17 +1605,17 @@
             "nameLocation": "381:14:8",
             "nodeType": "FunctionDefinition",
             "parameters": {
-              "id": 3385,
+              "id": 4084,
               "nodeType": "ParameterList",
               "parameters": [
                 {
                   "constant": false,
-                  "id": 3384,
+                  "id": 4083,
                   "mutability": "mutable",
                   "name": "_transporter",
                   "nameLocation": "412:12:8",
                   "nodeType": "VariableDeclaration",
-                  "scope": 3387,
+                  "scope": 4086,
                   "src": "396:28:8",
                   "stateVariable": false,
                   "storageLocation": "default",
@@ -1624,7 +1624,7 @@
                     "typeString": "address payable"
                   },
                   "typeName": {
-                    "id": 3383,
+                    "id": 4082,
                     "name": "address",
                     "nodeType": "ElementaryTypeName",
                     "src": "396:15:8",
@@ -1640,19 +1640,19 @@
               "src": "395:30:8"
             },
             "returnParameters": {
-              "id": 3386,
+              "id": 4085,
               "nodeType": "ParameterList",
               "parameters": [],
               "src": "442:0:8"
             },
-            "scope": 3388,
+            "scope": 4087,
             "src": "372:71:8",
             "stateMutability": "payable",
             "virtual": false,
             "visibility": "external"
           }
         ],
-        "scope": 3590,
+        "scope": 4289,
         "src": "60:386:8",
         "usedErrors": [],
         "usedEvents": []
@@ -1664,9 +1664,9 @@
         "contractDependencies": [],
         "contractKind": "contract",
         "fullyImplemented": true,
-        "id": 3589,
+        "id": 4288,
         "linearizedBaseContracts": [
-          3589
+          4288
         ],
         "name": "MaliciousReentrant",
         "nameLocation": "459:18:8",
@@ -1675,36 +1675,36 @@
           {
             "constant": false,
             "functionSelector": "e2fdcc17",
-            "id": 3391,
+            "id": 4090,
             "mutability": "mutable",
             "name": "escrow",
             "nameLocation": "507:6:8",
             "nodeType": "VariableDeclaration",
-            "scope": 3589,
+            "scope": 4288,
             "src": "485:28:8",
             "stateVariable": true,
             "storageLocation": "default",
             "typeDescriptions": {
-              "typeIdentifier": "t_contract$_IProductEscrow_$3388",
+              "typeIdentifier": "t_contract$_IProductEscrow_$4087",
               "typeString": "contract IProductEscrow"
             },
             "typeName": {
-              "id": 3390,
+              "id": 4089,
               "nodeType": "UserDefinedTypeName",
               "pathNode": {
-                "id": 3389,
+                "id": 4088,
                 "name": "IProductEscrow",
                 "nameLocations": [
                   "485:14:8"
                 ],
                 "nodeType": "IdentifierPath",
-                "referencedDeclaration": 3388,
+                "referencedDeclaration": 4087,
                 "src": "485:14:8"
               },
-              "referencedDeclaration": 3388,
+              "referencedDeclaration": 4087,
               "src": "485:14:8",
               "typeDescriptions": {
-                "typeIdentifier": "t_contract$_IProductEscrow_$3388",
+                "typeIdentifier": "t_contract$_IProductEscrow_$4087",
                 "typeString": "contract IProductEscrow"
               }
             },
@@ -1713,12 +1713,12 @@
           {
             "constant": false,
             "functionSelector": "818c8c7c",
-            "id": 3393,
+            "id": 4092,
             "mutability": "mutable",
             "name": "attackInProgress",
             "nameLocation": "532:16:8",
             "nodeType": "VariableDeclaration",
-            "scope": 3589,
+            "scope": 4288,
             "src": "520:28:8",
             "stateVariable": true,
             "storageLocation": "default",
@@ -1727,7 +1727,7 @@
               "typeString": "bool"
             },
             "typeName": {
-              "id": 3392,
+              "id": 4091,
               "name": "bool",
               "nodeType": "ElementaryTypeName",
               "src": "520:4:8",
@@ -1741,12 +1741,12 @@
           {
             "constant": false,
             "functionSelector": "ad0b523f",
-            "id": 3395,
+            "id": 4094,
             "mutability": "mutable",
             "name": "attackType",
             "nameLocation": "567:10:8",
             "nodeType": "VariableDeclaration",
-            "scope": 3589,
+            "scope": 4288,
             "src": "555:22:8",
             "stateVariable": true,
             "storageLocation": "default",
@@ -1755,7 +1755,7 @@
               "typeString": "uint256"
             },
             "typeName": {
-              "id": 3394,
+              "id": 4093,
               "name": "uint",
               "nodeType": "ElementaryTypeName",
               "src": "555:4:8",
@@ -1769,12 +1769,12 @@
           {
             "constant": false,
             "functionSelector": "0059c666",
-            "id": 3397,
+            "id": 4096,
             "mutability": "mutable",
             "name": "deliveryHash",
             "nameLocation": "684:12:8",
             "nodeType": "VariableDeclaration",
-            "scope": 3589,
+            "scope": 4288,
             "src": "669:27:8",
             "stateVariable": true,
             "storageLocation": "default",
@@ -1783,7 +1783,7 @@
               "typeString": "bytes32"
             },
             "typeName": {
-              "id": 3396,
+              "id": 4095,
               "name": "bytes32",
               "nodeType": "ElementaryTypeName",
               "src": "669:7:8",
@@ -1796,26 +1796,26 @@
           },
           {
             "body": {
-              "id": 3408,
+              "id": 4107,
               "nodeType": "Block",
               "src": "734:51:8",
               "statements": [
                 {
                   "expression": {
-                    "id": 3406,
+                    "id": 4105,
                     "isConstant": false,
                     "isLValue": false,
                     "isPure": false,
                     "lValueRequested": false,
                     "leftHandSide": {
-                      "id": 3402,
+                      "id": 4101,
                       "name": "escrow",
                       "nodeType": "Identifier",
                       "overloadedDeclarations": [],
-                      "referencedDeclaration": 3391,
+                      "referencedDeclaration": 4090,
                       "src": "745:6:8",
                       "typeDescriptions": {
-                        "typeIdentifier": "t_contract$_IProductEscrow_$3388",
+                        "typeIdentifier": "t_contract$_IProductEscrow_$4087",
                         "typeString": "contract IProductEscrow"
                       }
                     },
@@ -1824,11 +1824,11 @@
                     "rightHandSide": {
                       "arguments": [
                         {
-                          "id": 3404,
+                          "id": 4103,
                           "name": "_escrow",
                           "nodeType": "Identifier",
                           "overloadedDeclarations": [],
-                          "referencedDeclaration": 3399,
+                          "referencedDeclaration": 4098,
                           "src": "769:7:8",
                           "typeDescriptions": {
                             "typeIdentifier": "t_address",
@@ -1843,18 +1843,18 @@
                             "typeString": "address"
                           }
                         ],
-                        "id": 3403,
+                        "id": 4102,
                         "name": "IProductEscrow",
                         "nodeType": "Identifier",
                         "overloadedDeclarations": [],
-                        "referencedDeclaration": 3388,
+                        "referencedDeclaration": 4087,
                         "src": "754:14:8",
                         "typeDescriptions": {
-                          "typeIdentifier": "t_type$_t_contract$_IProductEscrow_$3388_$",
+                          "typeIdentifier": "t_type$_t_contract$_IProductEscrow_$4087_$",
                           "typeString": "type(contract IProductEscrow)"
                         }
                       },
-                      "id": 3405,
+                      "id": 4104,
                       "isConstant": false,
                       "isLValue": false,
                       "isPure": false,
@@ -1866,23 +1866,23 @@
                       "src": "754:23:8",
                       "tryCall": false,
                       "typeDescriptions": {
-                        "typeIdentifier": "t_contract$_IProductEscrow_$3388",
+                        "typeIdentifier": "t_contract$_IProductEscrow_$4087",
                         "typeString": "contract IProductEscrow"
                       }
                     },
                     "src": "745:32:8",
                     "typeDescriptions": {
-                      "typeIdentifier": "t_contract$_IProductEscrow_$3388",
+                      "typeIdentifier": "t_contract$_IProductEscrow_$4087",
                       "typeString": "contract IProductEscrow"
                     }
                   },
-                  "id": 3407,
+                  "id": 4106,
                   "nodeType": "ExpressionStatement",
                   "src": "745:32:8"
                 }
               ]
             },
-            "id": 3409,
+            "id": 4108,
             "implemented": true,
             "kind": "constructor",
             "modifiers": [],
@@ -1890,17 +1890,17 @@
             "nameLocation": "-1:-1:-1",
             "nodeType": "FunctionDefinition",
             "parameters": {
-              "id": 3400,
+              "id": 4099,
               "nodeType": "ParameterList",
               "parameters": [
                 {
                   "constant": false,
-                  "id": 3399,
+                  "id": 4098,
                   "mutability": "mutable",
                   "name": "_escrow",
                   "nameLocation": "725:7:8",
                   "nodeType": "VariableDeclaration",
-                  "scope": 3409,
+                  "scope": 4108,
                   "src": "717:15:8",
                   "stateVariable": false,
                   "storageLocation": "default",
@@ -1909,7 +1909,7 @@
                     "typeString": "address"
                   },
                   "typeName": {
-                    "id": 3398,
+                    "id": 4097,
                     "name": "address",
                     "nodeType": "ElementaryTypeName",
                     "src": "717:7:8",
@@ -1925,12 +1925,12 @@
               "src": "716:17:8"
             },
             "returnParameters": {
-              "id": 3401,
+              "id": 4100,
               "nodeType": "ParameterList",
               "parameters": [],
               "src": "734:0:8"
             },
-            "scope": 3589,
+            "scope": 4288,
             "src": "705:80:8",
             "stateMutability": "nonpayable",
             "virtual": false,
@@ -1938,23 +1938,23 @@
           },
           {
             "body": {
-              "id": 3436,
+              "id": 4135,
               "nodeType": "Block",
               "src": "887:229:8",
               "statements": [
                 {
                   "expression": {
-                    "id": 3416,
+                    "id": 4115,
                     "isConstant": false,
                     "isLValue": false,
                     "isPure": false,
                     "lValueRequested": false,
                     "leftHandSide": {
-                      "id": 3414,
+                      "id": 4113,
                       "name": "deliveryHash",
                       "nodeType": "Identifier",
                       "overloadedDeclarations": [],
-                      "referencedDeclaration": 3397,
+                      "referencedDeclaration": 4096,
                       "src": "898:12:8",
                       "typeDescriptions": {
                         "typeIdentifier": "t_bytes32",
@@ -1964,11 +1964,11 @@
                     "nodeType": "Assignment",
                     "operator": "=",
                     "rightHandSide": {
-                      "id": 3415,
+                      "id": 4114,
                       "name": "_hash",
                       "nodeType": "Identifier",
                       "overloadedDeclarations": [],
-                      "referencedDeclaration": 3411,
+                      "referencedDeclaration": 4110,
                       "src": "913:5:8",
                       "typeDescriptions": {
                         "typeIdentifier": "t_bytes32",
@@ -1981,23 +1981,23 @@
                       "typeString": "bytes32"
                     }
                   },
-                  "id": 3417,
+                  "id": 4116,
                   "nodeType": "ExpressionStatement",
                   "src": "898:20:8"
                 },
                 {
                   "expression": {
-                    "id": 3420,
+                    "id": 4119,
                     "isConstant": false,
                     "isLValue": false,
                     "isPure": false,
                     "lValueRequested": false,
                     "leftHandSide": {
-                      "id": 3418,
+                      "id": 4117,
                       "name": "attackType",
                       "nodeType": "Identifier",
                       "overloadedDeclarations": [],
-                      "referencedDeclaration": 3395,
+                      "referencedDeclaration": 4094,
                       "src": "929:10:8",
                       "typeDescriptions": {
                         "typeIdentifier": "t_uint256",
@@ -2008,7 +2008,7 @@
                     "operator": "=",
                     "rightHandSide": {
                       "hexValue": "31",
-                      "id": 3419,
+                      "id": 4118,
                       "isConstant": false,
                       "isLValue": false,
                       "isPure": true,
@@ -2028,23 +2028,23 @@
                       "typeString": "uint256"
                     }
                   },
-                  "id": 3421,
+                  "id": 4120,
                   "nodeType": "ExpressionStatement",
                   "src": "929:14:8"
                 },
                 {
                   "expression": {
-                    "id": 3424,
+                    "id": 4123,
                     "isConstant": false,
                     "isLValue": false,
                     "isPure": false,
                     "lValueRequested": false,
                     "leftHandSide": {
-                      "id": 3422,
+                      "id": 4121,
                       "name": "attackInProgress",
                       "nodeType": "Identifier",
                       "overloadedDeclarations": [],
-                      "referencedDeclaration": 3393,
+                      "referencedDeclaration": 4092,
                       "src": "954:16:8",
                       "typeDescriptions": {
                         "typeIdentifier": "t_bool",
@@ -2055,7 +2055,7 @@
                     "operator": "=",
                     "rightHandSide": {
                       "hexValue": "74727565",
-                      "id": 3423,
+                      "id": 4122,
                       "isConstant": false,
                       "isLValue": false,
                       "isPure": true,
@@ -2075,7 +2075,7 @@
                       "typeString": "bool"
                     }
                   },
-                  "id": 3425,
+                  "id": 4124,
                   "nodeType": "ExpressionStatement",
                   "src": "954:23:8"
                 },
@@ -2083,11 +2083,11 @@
                   "expression": {
                     "arguments": [
                       {
-                        "id": 3429,
+                        "id": 4128,
                         "name": "_hash",
                         "nodeType": "Identifier",
                         "overloadedDeclarations": [],
-                        "referencedDeclaration": 3411,
+                        "referencedDeclaration": 4110,
                         "src": "1067:5:8",
                         "typeDescriptions": {
                           "typeIdentifier": "t_bytes32",
@@ -2103,18 +2103,18 @@
                         }
                       ],
                       "expression": {
-                        "id": 3426,
+                        "id": 4125,
                         "name": "escrow",
                         "nodeType": "Identifier",
                         "overloadedDeclarations": [],
-                        "referencedDeclaration": 3391,
+                        "referencedDeclaration": 4090,
                         "src": "1044:6:8",
                         "typeDescriptions": {
-                          "typeIdentifier": "t_contract$_IProductEscrow_$3388",
+                          "typeIdentifier": "t_contract$_IProductEscrow_$4087",
                           "typeString": "contract IProductEscrow"
                         }
                       },
-                      "id": 3428,
+                      "id": 4127,
                       "isConstant": false,
                       "isLValue": false,
                       "isPure": false,
@@ -2122,14 +2122,14 @@
                       "memberLocation": "1051:15:8",
                       "memberName": "confirmDelivery",
                       "nodeType": "MemberAccess",
-                      "referencedDeclaration": 3365,
+                      "referencedDeclaration": 4064,
                       "src": "1044:22:8",
                       "typeDescriptions": {
                         "typeIdentifier": "t_function_external_nonpayable$_t_bytes32_$returns$__$",
                         "typeString": "function (bytes32) external"
                       }
                     },
-                    "id": 3430,
+                    "id": 4129,
                     "isConstant": false,
                     "isLValue": false,
                     "isPure": false,
@@ -2145,23 +2145,23 @@
                       "typeString": "tuple()"
                     }
                   },
-                  "id": 3431,
+                  "id": 4130,
                   "nodeType": "ExpressionStatement",
                   "src": "1044:29:8"
                 },
                 {
                   "expression": {
-                    "id": 3434,
+                    "id": 4133,
                     "isConstant": false,
                     "isLValue": false,
                     "isPure": false,
                     "lValueRequested": false,
                     "leftHandSide": {
-                      "id": 3432,
+                      "id": 4131,
                       "name": "attackInProgress",
                       "nodeType": "Identifier",
                       "overloadedDeclarations": [],
-                      "referencedDeclaration": 3393,
+                      "referencedDeclaration": 4092,
                       "src": "1084:16:8",
                       "typeDescriptions": {
                         "typeIdentifier": "t_bool",
@@ -2172,7 +2172,7 @@
                     "operator": "=",
                     "rightHandSide": {
                       "hexValue": "66616c7365",
-                      "id": 3433,
+                      "id": 4132,
                       "isConstant": false,
                       "isLValue": false,
                       "isPure": true,
@@ -2192,14 +2192,14 @@
                       "typeString": "bool"
                     }
                   },
-                  "id": 3435,
+                  "id": 4134,
                   "nodeType": "ExpressionStatement",
                   "src": "1084:24:8"
                 }
               ]
             },
             "functionSelector": "8f466d26",
-            "id": 3437,
+            "id": 4136,
             "implemented": true,
             "kind": "function",
             "modifiers": [],
@@ -2207,17 +2207,17 @@
             "nameLocation": "848:14:8",
             "nodeType": "FunctionDefinition",
             "parameters": {
-              "id": 3412,
+              "id": 4111,
               "nodeType": "ParameterList",
               "parameters": [
                 {
                   "constant": false,
-                  "id": 3411,
+                  "id": 4110,
                   "mutability": "mutable",
                   "name": "_hash",
                   "nameLocation": "871:5:8",
                   "nodeType": "VariableDeclaration",
-                  "scope": 3437,
+                  "scope": 4136,
                   "src": "863:13:8",
                   "stateVariable": false,
                   "storageLocation": "default",
@@ -2226,7 +2226,7 @@
                     "typeString": "bytes32"
                   },
                   "typeName": {
-                    "id": 3410,
+                    "id": 4109,
                     "name": "bytes32",
                     "nodeType": "ElementaryTypeName",
                     "src": "863:7:8",
@@ -2241,12 +2241,12 @@
               "src": "862:15:8"
             },
             "returnParameters": {
-              "id": 3413,
+              "id": 4112,
               "nodeType": "ParameterList",
               "parameters": [],
               "src": "887:0:8"
             },
-            "scope": 3589,
+            "scope": 4288,
             "src": "839:277:8",
             "stateMutability": "nonpayable",
             "virtual": false,
@@ -2254,23 +2254,23 @@
           },
           {
             "body": {
-              "id": 3457,
+              "id": 4156,
               "nodeType": "Block",
               "src": "1204:133:8",
               "statements": [
                 {
                   "expression": {
-                    "id": 3442,
+                    "id": 4141,
                     "isConstant": false,
                     "isLValue": false,
                     "isPure": false,
                     "lValueRequested": false,
                     "leftHandSide": {
-                      "id": 3440,
+                      "id": 4139,
                       "name": "attackType",
                       "nodeType": "Identifier",
                       "overloadedDeclarations": [],
-                      "referencedDeclaration": 3395,
+                      "referencedDeclaration": 4094,
                       "src": "1215:10:8",
                       "typeDescriptions": {
                         "typeIdentifier": "t_uint256",
@@ -2281,7 +2281,7 @@
                     "operator": "=",
                     "rightHandSide": {
                       "hexValue": "32",
-                      "id": 3441,
+                      "id": 4140,
                       "isConstant": false,
                       "isLValue": false,
                       "isPure": true,
@@ -2301,23 +2301,23 @@
                       "typeString": "uint256"
                     }
                   },
-                  "id": 3443,
+                  "id": 4142,
                   "nodeType": "ExpressionStatement",
                   "src": "1215:14:8"
                 },
                 {
                   "expression": {
-                    "id": 3446,
+                    "id": 4145,
                     "isConstant": false,
                     "isLValue": false,
                     "isPure": false,
                     "lValueRequested": false,
                     "leftHandSide": {
-                      "id": 3444,
+                      "id": 4143,
                       "name": "attackInProgress",
                       "nodeType": "Identifier",
                       "overloadedDeclarations": [],
-                      "referencedDeclaration": 3393,
+                      "referencedDeclaration": 4092,
                       "src": "1240:16:8",
                       "typeDescriptions": {
                         "typeIdentifier": "t_bool",
@@ -2328,7 +2328,7 @@
                     "operator": "=",
                     "rightHandSide": {
                       "hexValue": "74727565",
-                      "id": 3445,
+                      "id": 4144,
                       "isConstant": false,
                       "isLValue": false,
                       "isPure": true,
@@ -2348,7 +2348,7 @@
                       "typeString": "bool"
                     }
                   },
-                  "id": 3447,
+                  "id": 4146,
                   "nodeType": "ExpressionStatement",
                   "src": "1240:23:8"
                 },
@@ -2358,18 +2358,18 @@
                     "expression": {
                       "argumentTypes": [],
                       "expression": {
-                        "id": 3448,
+                        "id": 4147,
                         "name": "escrow",
                         "nodeType": "Identifier",
                         "overloadedDeclarations": [],
-                        "referencedDeclaration": 3391,
+                        "referencedDeclaration": 4090,
                         "src": "1274:6:8",
                         "typeDescriptions": {
-                          "typeIdentifier": "t_contract$_IProductEscrow_$3388",
+                          "typeIdentifier": "t_contract$_IProductEscrow_$4087",
                           "typeString": "contract IProductEscrow"
                         }
                       },
-                      "id": 3450,
+                      "id": 4149,
                       "isConstant": false,
                       "isLValue": false,
                       "isPure": false,
@@ -2377,14 +2377,14 @@
                       "memberLocation": "1281:11:8",
                       "memberName": "withdrawBid",
                       "nodeType": "MemberAccess",
-                      "referencedDeclaration": 3368,
+                      "referencedDeclaration": 4067,
                       "src": "1274:18:8",
                       "typeDescriptions": {
                         "typeIdentifier": "t_function_external_nonpayable$__$returns$__$",
                         "typeString": "function () external"
                       }
                     },
-                    "id": 3451,
+                    "id": 4150,
                     "isConstant": false,
                     "isLValue": false,
                     "isPure": false,
@@ -2400,23 +2400,23 @@
                       "typeString": "tuple()"
                     }
                   },
-                  "id": 3452,
+                  "id": 4151,
                   "nodeType": "ExpressionStatement",
                   "src": "1274:20:8"
                 },
                 {
                   "expression": {
-                    "id": 3455,
+                    "id": 4154,
                     "isConstant": false,
                     "isLValue": false,
                     "isPure": false,
                     "lValueRequested": false,
                     "leftHandSide": {
-                      "id": 3453,
+                      "id": 4152,
                       "name": "attackInProgress",
                       "nodeType": "Identifier",
                       "overloadedDeclarations": [],
-                      "referencedDeclaration": 3393,
+                      "referencedDeclaration": 4092,
                       "src": "1305:16:8",
                       "typeDescriptions": {
                         "typeIdentifier": "t_bool",
@@ -2427,7 +2427,7 @@
                     "operator": "=",
                     "rightHandSide": {
                       "hexValue": "66616c7365",
-                      "id": 3454,
+                      "id": 4153,
                       "isConstant": false,
                       "isLValue": false,
                       "isPure": true,
@@ -2447,14 +2447,14 @@
                       "typeString": "bool"
                     }
                   },
-                  "id": 3456,
+                  "id": 4155,
                   "nodeType": "ExpressionStatement",
                   "src": "1305:24:8"
                 }
               ]
             },
             "functionSelector": "2ecf3184",
-            "id": 3458,
+            "id": 4157,
             "implemented": true,
             "kind": "function",
             "modifiers": [],
@@ -2462,18 +2462,18 @@
             "nameLocation": "1175:17:8",
             "nodeType": "FunctionDefinition",
             "parameters": {
-              "id": 3438,
+              "id": 4137,
               "nodeType": "ParameterList",
               "parameters": [],
               "src": "1192:2:8"
             },
             "returnParameters": {
-              "id": 3439,
+              "id": 4138,
               "nodeType": "ParameterList",
               "parameters": [],
               "src": "1204:0:8"
             },
-            "scope": 3589,
+            "scope": 4288,
             "src": "1166:171:8",
             "stateMutability": "nonpayable",
             "virtual": false,
@@ -2481,23 +2481,23 @@
           },
           {
             "body": {
-              "id": 3478,
+              "id": 4177,
               "nodeType": "Block",
               "src": "1433:137:8",
               "statements": [
                 {
                   "expression": {
-                    "id": 3463,
+                    "id": 4162,
                     "isConstant": false,
                     "isLValue": false,
                     "isPure": false,
                     "lValueRequested": false,
                     "leftHandSide": {
-                      "id": 3461,
+                      "id": 4160,
                       "name": "attackType",
                       "nodeType": "Identifier",
                       "overloadedDeclarations": [],
-                      "referencedDeclaration": 3395,
+                      "referencedDeclaration": 4094,
                       "src": "1444:10:8",
                       "typeDescriptions": {
                         "typeIdentifier": "t_uint256",
@@ -2508,7 +2508,7 @@
                     "operator": "=",
                     "rightHandSide": {
                       "hexValue": "33",
-                      "id": 3462,
+                      "id": 4161,
                       "isConstant": false,
                       "isLValue": false,
                       "isPure": true,
@@ -2528,23 +2528,23 @@
                       "typeString": "uint256"
                     }
                   },
-                  "id": 3464,
+                  "id": 4163,
                   "nodeType": "ExpressionStatement",
                   "src": "1444:14:8"
                 },
                 {
                   "expression": {
-                    "id": 3467,
+                    "id": 4166,
                     "isConstant": false,
                     "isLValue": false,
                     "isPure": false,
                     "lValueRequested": false,
                     "leftHandSide": {
-                      "id": 3465,
+                      "id": 4164,
                       "name": "attackInProgress",
                       "nodeType": "Identifier",
                       "overloadedDeclarations": [],
-                      "referencedDeclaration": 3393,
+                      "referencedDeclaration": 4092,
                       "src": "1469:16:8",
                       "typeDescriptions": {
                         "typeIdentifier": "t_bool",
@@ -2555,7 +2555,7 @@
                     "operator": "=",
                     "rightHandSide": {
                       "hexValue": "74727565",
-                      "id": 3466,
+                      "id": 4165,
                       "isConstant": false,
                       "isLValue": false,
                       "isPure": true,
@@ -2575,7 +2575,7 @@
                       "typeString": "bool"
                     }
                   },
-                  "id": 3468,
+                  "id": 4167,
                   "nodeType": "ExpressionStatement",
                   "src": "1469:23:8"
                 },
@@ -2585,18 +2585,18 @@
                     "expression": {
                       "argumentTypes": [],
                       "expression": {
-                        "id": 3469,
+                        "id": 4168,
                         "name": "escrow",
                         "nodeType": "Identifier",
                         "overloadedDeclarations": [],
-                        "referencedDeclaration": 3391,
+                        "referencedDeclaration": 4090,
                         "src": "1503:6:8",
                         "typeDescriptions": {
-                          "typeIdentifier": "t_contract$_IProductEscrow_$3388",
+                          "typeIdentifier": "t_contract$_IProductEscrow_$4087",
                           "typeString": "contract IProductEscrow"
                         }
                       },
-                      "id": 3471,
+                      "id": 4170,
                       "isConstant": false,
                       "isLValue": false,
                       "isPure": false,
@@ -2604,14 +2604,14 @@
                       "memberLocation": "1510:15:8",
                       "memberName": "deliveryTimeout",
                       "nodeType": "MemberAccess",
-                      "referencedDeclaration": 3371,
+                      "referencedDeclaration": 4070,
                       "src": "1503:22:8",
                       "typeDescriptions": {
                         "typeIdentifier": "t_function_external_nonpayable$__$returns$__$",
                         "typeString": "function () external"
                       }
                     },
-                    "id": 3472,
+                    "id": 4171,
                     "isConstant": false,
                     "isLValue": false,
                     "isPure": false,
@@ -2627,23 +2627,23 @@
                       "typeString": "tuple()"
                     }
                   },
-                  "id": 3473,
+                  "id": 4172,
                   "nodeType": "ExpressionStatement",
                   "src": "1503:24:8"
                 },
                 {
                   "expression": {
-                    "id": 3476,
+                    "id": 4175,
                     "isConstant": false,
                     "isLValue": false,
                     "isPure": false,
                     "lValueRequested": false,
                     "leftHandSide": {
-                      "id": 3474,
+                      "id": 4173,
                       "name": "attackInProgress",
                       "nodeType": "Identifier",
                       "overloadedDeclarations": [],
-                      "referencedDeclaration": 3393,
+                      "referencedDeclaration": 4092,
                       "src": "1538:16:8",
                       "typeDescriptions": {
                         "typeIdentifier": "t_bool",
@@ -2654,7 +2654,7 @@
                     "operator": "=",
                     "rightHandSide": {
                       "hexValue": "66616c7365",
-                      "id": 3475,
+                      "id": 4174,
                       "isConstant": false,
                       "isLValue": false,
                       "isPure": true,
@@ -2674,14 +2674,14 @@
                       "typeString": "bool"
                     }
                   },
-                  "id": 3477,
+                  "id": 4176,
                   "nodeType": "ExpressionStatement",
                   "src": "1538:24:8"
                 }
               ]
             },
             "functionSelector": "8f993724",
-            "id": 3479,
+            "id": 4178,
             "implemented": true,
             "kind": "function",
             "modifiers": [],
@@ -2689,18 +2689,18 @@
             "nameLocation": "1400:21:8",
             "nodeType": "FunctionDefinition",
             "parameters": {
-              "id": 3459,
+              "id": 4158,
               "nodeType": "ParameterList",
               "parameters": [],
               "src": "1421:2:8"
             },
             "returnParameters": {
-              "id": 3460,
+              "id": 4159,
               "nodeType": "ParameterList",
               "parameters": [],
               "src": "1433:0:8"
             },
-            "scope": 3589,
+            "scope": 4288,
             "src": "1391:179:8",
             "stateMutability": "nonpayable",
             "virtual": false,
@@ -2708,7 +2708,7 @@
           },
           {
             "body": {
-              "id": 3493,
+              "id": 4192,
               "nodeType": "Block",
               "src": "1698:72:8",
               "statements": [
@@ -2716,11 +2716,11 @@
                   "expression": {
                     "arguments": [
                       {
-                        "id": 3490,
+                        "id": 4189,
                         "name": "_feeInWei",
                         "nodeType": "Identifier",
                         "overloadedDeclarations": [],
-                        "referencedDeclaration": 3481,
+                        "referencedDeclaration": 4180,
                         "src": "1752:9:8",
                         "typeDescriptions": {
                           "typeIdentifier": "t_uint256",
@@ -2743,18 +2743,18 @@
                           }
                         ],
                         "expression": {
-                          "id": 3484,
+                          "id": 4183,
                           "name": "escrow",
                           "nodeType": "Identifier",
                           "overloadedDeclarations": [],
-                          "referencedDeclaration": 3391,
+                          "referencedDeclaration": 4090,
                           "src": "1709:6:8",
                           "typeDescriptions": {
-                            "typeIdentifier": "t_contract$_IProductEscrow_$3388",
+                            "typeIdentifier": "t_contract$_IProductEscrow_$4087",
                             "typeString": "contract IProductEscrow"
                           }
                         },
-                        "id": 3486,
+                        "id": 4185,
                         "isConstant": false,
                         "isLValue": false,
                         "isPure": false,
@@ -2762,14 +2762,14 @@
                         "memberLocation": "1716:17:8",
                         "memberName": "createTransporter",
                         "nodeType": "MemberAccess",
-                        "referencedDeclaration": 3382,
+                        "referencedDeclaration": 4081,
                         "src": "1709:24:8",
                         "typeDescriptions": {
                           "typeIdentifier": "t_function_external_payable$_t_uint256_$returns$__$",
                           "typeString": "function (uint256) payable external"
                         }
                       },
-                      "id": 3489,
+                      "id": 4188,
                       "isConstant": false,
                       "isLValue": false,
                       "isPure": false,
@@ -2781,7 +2781,7 @@
                       "options": [
                         {
                           "expression": {
-                            "id": 3487,
+                            "id": 4186,
                             "name": "msg",
                             "nodeType": "Identifier",
                             "overloadedDeclarations": [],
@@ -2792,7 +2792,7 @@
                               "typeString": "msg"
                             }
                           },
-                          "id": 3488,
+                          "id": 4187,
                           "isConstant": false,
                           "isLValue": false,
                           "isPure": false,
@@ -2813,7 +2813,7 @@
                         "typeString": "function (uint256) payable external"
                       }
                     },
-                    "id": 3491,
+                    "id": 4190,
                     "isConstant": false,
                     "isLValue": false,
                     "isPure": false,
@@ -2829,14 +2829,14 @@
                       "typeString": "tuple()"
                     }
                   },
-                  "id": 3492,
+                  "id": 4191,
                   "nodeType": "ExpressionStatement",
                   "src": "1709:53:8"
                 }
               ]
             },
             "functionSelector": "3ecdc520",
-            "id": 3494,
+            "id": 4193,
             "implemented": true,
             "kind": "function",
             "modifiers": [],
@@ -2844,17 +2844,17 @@
             "nameLocation": "1643:21:8",
             "nodeType": "FunctionDefinition",
             "parameters": {
-              "id": 3482,
+              "id": 4181,
               "nodeType": "ParameterList",
               "parameters": [
                 {
                   "constant": false,
-                  "id": 3481,
+                  "id": 4180,
                   "mutability": "mutable",
                   "name": "_feeInWei",
                   "nameLocation": "1670:9:8",
                   "nodeType": "VariableDeclaration",
-                  "scope": 3494,
+                  "scope": 4193,
                   "src": "1665:14:8",
                   "stateVariable": false,
                   "storageLocation": "default",
@@ -2863,7 +2863,7 @@
                     "typeString": "uint256"
                   },
                   "typeName": {
-                    "id": 3480,
+                    "id": 4179,
                     "name": "uint",
                     "nodeType": "ElementaryTypeName",
                     "src": "1665:4:8",
@@ -2878,12 +2878,12 @@
               "src": "1664:16:8"
             },
             "returnParameters": {
-              "id": 3483,
+              "id": 4182,
               "nodeType": "ParameterList",
               "parameters": [],
               "src": "1698:0:8"
             },
-            "scope": 3589,
+            "scope": 4288,
             "src": "1634:136:8",
             "stateMutability": "payable",
             "virtual": false,
@@ -2891,28 +2891,28 @@
           },
           {
             "body": {
-              "id": 3540,
+              "id": 4239,
               "nodeType": "Block",
               "src": "1864:371:8",
               "statements": [
                 {
                   "condition": {
-                    "id": 3497,
+                    "id": 4196,
                     "name": "attackInProgress",
                     "nodeType": "Identifier",
                     "overloadedDeclarations": [],
-                    "referencedDeclaration": 3393,
+                    "referencedDeclaration": 4092,
                     "src": "1879:16:8",
                     "typeDescriptions": {
                       "typeIdentifier": "t_bool",
                       "typeString": "bool"
                     }
                   },
-                  "id": 3539,
+                  "id": 4238,
                   "nodeType": "IfStatement",
                   "src": "1875:353:8",
                   "trueBody": {
-                    "id": 3538,
+                    "id": 4237,
                     "nodeType": "Block",
                     "src": "1897:331:8",
                     "statements": [
@@ -2922,17 +2922,17 @@
                             "typeIdentifier": "t_uint256",
                             "typeString": "uint256"
                           },
-                          "id": 3500,
+                          "id": 4199,
                           "isConstant": false,
                           "isLValue": false,
                           "isPure": false,
                           "lValueRequested": false,
                           "leftExpression": {
-                            "id": 3498,
+                            "id": 4197,
                             "name": "attackType",
                             "nodeType": "Identifier",
                             "overloadedDeclarations": [],
-                            "referencedDeclaration": 3395,
+                            "referencedDeclaration": 4094,
                             "src": "1916:10:8",
                             "typeDescriptions": {
                               "typeIdentifier": "t_uint256",
@@ -2943,7 +2943,7 @@
                           "operator": "==",
                           "rightExpression": {
                             "hexValue": "31",
-                            "id": 3499,
+                            "id": 4198,
                             "isConstant": false,
                             "isLValue": false,
                             "isPure": true,
@@ -2969,17 +2969,17 @@
                               "typeIdentifier": "t_uint256",
                               "typeString": "uint256"
                             },
-                            "id": 3513,
+                            "id": 4212,
                             "isConstant": false,
                             "isLValue": false,
                             "isPure": false,
                             "lValueRequested": false,
                             "leftExpression": {
-                              "id": 3511,
+                              "id": 4210,
                               "name": "attackType",
                               "nodeType": "Identifier",
                               "overloadedDeclarations": [],
-                              "referencedDeclaration": 3395,
+                              "referencedDeclaration": 4094,
                               "src": "2029:10:8",
                               "typeDescriptions": {
                                 "typeIdentifier": "t_uint256",
@@ -2990,7 +2990,7 @@
                             "operator": "==",
                             "rightExpression": {
                               "hexValue": "32",
-                              "id": 3512,
+                              "id": 4211,
                               "isConstant": false,
                               "isLValue": false,
                               "isPure": true,
@@ -3016,17 +3016,17 @@
                                 "typeIdentifier": "t_uint256",
                                 "typeString": "uint256"
                               },
-                              "id": 3525,
+                              "id": 4224,
                               "isConstant": false,
                               "isLValue": false,
                               "isPure": false,
                               "lValueRequested": false,
                               "leftExpression": {
-                                "id": 3523,
+                                "id": 4222,
                                 "name": "attackType",
                                 "nodeType": "Identifier",
                                 "overloadedDeclarations": [],
-                                "referencedDeclaration": 3395,
+                                "referencedDeclaration": 4094,
                                 "src": "2126:10:8",
                                 "typeDescriptions": {
                                   "typeIdentifier": "t_uint256",
@@ -3037,7 +3037,7 @@
                               "operator": "==",
                               "rightExpression": {
                                 "hexValue": "33",
-                                "id": 3524,
+                                "id": 4223,
                                 "isConstant": false,
                                 "isLValue": false,
                                 "isPure": true,
@@ -3057,11 +3057,11 @@
                                 "typeString": "bool"
                               }
                             },
-                            "id": 3535,
+                            "id": 4234,
                             "nodeType": "IfStatement",
                             "src": "2122:95:8",
                             "trueBody": {
-                              "id": 3534,
+                              "id": 4233,
                               "nodeType": "Block",
                               "src": "2143:74:8",
                               "statements": [
@@ -3069,25 +3069,25 @@
                                   "clauses": [
                                     {
                                       "block": {
-                                        "id": 3529,
+                                        "id": 4228,
                                         "nodeType": "Block",
                                         "src": "2191:2:8",
                                         "statements": []
                                       },
                                       "errorName": "",
-                                      "id": 3530,
+                                      "id": 4229,
                                       "nodeType": "TryCatchClause",
                                       "src": "2191:2:8"
                                     },
                                     {
                                       "block": {
-                                        "id": 3531,
+                                        "id": 4230,
                                         "nodeType": "Block",
                                         "src": "2200:2:8",
                                         "statements": []
                                       },
                                       "errorName": "",
-                                      "id": 3532,
+                                      "id": 4231,
                                       "nodeType": "TryCatchClause",
                                       "src": "2194:8:8"
                                     }
@@ -3097,18 +3097,18 @@
                                     "expression": {
                                       "argumentTypes": [],
                                       "expression": {
-                                        "id": 3526,
+                                        "id": 4225,
                                         "name": "escrow",
                                         "nodeType": "Identifier",
                                         "overloadedDeclarations": [],
-                                        "referencedDeclaration": 3391,
+                                        "referencedDeclaration": 4090,
                                         "src": "2166:6:8",
                                         "typeDescriptions": {
-                                          "typeIdentifier": "t_contract$_IProductEscrow_$3388",
+                                          "typeIdentifier": "t_contract$_IProductEscrow_$4087",
                                           "typeString": "contract IProductEscrow"
                                         }
                                       },
-                                      "id": 3527,
+                                      "id": 4226,
                                       "isConstant": false,
                                       "isLValue": false,
                                       "isPure": false,
@@ -3116,14 +3116,14 @@
                                       "memberLocation": "2173:15:8",
                                       "memberName": "deliveryTimeout",
                                       "nodeType": "MemberAccess",
-                                      "referencedDeclaration": 3371,
+                                      "referencedDeclaration": 4070,
                                       "src": "2166:22:8",
                                       "typeDescriptions": {
                                         "typeIdentifier": "t_function_external_nonpayable$__$returns$__$",
                                         "typeString": "function () external"
                                       }
                                     },
-                                    "id": 3528,
+                                    "id": 4227,
                                     "isConstant": false,
                                     "isLValue": false,
                                     "isPure": false,
@@ -3139,18 +3139,18 @@
                                       "typeString": "tuple()"
                                     }
                                   },
-                                  "id": 3533,
+                                  "id": 4232,
                                   "nodeType": "TryStatement",
                                   "src": "2162:40:8"
                                 }
                               ]
                             }
                           },
-                          "id": 3536,
+                          "id": 4235,
                           "nodeType": "IfStatement",
                           "src": "2025:192:8",
                           "trueBody": {
-                            "id": 3522,
+                            "id": 4221,
                             "nodeType": "Block",
                             "src": "2046:70:8",
                             "statements": [
@@ -3158,25 +3158,25 @@
                                 "clauses": [
                                   {
                                     "block": {
-                                      "id": 3517,
+                                      "id": 4216,
                                       "nodeType": "Block",
                                       "src": "2090:2:8",
                                       "statements": []
                                     },
                                     "errorName": "",
-                                    "id": 3518,
+                                    "id": 4217,
                                     "nodeType": "TryCatchClause",
                                     "src": "2090:2:8"
                                   },
                                   {
                                     "block": {
-                                      "id": 3519,
+                                      "id": 4218,
                                       "nodeType": "Block",
                                       "src": "2099:2:8",
                                       "statements": []
                                     },
                                     "errorName": "",
-                                    "id": 3520,
+                                    "id": 4219,
                                     "nodeType": "TryCatchClause",
                                     "src": "2093:8:8"
                                   }
@@ -3186,18 +3186,18 @@
                                   "expression": {
                                     "argumentTypes": [],
                                     "expression": {
-                                      "id": 3514,
+                                      "id": 4213,
                                       "name": "escrow",
                                       "nodeType": "Identifier",
                                       "overloadedDeclarations": [],
-                                      "referencedDeclaration": 3391,
+                                      "referencedDeclaration": 4090,
                                       "src": "2069:6:8",
                                       "typeDescriptions": {
-                                        "typeIdentifier": "t_contract$_IProductEscrow_$3388",
+                                        "typeIdentifier": "t_contract$_IProductEscrow_$4087",
                                         "typeString": "contract IProductEscrow"
                                       }
                                     },
-                                    "id": 3515,
+                                    "id": 4214,
                                     "isConstant": false,
                                     "isLValue": false,
                                     "isPure": false,
@@ -3205,14 +3205,14 @@
                                     "memberLocation": "2076:11:8",
                                     "memberName": "withdrawBid",
                                     "nodeType": "MemberAccess",
-                                    "referencedDeclaration": 3368,
+                                    "referencedDeclaration": 4067,
                                     "src": "2069:18:8",
                                     "typeDescriptions": {
                                       "typeIdentifier": "t_function_external_nonpayable$__$returns$__$",
                                       "typeString": "function () external"
                                     }
                                   },
-                                  "id": 3516,
+                                  "id": 4215,
                                   "isConstant": false,
                                   "isLValue": false,
                                   "isPure": false,
@@ -3228,18 +3228,18 @@
                                     "typeString": "tuple()"
                                   }
                                 },
-                                "id": 3521,
+                                "id": 4220,
                                 "nodeType": "TryStatement",
                                 "src": "2065:36:8"
                               }
                             ]
                           }
                         },
-                        "id": 3537,
+                        "id": 4236,
                         "nodeType": "IfStatement",
                         "src": "1912:305:8",
                         "trueBody": {
-                          "id": 3510,
+                          "id": 4209,
                           "nodeType": "Block",
                           "src": "1933:86:8",
                           "statements": [
@@ -3247,25 +3247,25 @@
                               "clauses": [
                                 {
                                   "block": {
-                                    "id": 3505,
+                                    "id": 4204,
                                     "nodeType": "Block",
                                     "src": "1993:2:8",
                                     "statements": []
                                   },
                                   "errorName": "",
-                                  "id": 3506,
+                                  "id": 4205,
                                   "nodeType": "TryCatchClause",
                                   "src": "1993:2:8"
                                 },
                                 {
                                   "block": {
-                                    "id": 3507,
+                                    "id": 4206,
                                     "nodeType": "Block",
                                     "src": "2002:2:8",
                                     "statements": []
                                   },
                                   "errorName": "",
-                                  "id": 3508,
+                                  "id": 4207,
                                   "nodeType": "TryCatchClause",
                                   "src": "1996:8:8"
                                 }
@@ -3273,11 +3273,11 @@
                               "externalCall": {
                                 "arguments": [
                                   {
-                                    "id": 3503,
+                                    "id": 4202,
                                     "name": "deliveryHash",
                                     "nodeType": "Identifier",
                                     "overloadedDeclarations": [],
-                                    "referencedDeclaration": 3397,
+                                    "referencedDeclaration": 4096,
                                     "src": "1979:12:8",
                                     "typeDescriptions": {
                                       "typeIdentifier": "t_bytes32",
@@ -3293,18 +3293,18 @@
                                     }
                                   ],
                                   "expression": {
-                                    "id": 3501,
+                                    "id": 4200,
                                     "name": "escrow",
                                     "nodeType": "Identifier",
                                     "overloadedDeclarations": [],
-                                    "referencedDeclaration": 3391,
+                                    "referencedDeclaration": 4090,
                                     "src": "1956:6:8",
                                     "typeDescriptions": {
-                                      "typeIdentifier": "t_contract$_IProductEscrow_$3388",
+                                      "typeIdentifier": "t_contract$_IProductEscrow_$4087",
                                       "typeString": "contract IProductEscrow"
                                     }
                                   },
-                                  "id": 3502,
+                                  "id": 4201,
                                   "isConstant": false,
                                   "isLValue": false,
                                   "isPure": false,
@@ -3312,14 +3312,14 @@
                                   "memberLocation": "1963:15:8",
                                   "memberName": "confirmDelivery",
                                   "nodeType": "MemberAccess",
-                                  "referencedDeclaration": 3365,
+                                  "referencedDeclaration": 4064,
                                   "src": "1956:22:8",
                                   "typeDescriptions": {
                                     "typeIdentifier": "t_function_external_nonpayable$_t_bytes32_$returns$__$",
                                     "typeString": "function (bytes32) external"
                                   }
                                 },
-                                "id": 3504,
+                                "id": 4203,
                                 "isConstant": false,
                                 "isLValue": false,
                                 "isPure": false,
@@ -3335,7 +3335,7 @@
                                   "typeString": "tuple()"
                                 }
                               },
-                              "id": 3509,
+                              "id": 4208,
                               "nodeType": "TryStatement",
                               "src": "1952:52:8"
                             }
@@ -3347,7 +3347,7 @@
                 }
               ]
             },
-            "id": 3541,
+            "id": 4240,
             "implemented": true,
             "kind": "fallback",
             "modifiers": [],
@@ -3355,18 +3355,18 @@
             "nameLocation": "-1:-1:-1",
             "nodeType": "FunctionDefinition",
             "parameters": {
-              "id": 3495,
+              "id": 4194,
               "nodeType": "ParameterList",
               "parameters": [],
               "src": "1844:2:8"
             },
             "returnParameters": {
-              "id": 3496,
+              "id": 4195,
               "nodeType": "ParameterList",
               "parameters": [],
               "src": "1864:0:8"
             },
-            "scope": 3589,
+            "scope": 4288,
             "src": "1836:399:8",
             "stateMutability": "payable",
             "virtual": false,
@@ -3374,28 +3374,28 @@
           },
           {
             "body": {
-              "id": 3587,
+              "id": 4286,
               "nodeType": "Block",
               "src": "2336:371:8",
               "statements": [
                 {
                   "condition": {
-                    "id": 3544,
+                    "id": 4243,
                     "name": "attackInProgress",
                     "nodeType": "Identifier",
                     "overloadedDeclarations": [],
-                    "referencedDeclaration": 3393,
+                    "referencedDeclaration": 4092,
                     "src": "2351:16:8",
                     "typeDescriptions": {
                       "typeIdentifier": "t_bool",
                       "typeString": "bool"
                     }
                   },
-                  "id": 3586,
+                  "id": 4285,
                   "nodeType": "IfStatement",
                   "src": "2347:353:8",
                   "trueBody": {
-                    "id": 3585,
+                    "id": 4284,
                     "nodeType": "Block",
                     "src": "2369:331:8",
                     "statements": [
@@ -3405,17 +3405,17 @@
                             "typeIdentifier": "t_uint256",
                             "typeString": "uint256"
                           },
-                          "id": 3547,
+                          "id": 4246,
                           "isConstant": false,
                           "isLValue": false,
                           "isPure": false,
                           "lValueRequested": false,
                           "leftExpression": {
-                            "id": 3545,
+                            "id": 4244,
                             "name": "attackType",
                             "nodeType": "Identifier",
                             "overloadedDeclarations": [],
-                            "referencedDeclaration": 3395,
+                            "referencedDeclaration": 4094,
                             "src": "2388:10:8",
                             "typeDescriptions": {
                               "typeIdentifier": "t_uint256",
@@ -3426,7 +3426,7 @@
                           "operator": "==",
                           "rightExpression": {
                             "hexValue": "31",
-                            "id": 3546,
+                            "id": 4245,
                             "isConstant": false,
                             "isLValue": false,
                             "isPure": true,
@@ -3452,17 +3452,17 @@
                               "typeIdentifier": "t_uint256",
                               "typeString": "uint256"
                             },
-                            "id": 3560,
+                            "id": 4259,
                             "isConstant": false,
                             "isLValue": false,
                             "isPure": false,
                             "lValueRequested": false,
                             "leftExpression": {
-                              "id": 3558,
+                              "id": 4257,
                               "name": "attackType",
                               "nodeType": "Identifier",
                               "overloadedDeclarations": [],
-                              "referencedDeclaration": 3395,
+                              "referencedDeclaration": 4094,
                               "src": "2501:10:8",
                               "typeDescriptions": {
                                 "typeIdentifier": "t_uint256",
@@ -3473,7 +3473,7 @@
                             "operator": "==",
                             "rightExpression": {
                               "hexValue": "32",
-                              "id": 3559,
+                              "id": 4258,
                               "isConstant": false,
                               "isLValue": false,
                               "isPure": true,
@@ -3499,17 +3499,17 @@
                                 "typeIdentifier": "t_uint256",
                                 "typeString": "uint256"
                               },
-                              "id": 3572,
+                              "id": 4271,
                               "isConstant": false,
                               "isLValue": false,
                               "isPure": false,
                               "lValueRequested": false,
                               "leftExpression": {
-                                "id": 3570,
+                                "id": 4269,
                                 "name": "attackType",
                                 "nodeType": "Identifier",
                                 "overloadedDeclarations": [],
-                                "referencedDeclaration": 3395,
+                                "referencedDeclaration": 4094,
                                 "src": "2598:10:8",
                                 "typeDescriptions": {
                                   "typeIdentifier": "t_uint256",
@@ -3520,7 +3520,7 @@
                               "operator": "==",
                               "rightExpression": {
                                 "hexValue": "33",
-                                "id": 3571,
+                                "id": 4270,
                                 "isConstant": false,
                                 "isLValue": false,
                                 "isPure": true,
@@ -3540,11 +3540,11 @@
                                 "typeString": "bool"
                               }
                             },
-                            "id": 3582,
+                            "id": 4281,
                             "nodeType": "IfStatement",
                             "src": "2594:95:8",
                             "trueBody": {
-                              "id": 3581,
+                              "id": 4280,
                               "nodeType": "Block",
                               "src": "2615:74:8",
                               "statements": [
@@ -3552,25 +3552,25 @@
                                   "clauses": [
                                     {
                                       "block": {
-                                        "id": 3576,
+                                        "id": 4275,
                                         "nodeType": "Block",
                                         "src": "2663:2:8",
                                         "statements": []
                                       },
                                       "errorName": "",
-                                      "id": 3577,
+                                      "id": 4276,
                                       "nodeType": "TryCatchClause",
                                       "src": "2663:2:8"
                                     },
                                     {
                                       "block": {
-                                        "id": 3578,
+                                        "id": 4277,
                                         "nodeType": "Block",
                                         "src": "2672:2:8",
                                         "statements": []
                                       },
                                       "errorName": "",
-                                      "id": 3579,
+                                      "id": 4278,
                                       "nodeType": "TryCatchClause",
                                       "src": "2666:8:8"
                                     }
@@ -3580,18 +3580,18 @@
                                     "expression": {
                                       "argumentTypes": [],
                                       "expression": {
-                                        "id": 3573,
+                                        "id": 4272,
                                         "name": "escrow",
                                         "nodeType": "Identifier",
                                         "overloadedDeclarations": [],
-                                        "referencedDeclaration": 3391,
+                                        "referencedDeclaration": 4090,
                                         "src": "2638:6:8",
                                         "typeDescriptions": {
-                                          "typeIdentifier": "t_contract$_IProductEscrow_$3388",
+                                          "typeIdentifier": "t_contract$_IProductEscrow_$4087",
                                           "typeString": "contract IProductEscrow"
                                         }
                                       },
-                                      "id": 3574,
+                                      "id": 4273,
                                       "isConstant": false,
                                       "isLValue": false,
                                       "isPure": false,
@@ -3599,14 +3599,14 @@
                                       "memberLocation": "2645:15:8",
                                       "memberName": "deliveryTimeout",
                                       "nodeType": "MemberAccess",
-                                      "referencedDeclaration": 3371,
+                                      "referencedDeclaration": 4070,
                                       "src": "2638:22:8",
                                       "typeDescriptions": {
                                         "typeIdentifier": "t_function_external_nonpayable$__$returns$__$",
                                         "typeString": "function () external"
                                       }
                                     },
-                                    "id": 3575,
+                                    "id": 4274,
                                     "isConstant": false,
                                     "isLValue": false,
                                     "isPure": false,
@@ -3622,18 +3622,18 @@
                                       "typeString": "tuple()"
                                     }
                                   },
-                                  "id": 3580,
+                                  "id": 4279,
                                   "nodeType": "TryStatement",
                                   "src": "2634:40:8"
                                 }
                               ]
                             }
                           },
-                          "id": 3583,
+                          "id": 4282,
                           "nodeType": "IfStatement",
                           "src": "2497:192:8",
                           "trueBody": {
-                            "id": 3569,
+                            "id": 4268,
                             "nodeType": "Block",
                             "src": "2518:70:8",
                             "statements": [
@@ -3641,25 +3641,25 @@
                                 "clauses": [
                                   {
                                     "block": {
-                                      "id": 3564,
+                                      "id": 4263,
                                       "nodeType": "Block",
                                       "src": "2562:2:8",
                                       "statements": []
                                     },
                                     "errorName": "",
-                                    "id": 3565,
+                                    "id": 4264,
                                     "nodeType": "TryCatchClause",
                                     "src": "2562:2:8"
                                   },
                                   {
                                     "block": {
-                                      "id": 3566,
+                                      "id": 4265,
                                       "nodeType": "Block",
                                       "src": "2571:2:8",
                                       "statements": []
                                     },
                                     "errorName": "",
-                                    "id": 3567,
+                                    "id": 4266,
                                     "nodeType": "TryCatchClause",
                                     "src": "2565:8:8"
                                   }
@@ -3669,18 +3669,18 @@
                                   "expression": {
                                     "argumentTypes": [],
                                     "expression": {
-                                      "id": 3561,
+                                      "id": 4260,
                                       "name": "escrow",
                                       "nodeType": "Identifier",
                                       "overloadedDeclarations": [],
-                                      "referencedDeclaration": 3391,
+                                      "referencedDeclaration": 4090,
                                       "src": "2541:6:8",
                                       "typeDescriptions": {
-                                        "typeIdentifier": "t_contract$_IProductEscrow_$3388",
+                                        "typeIdentifier": "t_contract$_IProductEscrow_$4087",
                                         "typeString": "contract IProductEscrow"
                                       }
                                     },
-                                    "id": 3562,
+                                    "id": 4261,
                                     "isConstant": false,
                                     "isLValue": false,
                                     "isPure": false,
@@ -3688,14 +3688,14 @@
                                     "memberLocation": "2548:11:8",
                                     "memberName": "withdrawBid",
                                     "nodeType": "MemberAccess",
-                                    "referencedDeclaration": 3368,
+                                    "referencedDeclaration": 4067,
                                     "src": "2541:18:8",
                                     "typeDescriptions": {
                                       "typeIdentifier": "t_function_external_nonpayable$__$returns$__$",
                                       "typeString": "function () external"
                                     }
                                   },
-                                  "id": 3563,
+                                  "id": 4262,
                                   "isConstant": false,
                                   "isLValue": false,
                                   "isPure": false,
@@ -3711,18 +3711,18 @@
                                     "typeString": "tuple()"
                                   }
                                 },
-                                "id": 3568,
+                                "id": 4267,
                                 "nodeType": "TryStatement",
                                 "src": "2537:36:8"
                               }
                             ]
                           }
                         },
-                        "id": 3584,
+                        "id": 4283,
                         "nodeType": "IfStatement",
                         "src": "2384:305:8",
                         "trueBody": {
-                          "id": 3557,
+                          "id": 4256,
                           "nodeType": "Block",
                           "src": "2405:86:8",
                           "statements": [
@@ -3730,25 +3730,25 @@
                               "clauses": [
                                 {
                                   "block": {
-                                    "id": 3552,
+                                    "id": 4251,
                                     "nodeType": "Block",
                                     "src": "2465:2:8",
                                     "statements": []
                                   },
                                   "errorName": "",
-                                  "id": 3553,
+                                  "id": 4252,
                                   "nodeType": "TryCatchClause",
                                   "src": "2465:2:8"
                                 },
                                 {
                                   "block": {
-                                    "id": 3554,
+                                    "id": 4253,
                                     "nodeType": "Block",
                                     "src": "2474:2:8",
                                     "statements": []
                                   },
                                   "errorName": "",
-                                  "id": 3555,
+                                  "id": 4254,
                                   "nodeType": "TryCatchClause",
                                   "src": "2468:8:8"
                                 }
@@ -3756,11 +3756,11 @@
                               "externalCall": {
                                 "arguments": [
                                   {
-                                    "id": 3550,
+                                    "id": 4249,
                                     "name": "deliveryHash",
                                     "nodeType": "Identifier",
                                     "overloadedDeclarations": [],
-                                    "referencedDeclaration": 3397,
+                                    "referencedDeclaration": 4096,
                                     "src": "2451:12:8",
                                     "typeDescriptions": {
                                       "typeIdentifier": "t_bytes32",
@@ -3776,18 +3776,18 @@
                                     }
                                   ],
                                   "expression": {
-                                    "id": 3548,
+                                    "id": 4247,
                                     "name": "escrow",
                                     "nodeType": "Identifier",
                                     "overloadedDeclarations": [],
-                                    "referencedDeclaration": 3391,
+                                    "referencedDeclaration": 4090,
                                     "src": "2428:6:8",
                                     "typeDescriptions": {
-                                      "typeIdentifier": "t_contract$_IProductEscrow_$3388",
+                                      "typeIdentifier": "t_contract$_IProductEscrow_$4087",
                                       "typeString": "contract IProductEscrow"
                                     }
                                   },
-                                  "id": 3549,
+                                  "id": 4248,
                                   "isConstant": false,
                                   "isLValue": false,
                                   "isPure": false,
@@ -3795,14 +3795,14 @@
                                   "memberLocation": "2435:15:8",
                                   "memberName": "confirmDelivery",
                                   "nodeType": "MemberAccess",
-                                  "referencedDeclaration": 3365,
+                                  "referencedDeclaration": 4064,
                                   "src": "2428:22:8",
                                   "typeDescriptions": {
                                     "typeIdentifier": "t_function_external_nonpayable$_t_bytes32_$returns$__$",
                                     "typeString": "function (bytes32) external"
                                   }
                                 },
-                                "id": 3551,
+                                "id": 4250,
                                 "isConstant": false,
                                 "isLValue": false,
                                 "isPure": false,
@@ -3818,7 +3818,7 @@
                                   "typeString": "tuple()"
                                 }
                               },
-                              "id": 3556,
+                              "id": 4255,
                               "nodeType": "TryStatement",
                               "src": "2424:52:8"
                             }
@@ -3830,7 +3830,7 @@
                 }
               ]
             },
-            "id": 3588,
+            "id": 4287,
             "implemented": true,
             "kind": "receive",
             "modifiers": [],
@@ -3838,25 +3838,25 @@
             "nameLocation": "-1:-1:-1",
             "nodeType": "FunctionDefinition",
             "parameters": {
-              "id": 3542,
+              "id": 4241,
               "nodeType": "ParameterList",
               "parameters": [],
               "src": "2316:2:8"
             },
             "returnParameters": {
-              "id": 3543,
+              "id": 4242,
               "nodeType": "ParameterList",
               "parameters": [],
               "src": "2336:0:8"
             },
-            "scope": 3589,
+            "scope": 4288,
             "src": "2309:398:8",
             "stateMutability": "payable",
             "virtual": false,
             "visibility": "external"
           }
         ],
-        "scope": 3590,
+        "scope": 4289,
         "src": "450:2260:8",
         "usedErrors": [],
         "usedEvents": []
@@ -3870,7 +3870,7 @@
   },
   "networks": {},
   "schemaVersion": "3.4.16",
-  "updatedAt": "2026-02-18T19:48:27.556Z",
+  "updatedAt": "2026-03-10T14:53:57.623Z",
   "devdoc": {
     "kind": "dev",
     "methods": {},

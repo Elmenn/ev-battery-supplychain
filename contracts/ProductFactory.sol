@@ -21,6 +21,14 @@ contract ProductFactory is Ownable {
     using Clones for address;
 
     event ProductCreated(address indexed product, address indexed seller, uint256 indexed productId, bytes32 priceCommitment, uint256 bondAmount);
+    event ProductCreatedV2(
+        address indexed product,
+        address indexed seller,
+        uint256 indexed productId,
+        bytes32 priceCommitment,
+        bytes32 unitPriceHash,
+        uint256 bondAmount
+    );
     event ImplementationUpdated(address indexed oldImpl, address indexed newImpl);
     event FactoryPaused(address indexed by);
     event FactoryUnpaused(address indexed by);
@@ -106,6 +114,44 @@ contract ProductFactory is Ownable {
         products.push(product);
 
         emit ProductCreated(product, msg.sender, productCount, priceCommitment, bondAmount);
+    }
+
+    /// @notice Create a new V2 product escrow with a dedicated unit-price hash anchor.
+    /// @param name Product name
+    /// @param unitPriceHash Hash anchor for the public unit price
+    /// @return product Address of the newly created escrow clone
+    function createProductV2(string memory name, bytes32 unitPriceHash)
+        external
+        payable
+        whenNotPaused
+        returns (address product)
+    {
+        if (bondAmount == 0) revert BondAmountNotSet();
+        if (msg.value != bondAmount) revert IncorrectBondAmount();
+        if (unitPriceHash == bytes32(0)) revert ZeroUnitPriceHash();
+
+        product = implementation.clone();
+
+        unchecked {
+            productCount++;
+        }
+
+        bytes32 priceCommitment = keccak256(abi.encodePacked(name, msg.sender, productCount, unitPriceHash));
+
+        ProductEscrow_Initializer(payable(product)).initializeV2{value: msg.value}(
+            productCount,
+            name,
+            priceCommitment,
+            unitPriceHash,
+            msg.sender,
+            bondAmount,
+            address(this)
+        );
+
+        products.push(product);
+
+        emit ProductCreated(product, msg.sender, productCount, priceCommitment, bondAmount);
+        emit ProductCreatedV2(product, msg.sender, productCount, priceCommitment, unitPriceHash, bondAmount);
     }
 
     /// @notice Create a new product escrow at a deterministic address. Seller sends bond as msg.value.

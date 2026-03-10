@@ -26,6 +26,12 @@ const inferChainId = () => {
   return "1337";
 };
 
+const normalizeCommitmentHex = (value) =>
+  typeof value === "string" && value.trim().length > 0 ? value.trim() : null;
+
+const normalizeMaybeString = (value) =>
+  value == null ? null : String(value);
+
 // ---------------------------------------------------------------------------
 // Utility exports (preserved from v1.0)
 // ---------------------------------------------------------------------------
@@ -221,6 +227,180 @@ export function createFinalOrderVC({
     previousVersion: null,
     proof: [],
   };
+}
+
+export function createFinalOrderVCV2({
+  sellerAddr,
+  buyerAddr,
+  sellerRailgunAddress,
+  productName,
+  batch,
+  productContract,
+  productId,
+  chainId,
+  unitPriceWei,
+  unitPriceHash,
+  listingSnapshotCid,
+  certificateCredential,
+  componentCredentials,
+  orderId,
+  memoHash,
+  railgunTxRef,
+  quantityCommitment,
+  totalCommitment,
+  paymentCommitment,
+  contextHash,
+  disclosurePubKey,
+}) {
+  const chain = chainId || inferChainId();
+  const normalizedCertificate = {
+    name: String(certificateCredential?.name || ""),
+    cid: String(certificateCredential?.cid || ""),
+  };
+  const normalizedComponents = Array.isArray(componentCredentials)
+    ? componentCredentials
+        .filter((item) => item != null && String(item).trim().length > 0)
+        .map((item) => String(item))
+    : [];
+
+  return {
+    "@context": ["https://www.w3.org/2018/credentials/v1"],
+    id: `urn:uuid:${uuid()}`,
+    type: ["VerifiableCredential", "SupplyChainCredential", "OrderCommitmentCredential"],
+    schemaVersion: "3.0",
+
+    issuer: {
+      id: `did:ethr:${chain}:${sellerAddr}`,
+      name: "Seller",
+    },
+    holder: {
+      id: `did:ethr:${chain}:${buyerAddr}`,
+      name: "Buyer",
+    },
+    issuanceDate: new Date().toISOString(),
+
+    credentialSubject: {
+      id: `did:ethr:${chain}:${sellerAddr}`,
+      productName: String(productName || ""),
+      batch: String(batch || ""),
+      productContract: String(productContract || ""),
+      productId: String(productId ?? ""),
+      chainId: String(chain),
+
+      listing: {
+        timestamp: new Date().toISOString(),
+        unitPriceWei: String(unitPriceWei || ""),
+        unitPriceHash: String(unitPriceHash || ""),
+        listingSnapshotCid: String(listingSnapshotCid || ""),
+        certificateCredential: normalizedCertificate,
+        componentCredentials: normalizedComponents,
+        ...(sellerRailgunAddress
+          ? { sellerRailgunAddress: sellerRailgunAddress.trim() }
+          : {}),
+      },
+
+      order: {
+        orderId: String(orderId || ""),
+        productId: String(productId ?? ""),
+        escrowAddr: String(productContract || ""),
+        chainId: String(chain),
+        buyerAddress: `did:ethr:${chain}:${buyerAddr}`,
+        memoHash: String(memoHash || ""),
+        railgunTxRef: String(railgunTxRef || ""),
+      },
+
+      commitments: {
+        quantityCommitment: String(quantityCommitment || ""),
+        totalCommitment: String(totalCommitment || ""),
+        paymentCommitment: String(paymentCommitment || ""),
+      },
+
+      payment: {
+        timestamp: new Date().toISOString(),
+        buyerAddress: `did:ethr:${chain}:${buyerAddr}`,
+        memoHash,
+        railgunTxRef,
+      },
+
+      attestation: {
+        attestationVersion: "2.0",
+        contextHash: String(contextHash || ""),
+        proofSource: {
+          type: "sidecar",
+          orderId: String(orderId || ""),
+          version: "1.0",
+        },
+        ...(disclosurePubKey
+          ? { disclosurePubKey: String(disclosurePubKey) }
+          : {}),
+      },
+
+      delivery: null,
+    },
+
+    previousVersion: null,
+    proof: [],
+  };
+}
+
+export function buildVcSigningAnchorPayload(credentialSubject = {}) {
+  const listing = credentialSubject?.listing || {};
+  const order = credentialSubject?.order || {};
+  const commitments = credentialSubject?.commitments || {};
+  const attestation = credentialSubject?.attestation || {};
+
+  const v2Anchors = {
+    listing: {
+      unitPriceWei: normalizeMaybeString(listing.unitPriceWei),
+      unitPriceHash: normalizeCommitmentHex(listing.unitPriceHash),
+      listingSnapshotCid: normalizeMaybeString(listing.listingSnapshotCid),
+      sellerRailgunAddress: normalizeMaybeString(listing.sellerRailgunAddress),
+      certificateCredential: {
+        name: String(listing.certificateCredential?.name || ""),
+        cid: String(listing.certificateCredential?.cid || ""),
+      },
+      componentCredentials: Array.isArray(listing.componentCredentials)
+        ? listing.componentCredentials.map((item) => String(item))
+        : [],
+    },
+    order: {
+      orderId: normalizeMaybeString(order.orderId),
+      productId: normalizeMaybeString(order.productId),
+      escrowAddr: normalizeMaybeString(order.escrowAddr),
+      chainId: normalizeMaybeString(order.chainId),
+      buyerAddress: normalizeMaybeString(order.buyerAddress),
+      memoHash: normalizeCommitmentHex(order.memoHash),
+      railgunTxRef: normalizeCommitmentHex(order.railgunTxRef),
+    },
+    commitments: {
+      quantityCommitment: normalizeCommitmentHex(commitments.quantityCommitment),
+      totalCommitment: normalizeCommitmentHex(commitments.totalCommitment),
+      paymentCommitment: normalizeCommitmentHex(commitments.paymentCommitment),
+    },
+    attestation: {
+      contextHash: normalizeCommitmentHex(attestation.contextHash),
+      proofSource:
+        attestation.proofSource && typeof attestation.proofSource === "object"
+          ? {
+              type: String(attestation.proofSource.type || ""),
+              orderId: normalizeMaybeString(attestation.proofSource.orderId),
+              version: String(attestation.proofSource.version || ""),
+            }
+          : null,
+    },
+  };
+
+  const hasV2Data = Object.values(v2Anchors.listing).some(Boolean)
+    || Object.values(v2Anchors.order).some(Boolean)
+    || Object.values(v2Anchors.commitments).some(Boolean)
+    || Boolean(v2Anchors.attestation.contextHash)
+    || Boolean(v2Anchors.attestation.proofSource);
+
+  if (!hasV2Data) {
+    return null;
+  }
+
+  return v2Anchors;
 }
 
 /**

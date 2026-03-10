@@ -1,128 +1,256 @@
-﻿# Auditor Verification (Current Model)
+# Auditor Verification (Current Model)
 
-This matches the current auditor UI and backend behavior.
+This matches the current auditor UI, backend behavior, and V2 order math.
+
+## Auditor Sequence Diagram
+```mermaid
+sequenceDiagram
+    autonumber
+    actor Auditor
+    participant UI as Auditor UI
+    participant API as Backend API + DB
+    participant ZKP as ZKP Backend
+    participant SC as Smart Contract
+
+    Auditor->>UI: Open audit panel and load VC CID
+    UI->>API: Fetch VC by CID
+    API-->>UI: VC JSON (archive-first, IPFS fallback)
+    UI->>API: Fetch VC status by CID
+    API-->>UI: current status (active / revoked / suspended)
+    UI->>API: Fetch order attestation by orderId
+    API-->>UI: Sidecar proof bundle
+
+    Auditor->>UI: Run all verifications
+    UI->>API: Verify VC signatures
+    API-->>UI: Seller / holder verification result
+    UI->>SC: Read getVcHash()
+    SC-->>UI: Anchored vcHash
+    UI->>API: Verify provenance chain + governance
+    API-->>UI: Continuity / governance results
+    UI->>SC: Read chain-wide anchors for referenced nodes
+    SC-->>UI: On-chain anchor values
+    UI->>ZKP: Verify quantity-total proof
+    ZKP-->>UI: Proof result
+    UI->>ZKP: Verify total-payment equality proof
+    ZKP-->>UI: Proof result
+
+    UI-->>Auditor: Show per-check results and evidence
+    Auditor->>UI: Export audit report / bundle
+```
+
+Notes:
+- `Backend API + DB` is grouped as one lane to keep the diagram simple.
+- The credential-status check is operational: a VC can be cryptographically valid and still fail if its status is `revoked` or `suspended`.
+- The proof payloads come from sidecar storage keyed by `orderId`; the VC carries the stable anchors and proof-source reference.
 
 ## Active Verification Checks
-In `VerifyVCInline.js`, Run All executes:
-1. VC signatures (backend `/verify-vc`)
-2. ZKP price proof validity
-3. Current VC hash anchor (`hash(CID)` vs on-chain `getVcHash()`)
-4. Provenance continuity over component graph
-5. Governance consistency over component links
-6. Chain-wide on-chain anchor checks for each provenance node
+In `VerifyVCInline.js`, `Run All` executes:
+1. VC signatures
+2. credential status (`active` / `revoked` / `suspended`) from backend status registry
+3. current VC hash anchor (`hash(CID)` vs on-chain `getVcHash()`)
+4. provenance continuity over the component graph
+5. governance consistency over component links
+6. chain-wide on-chain anchor checks for each provenance node
+7. quantity-total proof validity
+8. total-payment equality proof validity
+
+The auditor UI now exposes:
+- a readiness box
+- one explanation/result box per verification check
+- copyable evidence values
+- `Export Audit Report`
+- `Export VC + Report Bundle`
+- `Export VC JSON`
+- a structured VC viewer in addition to raw JSON
+
+## Audit Inputs
+Primary order fields read from the VC:
+- `credentialSubject.listing.unitPriceWei`
+- `credentialSubject.listing.unitPriceHash`
+- `credentialSubject.order.orderId`
+- `credentialSubject.order.memoHash`
+- `credentialSubject.order.railgunTxRef`
+- `credentialSubject.commitments.quantityCommitment`
+- `credentialSubject.commitments.totalCommitment`
+- `credentialSubject.commitments.paymentCommitment`
+- `credentialSubject.attestation.contextHash`
+- `credentialSubject.attestation.proofSource`
+
+Primary sidecar source:
+- backend `order_private_attestations` row loaded by `orderId`
+
+Primary operational fetch/status sources:
+- backend `vc_archives` for archive-first VC retrieval
+- backend `vc_status` for current credential-status / revocation state
+
+---
 
 ## 1) Signature Verification
 - Backend file: `backend/api/verifyVC.js`
 - Endpoint: `POST /verify-vc`
-- Verifies EIP-712 typed-data proof for issuer (seller): https://eips.ethereum.org/EIPS/eip-712
-- Uses `did:ethr` registry-based DID resolution (Ethr DID Registry) to validate
-  that `proof.verificationMethod` is present in the resolved DID Document and
-  authorized for `proofPurpose` before signature acceptance (did:ethr + ERC-1056):
-  https://github.com/decentralized-identity/ethr-did-resolver/blob/master/doc/did-method-spec.md
-  and https://eips.ethereum.org/EIPS/eip-1056
-- Resolver config via backend env:
-  - `VC_DID_RESOLUTION_MODE=registry|legacy` (default `registry`)
-  - `VC_DID_RPC_URL` (or chain-specific `VC_DID_RPC_URL_<chainId>`)
-  - optional `VC_ETHR_REGISTRY_ADDRESS` (or `VC_ETHR_REGISTRY_<chainId>`)
-  - optional `VC_DID_ALLOW_BARE_METHOD=true` for transitional legacy proofs
-- Holder proof is accepted as optional (`skipped=true` if absent).
+- Verifies EIP-712 typed-data proofs for issuer / seller
+- Uses `did:ethr` registry-based DID resolution and `assertionMethod` authorization checks
 
-## 1.1) DID Signing and Verification (Dedicated)
-This section describes the active DID signing/verification behavior as implemented in code.
+Resolver config via backend env:
+- `VC_DID_RESOLUTION_MODE=registry|legacy` (default `registry`)
+- `VC_DID_RPC_URL` or `VC_DID_RPC_URL_<chainId>`
+- optional `VC_ETHR_REGISTRY_ADDRESS` or `VC_ETHR_REGISTRY_<chainId>`
+- optional `VC_DID_ALLOW_BARE_METHOD=true` for transitional legacy proofs
 
-### Signing Path (Frontend)
-- Files:
-  - `frontend/src/components/marketplace/ProductDetail.jsx`
-  - `frontend/src/utils/signVcWithMetamask.js`
-- Flow:
-  1. Seller builds final VC (`createFinalOrderVC`).
-  2. Seller signs typed data (`signVcAsSeller` -> `signPayload`).
-  3. Proof is appended to `vc.proof[]` and uploaded to IPFS.
-- EIP-712 domain used for signing (https://eips.ethereum.org/EIPS/eip-712):
-  - `name: "VC"`
-  - `version: "1.0"`
-  - `chainId` (wallet network or `REACT_APP_CHAIN_ID` override)
-  - optional `verifyingContract` (product escrow address)
-- Proof fields produced:
-  - `type: "EcdsaSecp256k1Signature2019"`
-  - `proofPurpose: "assertionMethod"`
-  - `verificationMethod: did:ethr:<chainId>:<address>#controller`
-  - `jws` (typed-data signature)
-  - `payloadHash` (`TypedDataEncoder.hash(domain, types, payload)`)
-  - `role` (`seller` or `holder`)
+Holder proof remains optional.
 
-### Verification Path (Backend)
-- File: `backend/api/verifyVC.js`
-- Flow:
-  1. Rebuild canonical payload (`preparePayloadForVerification`) and remove non-signed mutable fields.
-  2. Resolve DID (`did-resolver` + `ethr-did-resolver`) in `registry` mode.
-  3. Confirm `proof.verificationMethod` exists in resolved DID Document.
-  4. Confirm method is authorized for `proof.proofPurpose` (default `assertionMethod`).
-  5. Extract expected Ethereum address from resolved verification method (`blockchainAccountId` / `ethereumAddress` / method id).
-  6. Verify `payloadHash` (if present) and recover signer with `verifyTypedData`.
-  7. Accept signature only if recovered signer equals resolved DID method address.
-- Mode toggles:
-  - `VC_DID_RESOLUTION_MODE=registry|legacy` (default `registry`)
-  - `legacy` mode skips DID document resolution and checks address directly from `verificationMethod`
-  - `VC_DID_ALLOW_BARE_METHOD=true` allows transitional bare method matching for legacy proofs
+## 1.1) What Is Actually Signed in the V2 VC
+Signing path:
+- `frontend/src/components/marketplace/ProductDetail.jsx`
+- `frontend/src/utils/signVcWithMetamask.js`
+- `frontend/src/utils/vcBuilder.mjs`
 
-### Standards Basis
-This section separates standards requirements from project-specific implementation details.
+Current behavior:
+1. Seller builds the final VC with `createFinalOrderVCV2(...)`.
+2. `preparePayloadForSigning(...)` strips mutable sections from the typed-data payload:
+   - `payment`
+   - `delivery`
+   - `previousVersion`
+3. For the active V2 order VC, the signer uses the explicit typed payload format `eip712-v2-order-typed`.
+4. Stable V2 listing/order/commitment/attestation anchors are signed as nested typed structs:
+   - `Listing`
+   - `Order`
+   - `Commitments`
+   - `Attestation`
+   - `ProofSource`
+5. Seller signs the EIP-712 payload.
 
-- DID Documents, `verificationMethod`, and verification relationships (including `assertionMethod`) come from DID Core: https://www.w3.org/TR/did-core/
-- Verification relationship semantics (which keys are authorized for which purpose) are further clarified in Controlled Identifiers: https://www.w3.org/TR/controller-document/
-- `did:ethr` resolution is method-specific: the method defines DID Document derivation from Ethereum state and resolver behavior: https://github.com/decentralized-identity/ethr-did-resolver/blob/master/doc/did-method-spec.md
-- The underlying Ethereum DID registry model is ERC-1056: https://eips.ethereum.org/EIPS/eip-1056
-- VC document shape (`issuer`, `holder`, `credentialSubject`, `proof`) is aligned with VC Data Model 2.0 core concepts: https://www.w3.org/TR/vc-data-model-2.0/
-- Signature cryptography is EIP-712 typed-data signing/recovery (domain-separated): https://eips.ethereum.org/EIPS/eip-712
-- VC Data Integrity defines interoperable proof suites and cryptosuites; this repo currently does not implement full VC Data Integrity proof processing: https://www.w3.org/TR/vc-data-integrity/
+Practical effect:
+- the active V2 path no longer hides anchors inside `credentialSubject.price`
+- the signature directly covers the V2 order anchor payload, including:
+  - listing unit price anchors
+  - `orderId`
+  - payment references
+  - commitment hashes
+  - `contextHash`
+  - proof source metadata
+- backend verification still supports the legacy payload format for older proofs, but the active order flow uses the typed V2 payload
 
-### Compliance Statement
-| Capability | Status | What this repo does | Standards basis |
-| --- | --- | --- | --- |
-| DID method resolution (`did:ethr`) | Implemented | Resolves issuer/holder DID to DID Document using `did-resolver` + `ethr-did-resolver`, with chain-aware RPC/registry config. | DID Core (resolution model): https://www.w3.org/TR/did-core/ ; did:ethr method spec: https://github.com/decentralized-identity/ethr-did-resolver/blob/master/doc/did-method-spec.md ; ERC-1056: https://eips.ethereum.org/EIPS/eip-1056 |
-| `verificationMethod` + `proofPurpose` authorization checks | Implemented | Requires proof method to exist in resolved DID Document and be authorized for the stated purpose (`assertionMethod` default). | DID Core verification relationships: https://www.w3.org/TR/did-core/ ; Controlled Identifiers: https://www.w3.org/TR/controller-document/ |
-| EIP-712 cryptographic signature verification | Implemented | Re-hashes typed payload, optionally binds `verifyingContract`, recovers signer, and matches recovered address to resolved DID method address. | EIP-712: https://eips.ethereum.org/EIPS/eip-712 |
-| Full VC Data Integrity / JOSE proof-suite interoperability | Not fully implemented | Uses project-specific proof object fields (`jws`, `payloadHash`, `role`) and EIP-712 verification logic; does not implement full VC Data Integrity cryptosuite processing. | VC Data Integrity: https://www.w3.org/TR/vc-data-integrity/ ; VC Data Model 2.0: https://www.w3.org/TR/vc-data-model-2.0/ |
+## 1.2) Verification Path
+Backend verification rebuilds the same canonical payload:
+1. strips mutable post-signing fields
+2. reconstructs either the legacy payload or the typed V2 payload based on `proof.payloadFormat`
+3. resolves the expected `did:ethr` verification method
+4. verifies the recovered signer matches the authorized DID method address
 
-Detailed standards mapping: `docs/current/04-did-signing-and-verification-standards.md`.
+Detailed standards mapping remains in `docs/current/04-did-signing-and-verification-standards.md`.
 
-## 2) ZKP Verification
-- UI extracts proof from `credentialSubject.priceCommitment` (legacy fallback supported).
-- Utility: `frontend/src/utils/verifyZKP.js`
-- Sends commitment/proof to ZKP backend verify endpoint.
+---
+
+## 2) Credential Status Verification
+- Backend routes:
+  - `GET /vc-status/:cid`
+  - `PATCH /vc-status/:cid`
+- status rows are keyed by CID in backend `vc_status`
+- active values today:
+  - `active`
+  - `revoked`
+  - `suspended`
+
+Current behavior:
+- a VC is auto-registered as `active` when archived or fetched
+- auditor `Run All` reads the current status row by CID
+- a revoked or suspended VC fails the status check even if its signature and anchors still verify
+
+Operational control:
+- status updates are token-gated with backend `VC_STATUS_ADMIN_TOKEN`
+- this is the current revocation / operational validity layer for the system
 
 ## 3) Current VC Hash Anchor
-- UI computes `keccak256(cid)`.
-- Reads contract `getVcHash()` from `credentialSubject.productContract`.
-- Passes only if both hashes match exactly.
+- UI computes `keccak256(cid)`
+- reads `getVcHash()` from the escrow contract
+- passes only if the anchored on-chain hash matches the VC CID hash
 
-## 4) Provenance Continuity (Component DAG)
+## 4) Provenance Continuity
 - Backend file: `backend/api/verifyVCChain.js`
 - Endpoint: `POST /verify-vc-chain`
-- Traverses `componentCredentials` graph (not `previousVersion`).
-- Flags missing links, cycles, truncation (`maxDepth`).
+- Traverses the component VC graph through `componentCredentials`
+- flags missing links, cycles, and truncation
 
 ## 5) Governance Consistency
-For each edge `parent -> component`:
-- `parent.issuerAddress` must equal `component.holderAddress`.
-- Any mismatch is returned in `governance.violations`.
+For each provenance edge `parent -> component`:
+- `parent.issuerAddress` must equal `component.holderAddress`
+
+Violations are reported back to the auditor UI.
 
 ## 6) Chain-Wide Anchors
-- For each node in provenance traversal:
-  - compute `keccak256(node.cid)`
-  - compare with node contract `getVcHash()`
-- UI reports checked count and failed nodes.
+For each node in the provenance traversal:
+- compute `keccak256(node.cid)`
+- compare it with `getVcHash()` on the referenced product contract
 
-## Removed from Current Model
-These are intentionally not part of current auditor checks:
-- TX hash commitment verification cards
-- Purchase transaction verification cards
-- Delivery transaction verification cards
+The UI reports checked node count and failed nodes.
+
+---
+
+## 7) Quantity-Total Proof Verification
+- Frontend utility: `frontend/src/utils/equalityProofClient.js`
+- Backend endpoint: `POST /zkp/verify-quantity-total-proof`
+
+Statement verified:
+- `C_qty` and `C_total` are valid commitments
+- they are related by `totalWei = unitPriceWei * quantity`
+- the proof is bound to the same `contextHash`
+
+Auditor inputs:
+- `unitPriceWei`
+- `quantityCommitment`
+- `totalCommitment`
+- `contextHash`
+- sidecar `quantityTotalProof`
+
+Pass means:
+- the private quantity and private total are internally consistent with the public unit price
+
+Fail means:
+- the proof, commitments, or bound context do not line up
+
+## 8) Total-Payment Equality Proof Verification
+- Frontend utility: `frontend/src/utils/equalityProofClient.js`
+- Backend endpoint: `POST /zkp/verify-total-payment-equality-proof`
+
+Statement verified:
+- `C_total` and `C_pay` hide the same value
+- the proof is bound to the same `contextHash`
+
+Auditor inputs:
+- `totalCommitment`
+- `paymentCommitment`
+- `contextHash`
+- sidecar `paymentEqualityProof`
+
+Pass means:
+- the private order total matches the private payment amount
+
+Fail means:
+- the proof, commitments, or bound context do not line up
+
+---
+
+## Removed from the Current Auditor Model
+These are intentionally not active auditor checks now:
+- legacy ZKP price proof cards
+- buyer `Verify Price` flow
+- Workstream A / Workstream B UI terminology
+- old `buyer_secrets.equality_proof` sidecar path for the active order flow
 
 ## Backend Endpoints Summary
 - `POST /fetch-vc`
+- `POST /vc-archive`
+- `GET /vc-status/:cid`
+- `PATCH /vc-status/:cid`
 - `POST /verify-vc`
 - `POST /verify-vc-chain`
+- `GET /order-attestations/:orderId`
+- `POST /zkp/verify-quantity-total-proof`
+- `POST /zkp/verify-total-payment-equality-proof`
 
-Default backend URL in frontend: `REACT_APP_VC_BACKEND_URL` (fallback `http://localhost:5000`).
+Frontend backend URL:
+- `REACT_APP_VC_BACKEND_URL` (default `http://localhost:5000`)
+
+ZKP backend URL:
+- `REACT_APP_ZKP_BACKEND_URL` (default `http://localhost:5010`)

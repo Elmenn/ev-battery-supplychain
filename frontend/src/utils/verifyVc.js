@@ -13,6 +13,14 @@ export async function fetchVCFromServer(cid, backendUrl = BACKEND_URL) {
   return data.vc;
 }
 
+export async function fetchVCStatusFromServer(cid, backendUrl = BACKEND_URL) {
+  const res = await fetch(`${backendUrl}/vc-status/${encodeURIComponent(String(cid || "").replace(/^ipfs:\/\//, "").trim())}`);
+  if (!res.ok) {
+    throw new Error("Failed to fetch VC status from server");
+  }
+  return res.json();
+}
+
 /**
  * Verify VC with backend server
  * @param {Object} vc - Verifiable Credential object

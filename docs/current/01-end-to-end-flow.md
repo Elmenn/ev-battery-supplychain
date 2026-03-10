@@ -1,13 +1,82 @@
 # End-to-End Flow (Current Implementation)
 
-This document describes the active private FCFS flow and the current buyer/auditor verification model.
-For DID signing/verification standards mapping, see `docs/current/04-did-signing-and-verification-standards.md`.
+This document describes the active V2 order-based private-payment flow.
+For DID signing and verification details, see `docs/current/04-did-signing-and-verification-standards.md`.
 
 ## Scope
 - Network: Sepolia
 - Contracts: `ProductFactory.sol` + `ProductEscrow_Initializer.sol`
-- UI flow: `ProductFormWizard` steps `1 -> 2 -> 2.5 -> 3 -> 4`
+- UI flow: listing -> private order payment -> seller confirmation -> audit -> transport/delivery
 - Payment mode: private-only (Railgun required)
+
+## End-to-End Sequence Diagram
+```mermaid
+sequenceDiagram
+    autonumber
+    actor Seller
+    actor Buyer
+    actor Transporter
+    participant UI as Frontend / dApp
+    participant API as Backend API + DB
+    participant ZKP as ZKP Backend
+    participant Railgun
+    participant IPFS
+    participant SC as Smart Contract
+
+    Seller->>UI: Create listing with public unit price
+    UI->>SC: createProductV2(name, unitPriceHash)
+    UI->>API: Save listing metadata
+    API-->>UI: Metadata stored
+
+    Buyer->>UI: Open listing and enter private quantity
+    UI->>ZKP: Generate C_qty, C_total, C_pay and proofs
+    ZKP-->>UI: Commitments + proof bundle
+    UI->>API: Save recovery bundle
+    API-->>UI: Recovery bundle stored
+    UI->>Railgun: Send private payment
+    Railgun-->>UI: memoHash + railgunTxRef
+    UI->>SC: recordPrivateOrderPayment(orderId, ..., contextHash)
+    SC-->>UI: Order recorded on-chain
+    UI->>API: Update order/attestation sidecar
+    API-->>UI: Sidecar updated
+    SC-->>API: Order events emitted
+    API-->>API: Indexer refreshes tracked order state
+
+    Seller->>UI: Confirm order
+    UI->>API: Load metadata + order + attestation
+    API-->>UI: Return order bundle
+    UI->>IPFS: Upload final signed VC
+    IPFS-->>UI: Return CID
+    UI->>API: Archive VC JSON and register VC status
+    API-->>UI: VC archived as active
+    UI->>SC: confirmOrderById(orderId, cid)
+    SC-->>UI: vcHash anchored on-chain
+    SC-->>API: Order confirmation event emitted
+    API-->>API: Indexer updates order status + VC fields
+
+    Buyer->>UI: Open audit view
+    UI->>API: Fetch VC by CID
+    API-->>UI: VC JSON (archive-first, IPFS fallback)
+    UI->>API: Fetch attestation by orderId
+    API-->>UI: Sidecar proofs
+    UI->>API: Verify VC signature + provenance + status
+    API-->>UI: Verification results
+    UI->>ZKP: Verify quantity-total and total-payment proofs
+    ZKP-->>UI: Proof verification results
+
+    Transporter->>UI: Bid for delivery
+    UI->>SC: setTransporter(...)
+    SC-->>UI: Escrow moves to Bound
+    UI-->>Transporter: Show delivery hash / VC anchor
+    Transporter->>UI: Confirm delivery
+    UI->>SC: confirmDelivery(vcHash)
+    SC-->>UI: Escrow moves to Delivered and pays out
+```
+
+Notes:
+- `Backend API + DB` is grouped as one participant to keep the diagram readable.
+- The backend indexer and reconciliation logic are shown inside that participant rather than as a separate lane.
+- The diagram reflects the active hardened V2 flow, not the legacy price-only flow.
 
 ## Lifecycle Phases
 Contract enum in `ProductEscrow_Initializer.sol`:
@@ -18,117 +87,200 @@ Contract enum in `ProductEscrow_Initializer.sol`:
 - `4 Delivered`
 - `5 Expired`
 
+Current implementation detail:
+- each escrow has one active private order at a time
+- the buyer is set by the first successful `recordPrivateOrderPayment(...)`
+
 ---
 
-## Commitment Model in This Flow
+## Privacy and Math Model
 
-- `C_price`: seller Pedersen commitment to product price.
-- `C_pay`: buyer Pedersen commitment to paid amount.
-- Equality proof: Schnorr sigma proof that `C_price` and `C_pay` hide the same value.
-- `quantity` is currently listing metadata only (not part of commitment/equality relations).
+Public values:
+- `unitPriceWei`
+- `unitPriceHash`
+- `productId`
+- `chainId`
+- `escrowAddr`
+
+Private per-order values:
+- `quantity`
+- `totalWei = unitPriceWei * quantity`
+- commitment openings / blindings
+
+Per-order commitments:
+- `C_qty`: buyer commitment to private quantity
+- `C_total`: buyer commitment to private total
+- `C_pay`: buyer commitment to the Railgun payment amount
+
+Per-order proof bundle:
+- quantity-total proof: proves `totalWei = unitPriceWei * quantity`
+- total-payment equality proof: proves `C_total` and `C_pay` hide the same value
+
+Binding anchor:
+- `contextHash = keccak256(abi.encode(orderId, memoHash, railgunTxRef, productId, chainId, escrowAddr, unitPriceHash))`
 
 Important detail:
-- On-chain `product.priceCommitment` at listing is a contract initialization placeholder.
-- The cryptographic `C_price` used for buyer/auditor verification is stored in metadata/VC records.
+- on-chain `unitPriceHash` is the durable listing anchor
+- the exact public unit price is also stored in listing metadata and the final VC
+- quantity and total are not written to chain in plaintext
 
 ---
 
 ## 1) Seller Lists Product
-1. Seller fills product info and optional component VC CIDs.
-2. In Step 2, each component CID is fetched and governance-checked:
-   - connected seller must equal component VC holder DID address
-   - mismatch blocks Next
-3. In Step 2.5, Railgun connection is mandatory.
-4. In Step 3:
-   - factory deploys escrow clone via `createProduct(name, placeholderCommitment)` with seller bond
-   - ZKP prover generates `C_price` + range proof + binding tag
-   - listing metadata is stored (`productMeta_*`, `priceWei_*`, `priceCommitment_*`, `sellerRailgunAddress_*`)
-   - no VC is uploaded at listing time
+In `ProductFormStep3.jsx`:
+1. Seller fills product info, component VC references, and public unit price.
+2. Factory deploys escrow clone via `createProductV2(name, unitPriceHash)` with seller bond.
+3. Frontend stores listing metadata through backend APIs:
+   - `productMeta`
+   - `unitPriceWei`
+   - `unitPriceHash`
+   - `sellerRailgunAddress`
+   - optional listing snapshot fields
+4. No order VC is anchored at listing time.
 
-## 2) Buyer Pre-Payment Verify Price (Listed)
-On product detail, buyer can run `Verify Price` before paying.
+Listing records are stored off-chain in `product_metadata`.
 
-Inputs:
-- `priceWei` from metadata (`getProductMeta`)
-- `C_price` from metadata/VC record (`priceCommitment`)
-- deterministic `r_price = generateDeterministicBlinding(productAddress, sellerAddress)`
-
-Result states:
-- verified
-- mismatch warning
-- verifier/data unavailable (retry)
-
-`Buy with Railgun` remains user-controlled.
-
-## 3) Buyer Pays Privately (FCFS) and Writes Attestation Data
+## 2) Buyer Creates a Private Order
 In `PrivatePaymentModal.jsx`:
-1. Buyer sends Railgun private transfer (`privateTransfer`).
-2. App records on-chain payment:
-   - `recordPrivatePayment(productId, memoHash, railgunTxRef)`
-3. Contract behavior in `recordPrivatePayment`:
-   - first valid caller becomes `buyer` (FCFS)
-   - phase moves `Listed -> Purchased`
-4. Buyer attestation data is persisted through backend APIs:
-   - disclosure public key
+1. Buyer enters a private `quantity`.
+2. Frontend computes `totalWei = unitPriceWei * quantity`.
+3. Frontend generates:
+   - `orderId`
+   - `C_qty`
+   - `C_total`
    - `C_pay`
-   - encrypted buyer secret blob (contains buyer secret material such as `r_pay`)
-5. If a prior VC CID exists in metadata, buyer attestation fields can be merged into that VC and re-uploaded before final seller confirmation.
+   - `contextHash`
+4. Frontend generates two proofs through the ZKP backend:
+   - quantity-total proof for `totalWei = unitPriceWei * quantity`
+   - total-payment equality proof for `C_total == C_pay`
 
-If transfer succeeds but recording fails, app keeps pending data and shows `Retry Recording` (no re-send of funds).
+Implementation detail:
+- amounts are kept as exact integer strings in the frontend flow
+- before proof generation / backend verification they are normalized and validated as canonical scalar-compatible values for the active Pedersen commitment path
 
-## 4) Seller Confirms Order and Anchors Final VC
-In `ProductDetail.jsx` (`handleConfirmOrder`):
-1. Reads on-chain payment fields (`buyer`, `memoHash`, `railgunTxRef`).
-2. Builds one final VC using `createFinalOrderVC`.
-3. Seller signs VC (`signVcAsSeller`).
-4. Seller enrichment step:
-   - reads buyer disclosure public key
-   - computes deterministic `r_price`
-   - encrypts `{value, r_price}` as `encryptedOpening`
-   - adds attestation payload to VC when available
-5. Uploads VC to IPFS (gets CID).
-6. Calls `confirmOrder(cid)` on escrow.
-7. Contract stores `vcHash = keccak256(bytes(cid))` on-chain.
+## 3) Buyer Pays Privately with Railgun
+Still in `PrivatePaymentModal.jsx`:
+1. Buyer sends the Railgun private transfer.
+2. App extracts:
+   - `memoHash`
+   - `railgunTxRef`
+3. App recomputes or validates the canonical `contextHash`.
+4. App records the order on-chain with:
+   - `recordPrivateOrderPayment(orderId, memoHash, railgunTxRef, quantityCommitment, totalCommitment, paymentCommitment, contextHash)`
+5. Contract behavior:
+   - first valid caller becomes `buyer`
+   - phase moves `Listed -> Purchased`
+   - `activeOrderId` is set
 
-## 5) Buyer Post-Payment Consistency Checks
-In buyer panel (after VC is loaded, `OrderConfirmed+`):
-1. Workstream A auto-runs and verifies VC `C_price` consistency using DB `priceWei` + deterministic `r_price`.
-2. Workstream B generates equality proof (`C_price == C_pay`) with binding context.
-3. Equality proof is stored in backend sidecar (`buyer_secrets.equality_proof`).
+Before the on-chain call, the app also writes a backend recovery bundle containing the order row and attestation/proof row.
 
-Storage strategy:
-- anchored VC CID remains immutable
-- no extra VC CID rewrite for equality-proof generation
+If the private transfer succeeds but on-chain recording fails, `Retry Recording` recovers from backend state instead of browser-local order storage.
+
+## 4) Off-Chain Order and Attestation Persistence
+The app persists sidecar data through backend APIs, and the backend can later reconcile or refresh from chain:
+
+`product_orders`
+- `orderId`
+- `productAddress`
+- `productId`
+- `escrowAddress`
+- `chainId`
+- `sellerAddress`
+- `buyerAddress`
+- `memoHash`
+- `railgunTxRef`
+- `unitPriceWei`
+- `unitPriceHash`
+- `quantityCommitment`
+- `totalCommitment`
+- `paymentCommitment`
+- `contextHash`
+
+`order_private_attestations`
+- encrypted buyer blob
+- disclosure public key
+- encrypted quantity opening
+- encrypted total opening
+- quantity-total proof
+- payment-equality proof
+- proof bundle
+
+Operational hardening in the current implementation:
+- backend request schemas reject malformed order / proof payloads before DB writes
+- backend `/orders/:orderId/reconcile` can rebuild missing order rows from chain state
+- backend indexer polls Sepolia events and refreshes tracked product/order rows automatically
+
+The anchored VC CID remains separate from this sidecar data.
+
+## 5) Seller Confirms Order and Anchors Final VC
+In `ProductDetail.jsx`:
+1. Seller reads:
+   - on-chain active order data
+   - listing metadata
+   - order sidecar row
+   - order attestation row
+2. Frontend builds the final order VC with `createFinalOrderVCV2(...)`.
+3. VC includes:
+   - listing section with `unitPriceWei` and `unitPriceHash`
+   - order section with `orderId`, `memoHash`, `railgunTxRef`
+   - commitments section with `C_qty`, `C_total`, `C_pay`
+   - attestation section with `contextHash` and proof source metadata
+4. Seller signs the VC with EIP-712.
+5. VC is uploaded to IPFS.
+6. Frontend best-effort archives the exact VC JSON to backend `vc_archives`.
+7. Seller calls `confirmOrderById(orderId, cid)`.
+8. Contract stores `vcHash = keccak256(bytes(cid))` and moves `Purchased -> OrderConfirmed`.
+
+Current durability model:
+- audit fetch is archive-first from backend, then falls back to multiple IPFS gateways
+- backend auto-registers a credential-status row for archived or fetched VCs
 
 ## 6) Auditor Verification
-Auditor verifies commitment consistency and equality proof from:
-- VC attestation proof source, or
-- sidecar proof source (`buyer_secrets.equality_proof`)
+In `VerifyVCInline.js`, the auditor flow verifies:
+1. VC signatures
+2. credential status (`active` / `revoked` / `suspended`) from backend status registry
+3. current VC hash anchor against the escrow contract
+4. provenance continuity across component VC links
+5. governance consistency across component VC links
+6. chain-wide on-chain anchors for provenance nodes
+7. quantity-total proof
+8. total-payment equality proof
 
-Verification checks proof + commitments + binding context, without revealing amount.
-Current implementation uses backend equality-proof endpoints (`/zkp/generate-equality-proof`, `/zkp/verify-equality-proof`).
+Proof source:
+- final VC attestation fields provide the durable anchor context
+- proof payloads are loaded from `order_private_attestations` by `orderId`
+- VC JSON is loaded archive-first from backend `vc_archives`, then from IPFS gateways if needed
+
+The auditor learns:
+- the public listing unit price
+- that the private quantity and private payment are internally consistent
+
+The auditor does not learn:
+- plaintext quantity
+- plaintext total
+- commitment openings
 
 ## 7) Transporter + Delivery
-1. Transporters bid after `OrderConfirmed`.
-2. Seller selects transporter via `setTransporter` (escrow deposits delivery fee) -> phase `Bound`.
+After `OrderConfirmed`:
+1. Transporters bid.
+2. Seller selects transporter via `setTransporter(...)` and escrow moves to `Bound`.
 3. Transporter calls `confirmDelivery(hash)` where `hash == vcHash`.
-4. Contract releases seller bond and transporter payout, then phase `Delivered`.
+4. Contract releases seller bond and transporter payout, then phase moves to `Delivered`.
 
-### Delivery Verification Hash (QR)
-- UI card displays on-chain `vcHash` (`keccak256(cid)`).
-- QR encodes deep-link payload: product route + hash + chain ID + VC CID query params.
-- Hash is copyable for manual confirmation.
-- Seller shares hash with selected transporter.
-- Transporter submits exact hash to `confirmDelivery(hash)`.
+### Delivery Verification Hash
+- UI displays the on-chain `vcHash`
+- QR/deep link payload includes product route, VC CID, hash, and chain ID
+- transporter must submit the exact anchored hash
 
 Purpose:
-- bind delivery confirmation to the anchored VC CID at `confirmOrder`
-- prevent CID/hash mismatch
+- bind delivery confirmation to the anchored order VC CID
+- prevent CID/hash mismatches at delivery time
 
 ---
 
 ## Operational Notes
-- UI uses FCFS buyer capture through `recordPrivatePayment`.
-- `designateBuyer` exists in ABI and is not used by active UI flow.
-- Current VC model is single-final VC anchored at `confirmOrder`, with sidecar equality-proof storage for post-anchor proofs.
-- Equality relation is price-only (`C_price` vs `C_pay`); quantity is not yet enforced in ZK.
+- the legacy price-only `C_price == C_pay` model is superseded by this order-based flow
+- buyer `Verify Price` and old Workstream A/B flows are not part of the active V2 UI
+- current proof backend mode is backend-only; WASM proof generation is not enabled for these V2 proofs
+- the active order recovery path is backend-based, not browser-local-storage-based
+- the backend status registry is the current revocation / operational validity layer for VCs

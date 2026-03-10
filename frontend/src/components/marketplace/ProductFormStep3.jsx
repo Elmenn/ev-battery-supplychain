@@ -3,7 +3,7 @@ import toast from "react-hot-toast";
 import { ethers, getAddress, isAddress } from "ethers";
 import ProductFactoryABI from "../../abis/ProductFactory.json";
 import ProductEscrowABI from "../../abis/ProductEscrow_Initializer.json";
-import { generateCommitmentWithBindingTag } from "../../utils/commitmentUtils";
+import { computeUnitPriceHash } from "../../utils/commitmentUtils";
 import { saveProductMeta } from "../../utils/productMetaApi";
 
 // Copyable component for CIDs
@@ -129,14 +129,23 @@ const ProductFormStep3 = ({ onNext, productData, backendUrl }) => {
       }
 
       // MetaMask connected
-      const price = ethers.parseEther(productData.price); // stored for VC/local display only
+      const unitPriceWei = ethers.parseEther(productData.price).toString();
+      const unitPriceHash = computeUnitPriceHash(unitPriceWei);
 
       toast("Deploying ProductEscrow via Factory...");
       console.log('[Flow][Seller] Step 2: Deploying ProductEscrow through factory.');
 
       // Ensure factory address is valid hex
       const validatedFactoryAddress = getAddress(factoryAddress);
-      const factory = new ethers.Contract(validatedFactoryAddress, ProductFactoryABI.abi, signer);
+      const factory = new ethers.Contract(
+        validatedFactoryAddress,
+        [
+          ...ProductFactoryABI.abi,
+          "function createProductV2(string name, bytes32 unitPriceHash) payable returns (address product)",
+          "event ProductCreatedV2(address indexed product, address indexed seller, uint256 indexed productId, bytes32 priceCommitment, bytes32 unitPriceHash, uint256 bondAmount)",
+        ],
+        signer
+      );
 
       // Test if contract is responsive
       const code = await provider.getCode(factoryAddress);
@@ -151,17 +160,11 @@ const ProductFormStep3 = ({ onNext, productData, backendUrl }) => {
         throw new Error("Contract exists but doesn't have ProductFactory functions: " + funcError.message);
       }
 
-      // Use a placeholder commitment for initialization (will be replaced with real Pedersen commitment)
-      const placeholderCommitment = ethers.keccak256(
-        ethers.solidityPacked(["string", "address"], [productData.productName, sellerAddr])
-      );
-
-      // New factory flow: createProduct(name, commitment) payable with seller bond.
       const currentBondAmount = bondAmount || await factory.bondAmount();
       if (currentBondAmount <= 0n) {
         throw new Error("Factory bond amount is not configured.");
       }
-      const tx = await factory.createProduct(productData.productName, placeholderCommitment, {
+      const tx = await factory.createProductV2(productData.productName, unitPriceHash, {
         value: currentBondAmount,
       });
       const receipt = await tx.wait();
@@ -173,7 +176,7 @@ const ProductFormStep3 = ({ onNext, productData, backendUrl }) => {
         } catch {
           return null;
         }
-      }).find(e => e && e.name === "ProductCreated");
+      }).find(e => e && e.name === "ProductCreatedV2");
 
       const productAddress = event?.args?.product ?? event?.args?.productAddress;
 
@@ -199,69 +202,25 @@ const ProductFormStep3 = ({ onNext, productData, backendUrl }) => {
         throw error;
       }
 
-      console.log('[Flow][Seller] Step 3: Generating binding commitment via ZKP backend.');
-      toast("Generating Pedersen commitment with binding tag...");
-      let pedersenCommitment;
-      let pedersenProof;
-      let bindingTag;
-      try {
-        const zkpBackendUrl = process.env.REACT_APP_ZKP_BACKEND_URL || 'http://localhost:5010';
-        const commitmentData = await generateCommitmentWithBindingTag(
-          price.toString(),
-          validatedProductAddress,
-          sellerAddr,
-          VC_CHAIN,
-          productId,
-          0, // Stage 0: Product Listing
-          "1.0",
-          null, // No previous VC CID for Stage 0
-          zkpBackendUrl
-        );
-        pedersenCommitment = commitmentData.commitment;
-        pedersenProof = commitmentData.proof;
-        bindingTag = commitmentData.bindingTag;
-
-        if (!commitmentData.verified) {
-          console.warn("Commitment proof did not verify locally, but continuing...");
-        }
-        console.log('[Flow][Seller] Step 3 -> Commitment + proof ready. Binding tag:', bindingTag);
-      } catch (error) {
-        console.error("Failed to generate Pedersen commitment with binding tag:", error);
-        toast.error("Failed to generate commitment: " + error.message);
-        throw error;
-      }
-
-      console.log('[Flow][Seller] Step 4: Skipping public price write (private-only contract).');
-
-      console.log('[Flow][Seller] Step 5: Storing listing metadata locally (single-final-VC flow).');
+      console.log('[Flow][Seller] Step 3: Storing V2 listing metadata locally.');
       const listingMeta = {
-        schemaVersion: "2.0",
+        schemaVersion: "3.0",
         productName: productData.productName,
         batch: productData.batch || "",
-        quantity: productData.quantity || 1,
         productContract: validatedProductAddress,
         productId: productId.toString(),
         chainId: VC_CHAIN,
         sellerAddr,
         sellerRailgunAddress,
+        orderModel: "v2",
+        unitPriceWei,
+        unitPriceHash,
+        listingSnapshotCid: "",
         certificateCredential: {
           name: productData.certificateName || "",
           cid: productData.certificateCid || "",
         },
         componentCredentials: productData.componentCredentials || [],
-        priceCommitment: {
-          commitment: pedersenCommitment,
-          proof: pedersenProof,
-          proofType: "zkRangeProof-v1",
-          bindingTag: bindingTag,
-          bindingContext: {
-            chainId: VC_CHAIN,
-            escrowAddr: validatedProductAddress,
-            productId: productId.toString(),
-            stage: 0,
-            schemaVersion: "2.0",
-          },
-        },
         createdAt: new Date().toISOString(),
       };
 
@@ -271,8 +230,9 @@ const ProductFormStep3 = ({ onNext, productData, backendUrl }) => {
           ...productData,
           productContract: productAddress,
           vcPreview: listingMeta,
-          priceWei: price.toString(),
-          priceCommitment: pedersenCommitment,
+          priceWei: unitPriceWei,
+          unitPriceWei,
+          unitPriceHash,
           sellerRailgunAddress,
           sellerWalletID: productData.sellerWalletID,
           sellerEOA: productData.sellerEOA,
@@ -281,8 +241,8 @@ const ProductFormStep3 = ({ onNext, productData, backendUrl }) => {
       });
 
       console.log('[Flow][Seller] Step 8: Caching price and Railgun metadata locally for reuse.');
-      localStorage.setItem(`priceWei_${productAddress}`, price.toString());
-      localStorage.setItem(`priceCommitment_${productAddress}`, pedersenCommitment);
+      localStorage.setItem(`unitPriceWei_${productAddress}`, unitPriceWei);
+      localStorage.setItem(`unitPriceHash_${productAddress}`, unitPriceHash);
       localStorage.setItem(`productMeta_${productAddress}`, JSON.stringify(listingMeta));
 
       if (sellerRailgunAddress) {
@@ -305,9 +265,12 @@ const ProductFormStep3 = ({ onNext, productData, backendUrl }) => {
         await saveProductMeta({
           productAddress: validatedProductAddress,
           productMeta: listingMeta,
-          priceWei: price.toString(),
-          priceCommitment: pedersenCommitment,
+          priceWei: unitPriceWei,
+          priceCommitment: unitPriceHash,
           sellerRailgunAddress: sellerRailgunAddress || '',
+          unitPriceWei,
+          unitPriceHash,
+          schemaVersion: "3.0",
         });
         console.log('[Flow][Seller] Step 8 -> Metadata saved to backend DB for product:', validatedProductAddress);
       } catch (dbErr) {
