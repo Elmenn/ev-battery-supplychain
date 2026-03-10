@@ -1,10 +1,11 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import { ethers } from "ethers";
 
-import { verifyVCWithServer, verifyVCChainWithServer } from "../../utils/verifyVc";
+import { fetchVCFromServer, verifyVCWithServer, verifyVCChainWithServer } from "../../utils/verifyVc";
 import { extractZKPProof } from "../../utils/verifyZKP";
 import { verifyProofByEndpoint } from "../../utils/zkp/zkpClient";
 import { verifyEqualityProof } from "../../utils/equalityProofClient";
+import { getBuyerSecretBlob } from "../../utils/buyerSecretApi";
 
 import VCViewer from "./VCViewer";
 import VerificationBox from "./VerifyVCTab-Enhanced";
@@ -26,6 +27,75 @@ const scopeBadges = [
   { label: "Provenance", tone: "bg-teal-50 text-teal-700 border-teal-200" },
   { label: "Governance", tone: "bg-purple-50 text-purple-700 border-purple-200" },
 ];
+
+const normalizeHex = (value) => String(value || "").toLowerCase().replace(/^0x/, "");
+
+const parseMaybeJson = (value) => {
+  if (value == null) return null;
+  if (typeof value === "object") return value;
+  if (typeof value !== "string") return null;
+  try {
+    return JSON.parse(value);
+  } catch {
+    return null;
+  }
+};
+
+const extractEthAddress = (value) => {
+  if (!value || typeof value !== "string") return null;
+  const match = value.match(/0x[a-fA-F0-9]{40}/);
+  return match ? match[0] : null;
+};
+
+/**
+ * Resolve whether an on-chain vcHash matches:
+ * 1) current CID hash (exact anchor), or
+ * 2) any previousVersion ancestor CID hash (anchored ancestor).
+ */
+async function resolveAnchorMatch({ startCid, startVc, onChainVcHash, maxDepth = 20 }) {
+  const onChainNorm = normalizeHex(onChainVcHash);
+  let currentCid = String(startCid || "").trim();
+  let currentVc = startVc || null;
+  let depth = 0;
+  const visited = new Set();
+
+  while (currentCid && depth <= maxDepth) {
+    if (visited.has(currentCid)) break;
+    visited.add(currentCid);
+
+    const localHash = ethers.keccak256(ethers.toUtf8Bytes(currentCid));
+    const localNorm = normalizeHex(localHash);
+    if (localNorm === onChainNorm) {
+      return {
+        matched: true,
+        matchedCid: currentCid,
+        matchedDepth: depth,
+        currentCidHash: normalizeHex(ethers.keccak256(ethers.toUtf8Bytes(String(startCid || "").trim()))),
+        onChainVcHash: onChainNorm,
+      };
+    }
+
+    const prevCidRaw = currentVc?.previousVersion;
+    const prevCid = typeof prevCidRaw === "string" ? prevCidRaw.trim() : "";
+    if (!prevCid) break;
+
+    try {
+      currentVc = await fetchVCFromServer(prevCid);
+    } catch {
+      break;
+    }
+    currentCid = prevCid;
+    depth += 1;
+  }
+
+  return {
+    matched: false,
+    matchedCid: null,
+    matchedDepth: null,
+    currentCidHash: normalizeHex(ethers.keccak256(ethers.toUtf8Bytes(String(startCid || "").trim()))),
+    onChainVcHash: onChainNorm,
+  };
+}
 
 const VerifyVCInline = ({ vc, cid, provider, contractAddress }) => {
   const [verified, setVerified] = useState(null);
@@ -49,6 +119,43 @@ const VerifyVCInline = ({ vc, cid, provider, contractAddress }) => {
 
   const [equalityProofResult, setEqualityProofResult] = useState(null); // null | true | false
   const [equalityProofLoading, setEqualityProofLoading] = useState(false);
+  const [buyerSecretRow, setBuyerSecretRow] = useState(null);
+
+  const attestation = vc?.credentialSubject?.attestation || {};
+  const sidecarEqualityProof = parseMaybeJson(buyerSecretRow?.equalityProof);
+  const activeEqualityProof = attestation?.paymentEqualityProof || sidecarEqualityProof;
+  const equalityProofSource = attestation?.paymentEqualityProof
+    ? "vc"
+    : sidecarEqualityProof
+    ? "sidecar"
+    : null;
+  const resolvedDisclosurePubKey = attestation?.disclosurePubKey || buyerSecretRow?.disclosurePubkey;
+  const resolvedCPayHex = attestation?.buyerPaymentCommitment?.commitment || buyerSecretRow?.cPay;
+
+  const buyerDid =
+    vc?.credentialSubject?.payment?.buyerAddress ||
+    vc?.holder?.id ||
+    null;
+  const buyerAddressForSidecar = extractEthAddress(buyerDid);
+  const productAddressForSidecar = contractAddress || vc?.credentialSubject?.productContract || null;
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const loadSidecar = async () => {
+      setBuyerSecretRow(null);
+      if (!productAddressForSidecar || !buyerAddressForSidecar) return;
+      const row = await getBuyerSecretBlob(productAddressForSidecar, buyerAddressForSidecar);
+      if (!cancelled) {
+        setBuyerSecretRow(row || null);
+      }
+    };
+
+    loadSidecar();
+    return () => {
+      cancelled = true;
+    };
+  }, [productAddressForSidecar, buyerAddressForSidecar]);
 
   const handleVerify = async () => {
     setVcLoading(true);
@@ -111,15 +218,18 @@ const VerifyVCInline = ({ vc, cid, provider, contractAddress }) => {
 
       const contract = new ethers.Contract(contractAddress, ProductEscrowABI.abi, provider);
       const onChainVcHash = await contract.getVcHash();
-      const localVcHash = ethers.keccak256(ethers.toUtf8Bytes(cid));
-
-      const localVcHashNormalized = localVcHash.toLowerCase().replace(/^0x/, "");
-      const onChainVcHashNormalized = onChainVcHash.toLowerCase().replace(/^0x/, "");
+      const anchorResolution = await resolveAnchorMatch({
+        startCid: cid,
+        startVc: vc,
+        onChainVcHash,
+      });
 
       setCommitmentMatch({
-        verified: localVcHashNormalized === onChainVcHashNormalized,
-        vcHash: localVcHashNormalized,
-        onChainVcHash: onChainVcHashNormalized,
+        verified: anchorResolution.matched,
+        vcHash: anchorResolution.currentCidHash,
+        onChainVcHash: anchorResolution.onChainVcHash,
+        anchorCid: anchorResolution.matchedCid,
+        anchorDepth: anchorResolution.matchedDepth,
       });
     } catch (err) {
       setCommitmentMatch({ verified: false, error: err.message || "Error verifying VC hash anchor" });
@@ -174,18 +284,20 @@ const VerifyVCInline = ({ vc, cid, provider, contractAddress }) => {
         try {
           const contract = new ethers.Contract(stepContractAddress, ProductEscrowABI.abi, provider);
           const onChainVcHash = await contract.getVcHash();
-          const localVcHash = ethers.keccak256(ethers.toUtf8Bytes(node.cid));
-
-          const onChainNorm = onChainVcHash.toLowerCase().replace(/^0x/, "");
-          const localNorm = localVcHash.toLowerCase().replace(/^0x/, "");
+          const nodeVc = await fetchVCFromServer(node.cid);
+          const anchorResolution = await resolveAnchorMatch({
+            startCid: node.cid,
+            startVc: nodeVc,
+            onChainVcHash,
+          });
 
           checked += 1;
-          if (onChainNorm !== localNorm) {
+          if (!anchorResolution.matched) {
             failed.push({
               cid: node.cid,
               reason: "Hash mismatch",
-              expected: localNorm,
-              actual: onChainNorm,
+              expected: anchorResolution.currentCidHash,
+              actual: anchorResolution.onChainVcHash,
             });
           }
         } catch (err) {
@@ -210,10 +322,9 @@ const VerifyVCInline = ({ vc, cid, provider, contractAddress }) => {
   };
 
   const handleVerifyEqualityProof = async () => {
-    const attestation = vc?.credentialSubject?.attestation;
-    const ep = attestation?.paymentEqualityProof;
+    const ep = activeEqualityProof;
     const cPriceHex = vc?.credentialSubject?.priceCommitment?.commitment;
-    const cPayHex = attestation?.buyerPaymentCommitment?.commitment;
+    const cPayHex = resolvedCPayHex;
 
     if (!ep || !cPriceHex || !cPayHex) {
       setEqualityProofResult(false);
@@ -225,9 +336,9 @@ const VerifyVCInline = ({ vc, cid, provider, contractAddress }) => {
       const result = await verifyEqualityProof({
         cPriceHex,
         cPayHex,
-        proofRHex: ep.proof_r_hex,
-        proofSHex: ep.proof_s_hex,
-        bindingContext: ep.bindingContext || {},
+        proofRHex: ep.proof_r_hex || ep.proofRHex,
+        proofSHex: ep.proof_s_hex || ep.proofSHex,
+        bindingContext: ep.bindingContext || ep.binding_context || {},
       });
       setEqualityProofResult(Boolean(result?.verified));
     } catch (err) {
@@ -503,7 +614,7 @@ const VerifyVCInline = ({ vc, cid, provider, contractAddress }) => {
                   {getStatusMeta(chainAnchorResult?.verified).label}
                 </span>
               </div>
-              <div className="text-xs text-gray-600 mb-1">hash(CID) vs on-chain vcHash for each step</div>
+              <div className="text-xs text-gray-600 mb-1">hash(CID) or anchored previousVersion CID vs on-chain vcHash for each step</div>
               {chainAnchorResult?.verified === true && <div className="text-green-700 font-semibold">All Match</div>}
               {chainAnchorResult?.verified === false && <div className="text-red-700 font-semibold">Failures</div>}
               {!provider && <div className="text-gray-500 text-xs">Requires provider</div>}
@@ -566,6 +677,17 @@ const VerifyVCInline = ({ vc, cid, provider, contractAddress }) => {
                     <strong>On-chain vcHash:</strong>
                     <div className="font-mono text-xs mt-1 break-all bg-white p-2 rounded border">{commitmentMatch.onChainVcHash}</div>
                   </div>
+                  {commitmentMatch.anchorCid && (
+                    <div>
+                      <strong>Matched anchor CID:</strong>
+                      <div className="font-mono text-xs mt-1 break-all bg-white p-2 rounded border">{commitmentMatch.anchorCid}</div>
+                      {Number.isFinite(commitmentMatch.anchorDepth) && commitmentMatch.anchorDepth > 0 && (
+                        <div className="text-xs text-amber-700 mt-1">
+                          Matched via previousVersion ancestry (depth {commitmentMatch.anchorDepth}).
+                        </div>
+                      )}
+                    </div>
+                  )}
                 </div>
               )}
             </div>
@@ -630,11 +752,11 @@ const VerifyVCInline = ({ vc, cid, provider, contractAddress }) => {
       )}
 
       {/* Equality Proof Status (Phase 12 Buyer Attestation) */}
-      {vc?.credentialSubject?.attestation && (
+      {(vc?.credentialSubject?.attestation || buyerSecretRow?.equalityProof) && (
         <div className="mt-4 border border-gray-200 rounded-lg p-4 bg-white space-y-2">
           <div className="flex items-center justify-between">
             <span className="text-sm font-semibold text-gray-700">Payment Equality Proof</span>
-            {vc.credentialSubject.attestation.paymentEqualityProof ? (
+            {activeEqualityProof ? (
               <span className="text-xs px-2 py-0.5 rounded-full border font-medium bg-blue-50 text-blue-700 border-blue-200">
                 Schnorr Sigma (Chaum-Pedersen DLEQ)
               </span>
@@ -643,20 +765,23 @@ const VerifyVCInline = ({ vc, cid, provider, contractAddress }) => {
             )}
           </div>
 
-          {vc.credentialSubject.attestation.disclosurePubKey && (
+          {resolvedDisclosurePubKey && (
             <p className="text-xs text-gray-500 font-mono truncate">
-              Disclosure PubKey: {vc.credentialSubject.attestation.disclosurePubKey}
+              Disclosure PubKey: {resolvedDisclosurePubKey}
             </p>
           )}
 
-          {vc.credentialSubject.attestation.buyerPaymentCommitment?.commitment && (
+          {resolvedCPayHex && (
             <p className="text-xs text-gray-500 font-mono truncate">
-              C_pay: {vc.credentialSubject.attestation.buyerPaymentCommitment.commitment}
+              C_pay: {resolvedCPayHex}
             </p>
           )}
 
-          {vc.credentialSubject.attestation.paymentEqualityProof && (
+          {activeEqualityProof && (
             <div className="space-y-2">
+              <p className="text-xs text-gray-500">
+                Source: {equalityProofSource === "vc" ? "VC attestation" : "buyer_secrets sidecar"}
+              </p>
               <Button
                 size="sm"
                 variant="outline"
@@ -679,7 +804,7 @@ const VerifyVCInline = ({ vc, cid, provider, contractAddress }) => {
             </div>
           )}
 
-          {!vc.credentialSubject.attestation.paymentEqualityProof && (
+          {!activeEqualityProof && (
             <p className="text-xs text-gray-400">
               Buyer has not yet generated the equality proof. Available in buyer panel after price verification.
             </p>
