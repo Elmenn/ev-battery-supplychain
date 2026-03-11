@@ -65,6 +65,12 @@ Or:
 .\start-demo.ps1
 ```
 
+Or on macOS/Linux:
+
+```bash
+./start-demo.sh
+```
+
 Then open:
 
 ```text
@@ -116,6 +122,12 @@ Or:
 
 ```powershell
 .\stop-demo.ps1
+```
+
+Or on macOS/Linux:
+
+```bash
+./stop-demo.sh
 ```
 
 Start again without rebuild:

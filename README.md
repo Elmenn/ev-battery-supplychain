@@ -122,6 +122,12 @@ Or from the repo root with the wrapper script:
 .\start-demo.ps1
 ```
 
+Or on macOS/Linux:
+
+```bash
+./start-demo.sh
+```
+
 This starts:
 - frontend on `http://localhost:3000`
 - backend API on `http://localhost:5000`
@@ -131,6 +137,12 @@ Stop it with:
 
 ```powershell
 .\stop-demo.ps1
+```
+
+Or on macOS/Linux:
+
+```bash
+./stop-demo.sh
 ```
 
 Details:

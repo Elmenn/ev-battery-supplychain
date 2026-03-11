@@ -134,8 +134,7 @@ const setOnUTXOScanDecryptBalancesCompleteListener = () => {
         engine.emitScanEventHistoryComplete(txidVersion, chain);
       };
 
-      // eslint-disable-next-line @typescript-eslint/no-floating-promises
-      updateWalletBalances();
+      void updateWalletBalances();
     },
   );
 };

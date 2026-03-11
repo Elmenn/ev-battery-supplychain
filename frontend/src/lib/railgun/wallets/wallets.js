@@ -73,8 +73,7 @@ const subscribeToEvents = (wallet) => {
   wallet.on(
     EngineEvent.WalletDecryptBalancesComplete,
     ({ txidVersion, chain }) => {
-      // eslint-disable-next-line @typescript-eslint/no-floating-promises
-      onBalancesUpdate(txidVersion, wallet, chain);
+      void onBalancesUpdate(txidVersion, wallet, chain);
     },
   );
   wallet.on(

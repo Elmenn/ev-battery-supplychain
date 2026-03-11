@@ -6,6 +6,9 @@ docker compose up --build
 # Or, once frontend/.env already exists:
 .\start-demo.ps1
 
+# Or on macOS/Linux:
+./start-demo.sh
+
 # This now starts the full demo stack:
 # - frontend on http://localhost:3000
 # - backend API on http://localhost:5000
