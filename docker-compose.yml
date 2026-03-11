@@ -1,10 +1,54 @@
 services:
+  backend:
+    build:
+      context: ./backend/api
+      dockerfile: Dockerfile
+    env_file:
+      - ./frontend/.env
+    environment:
+      PORT: "5000"
+      DB_PATH: /app/data/metadata.sqlite
+    volumes:
+      - backend_data:/app/data
+    ports:
+      - "5000:5000"
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:5000/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+
+  zkp-backend:
+    build:
+      context: ./zkp-backend
+      dockerfile: Dockerfile
+    environment:
+      ZKP_HOST: 0.0.0.0
+      ZKP_PORT: "5010"
+    ports:
+      - "5010:5010"
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:5010/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+
   frontend:
     build:
       context: ./frontend
       dockerfile: Dockerfile
+    depends_on:
+      backend:
+        condition: service_healthy
+      zkp-backend:
+        condition: service_healthy
     ports:
       - "3000:3000"
-    # Note: Environment variables are read from frontend/.env at build time
-    # Make sure to create frontend/.env from frontend/.env.example before building
+    # Environment variables are read from frontend/.env at build time.
+    # Backend also loads values from frontend/.env at runtime via env_file above.
+    # Create frontend/.env before building the stack.
 
+volumes:
+  backend_data:

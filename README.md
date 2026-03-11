@@ -106,6 +106,37 @@ cd backend/railgun/api
 npm start
 ```
 
+## 5.1) Docker Demo Stack
+If you want the easiest no-local-dependencies run path for a supervisor/demo:
+
+```bash
+cd frontend
+copy .env.sepolia.example .env
+cd ..
+docker compose up --build
+```
+
+Or from the repo root with the wrapper script:
+
+```powershell
+.\start-demo.ps1
+```
+
+This starts:
+- frontend on `http://localhost:3000`
+- backend API on `http://localhost:5000`
+- ZKP backend on `http://localhost:5010`
+
+Stop it with:
+
+```powershell
+.\stop-demo.ps1
+```
+
+Details:
+- `RUN_FRONTEND_DOCKER.md`
+- `frontend/DOCKER_SETUP.md`
+
 ## 6) Docker (Frontend Only)
 For supervisor/demo quick start use:
 - `RUN_FRONTEND_DOCKER.md`

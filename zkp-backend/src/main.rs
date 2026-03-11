@@ -3,7 +3,7 @@
 use bulletproof_demo::zk;
 
 use actix_cors::Cors;
-use actix_web::{post, web, App, HttpResponse, HttpServer, Responder};
+use actix_web::{get, post, web, App, HttpResponse, HttpServer, Responder};
 use curve25519_dalek_ng::{scalar::Scalar, ristretto::CompressedRistretto as NgCompressed}; // Dalek‑NG (classic BP)
 use hex::{decode as hex_decode, FromHex, ToHex};
 use num_bigint::BigUint;
@@ -12,7 +12,7 @@ use serde_json::json;
 
 // ─── Local circuits ────────────────────────────────────────────────────────
 use zk::bp_plus_pedersen::{prove_txid_commitment as prove_plus, verify_txid_commitment as verify_plus};
-use zk::txid_pedersen_proof::{prove_txid_commitment, prove_txid_commitment_from_hex, prove_txid_commitment_from_hex_with_binding, verify_txid_commitment, verify_txid_commitment_with_binding};
+use zk::txid_pedersen_proof::{prove_txid_commitment, prove_txid_commitment_from_hex_with_binding, verify_txid_commitment, verify_txid_commitment_with_binding};
 use bulletproofs::r1cs::ConstraintSystem;
 use zk::pedersen::{commit_scalar_with_blinding, prove_value_commitment, prove_value_commitment_with_blinding, prove_value_commitment_with_binding, verify_value_commitment, verify_value_commitment_with_binding};
 use zk::equality_proof::{prove_equality, verify_equality, EqualityProof};
@@ -21,6 +21,14 @@ use zk::quantity_total_proof::{prove_quantity_total, verify_quantity_total, Quan
 
 fn bad_req(msg: &str) -> HttpResponse {
     HttpResponse::BadRequest().json(json!({ "error": msg }))
+}
+
+#[get("/health")]
+async fn health() -> impl Responder {
+    HttpResponse::Ok().json(json!({
+        "ok": true,
+        "service": "zkp-backend",
+    }))
 }
 
 fn parse_hex32_bytes(hex_str: &str) -> Option<[u8; 32]> {
@@ -1072,13 +1080,20 @@ async fn verify_total_payment_equality_proof_ep(req: web::Json<TotalPaymentEqual
 
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {
+    let host = std::env::var("ZKP_HOST").unwrap_or_else(|_| "0.0.0.0".to_string());
+    let port = std::env::var("ZKP_PORT")
+        .ok()
+        .and_then(|value| value.parse::<u16>().ok())
+        .unwrap_or(5010);
+
     println!("[SERVER] =========================================");
     println!("[SERVER] Starting ZKP Backend Server");
-    println!("[SERVER] Listening on http://127.0.0.1:5010");
+    println!("[SERVER] Listening on http://{}:{}", host, port);
     println!("[SERVER] =========================================");
     HttpServer::new(|| {
         App::new()
             .wrap(Cors::default().allow_any_origin().allow_any_method().allow_any_header())
+            .service(health)
             .service(generate_zkp)
             .service(verify_zkp)
             .service(commit_tx_hash)
@@ -1100,7 +1115,7 @@ async fn main() -> std::io::Result<()> {
             .service(generate_total_payment_equality_proof_ep)
             .service(verify_total_payment_equality_proof_ep)
     })
-    .bind(("127.0.0.1", 5010))?
+    .bind((host.as_str(), port))?
     .run()
     .await
 }

@@ -656,6 +656,15 @@ const txUpsertOrderRecoveryBundle = db.transaction((orderParams, attestationPara
 app.use(cors(corsOptions));
 app.use(express.json());
 
+app.get('/health', (_req, res) => {
+  return res.json({
+    ok: true,
+    service: 'backend-api',
+    port,
+    indexer: getIndexerStatus(),
+  });
+});
+
 app.post('/verify-vc', async (req, res) => {
   try {
     validateVerifyVcBody(req.body || {});

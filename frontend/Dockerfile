@@ -1,17 +1,19 @@
 # frontend/Dockerfile
 
 # 1. Build stage: use Node to build the React app
-FROM node:18-alpine AS build
+FROM node:22-bookworm-slim AS build
 
 # Create app directory
 WORKDIR /app
 
-# Install build tools for native modules (needed on arm64 / Apple Silicon)
-RUN apk add --no-cache python3 make g++
+# Install build tools for native modules.
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends python3 make g++ \
+    && rm -rf /var/lib/apt/lists/*
 
 # Install dependencies (use Docker cache by copying only package files first)
 COPY package*.json ./
-RUN npm install
+RUN npm ci
 
 # Copy the rest of the frontend source (including .env if it exists)
 # Note: .env file will be automatically used by react-scripts during build
@@ -23,7 +25,7 @@ COPY . .
 RUN npm run build
 
 # 2. Runtime stage: serve the built app with a simple static server
-FROM node:18-alpine AS runtime
+FROM node:22-bookworm-slim AS runtime
 
 WORKDIR /app
 
