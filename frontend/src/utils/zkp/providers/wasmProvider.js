@@ -136,9 +136,15 @@ export async function generateValueCommitmentWithBindingWasm({
 }
 
 export async function generateScalarCommitmentWithBlindingWasm() {
-  throw new Error(
-    "[ZKP][wasm] generate-scalar-commitment-with-blinding is not implemented. Use REACT_APP_ZKP_MODE=backend."
-  );
+  try {
+    const result = await callWorker("generate-scalar-commitment-with-blinding", {
+      value: normalizeValue(arguments[0]?.value),
+      blindingHex: normalizeHex(arguments[0]?.blindingHex),
+    });
+    return result;
+  } catch (error) {
+    throw mapWasmError("generate-scalar-commitment-with-blinding", error);
+  }
 }
 
 export async function verifyValueCommitmentWasm({
@@ -155,5 +161,135 @@ export async function verifyValueCommitmentWasm({
     return result;
   } catch (error) {
     throw mapWasmError("verify-value-commitment", error);
+  }
+}
+
+export async function generateEqualityProofWasm({
+  cPriceHex,
+  cPayHex,
+  rPriceHex,
+  rPayHex,
+  contextHashHex,
+}) {
+  try {
+    const result = await callWorker("generate-equality-proof", {
+      cPriceHex: normalizeHex(cPriceHex),
+      cPayHex: normalizeHex(cPayHex),
+      rPriceHex: normalizeHex(rPriceHex),
+      rPayHex: normalizeHex(rPayHex),
+      contextHashHex: normalizeHex(contextHashHex),
+    });
+    return result;
+  } catch (error) {
+    throw mapWasmError("generate-equality-proof", error);
+  }
+}
+
+export async function verifyEqualityProofWasm({
+  cPriceHex,
+  cPayHex,
+  proofRHex,
+  proofSHex,
+  contextHashHex,
+}) {
+  try {
+    const result = await callWorker("verify-equality-proof", {
+      cPriceHex: normalizeHex(cPriceHex),
+      cPayHex: normalizeHex(cPayHex),
+      proofRHex: normalizeHex(proofRHex),
+      proofSHex: normalizeHex(proofSHex),
+      contextHashHex: normalizeHex(contextHashHex),
+    });
+    return result;
+  } catch (error) {
+    throw mapWasmError("verify-equality-proof", error);
+  }
+}
+
+export async function generateQuantityTotalProofWasm({
+  cQuantityHex,
+  cTotalHex,
+  unitPriceWei,
+  rQuantityHex,
+  rTotalHex,
+  contextHashHex,
+}) {
+  try {
+    const result = await callWorker("generate-quantity-total-proof", {
+      cQuantityHex: normalizeHex(cQuantityHex),
+      cTotalHex: normalizeHex(cTotalHex),
+      unitPriceWei: normalizeValue(unitPriceWei),
+      rQuantityHex: normalizeHex(rQuantityHex),
+      rTotalHex: normalizeHex(rTotalHex),
+      contextHashHex: normalizeHex(contextHashHex),
+    });
+    return result;
+  } catch (error) {
+    throw mapWasmError("generate-quantity-total-proof", error);
+  }
+}
+
+export async function verifyQuantityTotalProofWasm({
+  cQuantityHex,
+  cTotalHex,
+  unitPriceWei,
+  proofRHex,
+  proofSHex,
+  contextHashHex,
+}) {
+  try {
+    const result = await callWorker("verify-quantity-total-proof", {
+      cQuantityHex: normalizeHex(cQuantityHex),
+      cTotalHex: normalizeHex(cTotalHex),
+      unitPriceWei: normalizeValue(unitPriceWei),
+      proofRHex: normalizeHex(proofRHex),
+      proofSHex: normalizeHex(proofSHex),
+      contextHashHex: normalizeHex(contextHashHex),
+    });
+    return result;
+  } catch (error) {
+    throw mapWasmError("verify-quantity-total-proof", error);
+  }
+}
+
+export async function generateTotalPaymentEqualityProofWasm({
+  cTotalHex,
+  cPayHex,
+  rTotalHex,
+  rPayHex,
+  contextHashHex,
+}) {
+  try {
+    const result = await callWorker("generate-total-payment-equality-proof", {
+      cTotalHex: normalizeHex(cTotalHex),
+      cPayHex: normalizeHex(cPayHex),
+      rTotalHex: normalizeHex(rTotalHex),
+      rPayHex: normalizeHex(rPayHex),
+      contextHashHex: normalizeHex(contextHashHex),
+    });
+    return result;
+  } catch (error) {
+    throw mapWasmError("generate-total-payment-equality-proof", error);
+  }
+}
+
+export async function verifyTotalPaymentEqualityProofWasm({
+  cTotalHex,
+  cPayHex,
+  proofRHex,
+  proofSHex,
+  contextHashHex,
+}) {
+  try {
+    const result = await callWorker("verify-total-payment-equality-proof", {
+      cTotalHex: normalizeHex(cTotalHex),
+      cPayHex: normalizeHex(cPayHex),
+      proofRHex: normalizeHex(proofRHex),
+      proofSHex: normalizeHex(proofSHex),
+      contextHashHex: normalizeHex(contextHashHex),
+    });
+    return result;
+  } catch (error) {
+    throw mapWasmError("verify-total-payment-equality-proof", error);
   }
 }

@@ -1,0 +1,224 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>ZKP WASM Benchmark</title>
+    <style>
+      :root {
+        color-scheme: light;
+        --bg: #f4f0e8;
+        --panel: #fffdf8;
+        --ink: #1f2933;
+        --muted: #52606d;
+        --line: #d9d1c3;
+        --accent: #9f4a13;
+        --accent-soft: #f4e6da;
+      }
+      body {
+        margin: 0;
+        padding: 32px;
+        font: 16px/1.5 Georgia, "Times New Roman", serif;
+        color: var(--ink);
+        background: linear-gradient(180deg, #f6f2eb 0%, var(--bg) 100%);
+      }
+      .shell {
+        max-width: 1080px;
+        margin: 0 auto;
+        background: var(--panel);
+        border: 1px solid var(--line);
+        box-shadow: 0 12px 40px rgba(37, 31, 24, 0.08);
+      }
+      header, section {
+        padding: 24px 28px;
+        border-bottom: 1px solid var(--line);
+      }
+      h1, h2 {
+        margin: 0 0 12px;
+        line-height: 1.15;
+      }
+      h1 {
+        font-size: 36px;
+      }
+      h2 {
+        font-size: 22px;
+      }
+      p, li {
+        color: var(--muted);
+      }
+      .controls {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 12px 24px;
+        align-items: end;
+      }
+      .field {
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+      }
+      label {
+        font-size: 13px;
+        letter-spacing: 0.04em;
+        text-transform: uppercase;
+        color: var(--muted);
+      }
+      input, select, button, textarea {
+        font: inherit;
+      }
+      input, select {
+        min-width: 180px;
+        padding: 10px 12px;
+        border: 1px solid var(--line);
+        background: #fff;
+      }
+      button {
+        padding: 11px 16px;
+        border: 1px solid var(--accent);
+        background: var(--accent);
+        color: #fff;
+        cursor: pointer;
+      }
+      button.secondary {
+        background: #fff;
+        color: var(--accent);
+      }
+      button:disabled {
+        opacity: 0.6;
+        cursor: not-allowed;
+      }
+      .note {
+        margin-top: 12px;
+        padding: 12px 14px;
+        background: var(--accent-soft);
+        border-left: 4px solid var(--accent);
+      }
+      table {
+        width: 100%;
+        border-collapse: collapse;
+      }
+      th, td {
+        padding: 10px 12px;
+        border-top: 1px solid var(--line);
+        text-align: left;
+        vertical-align: top;
+      }
+      th {
+        font-size: 13px;
+        letter-spacing: 0.03em;
+        text-transform: uppercase;
+        color: var(--muted);
+      }
+      pre, textarea {
+        width: 100%;
+        box-sizing: border-box;
+        min-height: 220px;
+        padding: 14px;
+        border: 1px solid var(--line);
+        background: #fff;
+        overflow: auto;
+      }
+      .status {
+        font-weight: 600;
+        color: var(--accent);
+      }
+      .grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+        gap: 16px;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="shell">
+      <header>
+        <h1>ZKP WASM Benchmark</h1>
+        <p>
+          Benchmarks the active browser-side worker/WASM proof path used by the current buyer flow and auditor flow.
+        </p>
+        <div class="note">
+          This page measures the real browser worker path through <code>/wasmZkpWorker.js</code>, not a synthetic Node-only path.
+        </div>
+      </header>
+
+      <section>
+        <h2>Configuration</h2>
+        <div class="controls">
+          <div class="field">
+            <label for="scenario">Scenario</label>
+            <select id="scenario"></select>
+          </div>
+          <div class="field">
+            <label for="iterations">Warm Iterations</label>
+            <input id="iterations" type="number" min="1" max="100" value="20" />
+          </div>
+          <div class="field">
+            <label for="warmup">Warmup Iterations</label>
+            <input id="warmup" type="number" min="0" max="20" value="2" />
+          </div>
+          <div class="field">
+            <label for="includeMemory">Capture Memory</label>
+            <select id="includeMemory">
+              <option value="yes">Yes</option>
+              <option value="no">No</option>
+            </select>
+          </div>
+          <button id="runBtn">Run Benchmark</button>
+          <button id="copyBtn" class="secondary" disabled>Copy JSON Report</button>
+        </div>
+        <p class="status" id="status">Idle</p>
+      </section>
+
+      <section>
+        <h2>Metrics</h2>
+        <div class="grid">
+          <div>
+            <strong>Cold Start</strong>
+            <p>First worker/WASM operation after page load.</p>
+          </div>
+          <div>
+            <strong>Warm Operation Time</strong>
+            <p>Average, min, max, and p95 after warmup iterations.</p>
+          </div>
+          <div>
+            <strong>E2E Buyer Crypto</strong>
+            <p>Commitments plus both proof generations.</p>
+          </div>
+          <div>
+            <strong>E2E Auditor Verify</strong>
+            <p>Both proof verifications from the already generated proof bundle.</p>
+          </div>
+        </div>
+      </section>
+
+      <section>
+        <h2>Summary Table</h2>
+        <table>
+          <thead>
+            <tr>
+              <th>Metric</th>
+              <th>Average (ms)</th>
+              <th>Min (ms)</th>
+              <th>Max (ms)</th>
+              <th>P95 (ms)</th>
+              <th>Success Rate</th>
+            </tr>
+          </thead>
+          <tbody id="resultsBody"></tbody>
+        </table>
+      </section>
+
+      <section>
+        <h2>Environment</h2>
+        <pre id="environmentBox"></pre>
+      </section>
+
+      <section>
+        <h2>Raw Report JSON</h2>
+        <textarea id="reportBox" readonly></textarea>
+      </section>
+    </div>
+
+    <script type="module" src="/zkp-wasm-benchmark.js"></script>
+  </body>
+</html>

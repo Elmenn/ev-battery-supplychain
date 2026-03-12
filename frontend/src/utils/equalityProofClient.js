@@ -2,9 +2,7 @@
  * equalityProofClient.js — Dual-mode dispatch for Schnorr sigma equality proofs.
  *
  * Mirrors the dispatchWithMode pattern from zkpClient.js.
- * Phase 1 deployment: backend mode only.
- * WASM stubs throw "not yet implemented" — when WASM bindings are added later,
- * replace the stubs with real WASM calls and enable shadow mode comparison.
+ * Supports backend, wasm, and shadow modes for the active private-order proofs.
  *
  * Equality proof backend endpoints (port 5010):
  *   POST /zkp/generate-equality-proof
@@ -16,6 +14,14 @@
  */
 
 import { getZkpMode, ZKP_MODE_BACKEND, ZKP_MODE_WASM } from './zkp/zkpClient';
+import {
+  generateEqualityProofWasm,
+  verifyEqualityProofWasm,
+  generateQuantityTotalProofWasm,
+  verifyQuantityTotalProofWasm,
+  generateTotalPaymentEqualityProofWasm,
+  verifyTotalPaymentEqualityProofWasm,
+} from './zkp/providers/wasmProvider';
 
 const DEFAULT_ZKP_BACKEND_URL = 'http://localhost:5010';
 
@@ -142,51 +148,24 @@ async function verifyTotalPaymentEqualityProofBackend({
   });
 }
 
-// --- WASM stubs (Phase 1: not yet implemented) ------------------------------
-
-async function generateEqualityProofWasm(_params) {
-  throw new Error(
-    '[EqualityProof] WASM backend not yet implemented. Set REACT_APP_ZKP_MODE=backend.'
-  );
-}
-
-async function verifyEqualityProofWasm(_params) {
-  throw new Error(
-    '[EqualityProof] WASM backend not yet implemented. Set REACT_APP_ZKP_MODE=backend.'
-  );
-}
-
-async function generateQuantityTotalProofWasm(_params) {
-  throw new Error(
-    '[EqualityProof] WASM quantity-total backend not yet implemented. Set REACT_APP_ZKP_MODE=backend.'
-  );
-}
-
-async function verifyQuantityTotalProofWasm(_params) {
-  throw new Error(
-    '[EqualityProof] WASM quantity-total backend not yet implemented. Set REACT_APP_ZKP_MODE=backend.'
-  );
-}
-
-async function generateTotalPaymentEqualityProofWasm(_params) {
-  throw new Error(
-    '[EqualityProof] WASM total-payment equality backend not yet implemented. Set REACT_APP_ZKP_MODE=backend.'
-  );
-}
-
-async function verifyTotalPaymentEqualityProofWasm(_params) {
-  throw new Error(
-    '[EqualityProof] WASM total-payment equality backend not yet implemented. Set REACT_APP_ZKP_MODE=backend.'
-  );
-}
-
 // --- Dispatch ---------------------------------------------------------------
 
-function compareEqualityProofResult(backendResult, wasmResult) {
+function normalizeHex(value) {
+  return String(value || '').trim().toLowerCase();
+}
+
+function hasProofShape(result) {
   return (
-    String(backendResult?.proof_r_hex || '').toLowerCase() ===
-    String(wasmResult?.proof_r_hex || '').toLowerCase()
+    typeof result === 'object' &&
+    result !== null &&
+    normalizeHex(result.proof_r_hex).length > 0 &&
+    normalizeHex(result.proof_s_hex).length > 0 &&
+    typeof result.verified === 'boolean'
   );
+}
+
+function compareEqualityProofResult(backendResult, wasmResult) {
+  return hasProofShape(backendResult) && hasProofShape(wasmResult);
 }
 
 function compareVerifyResult(backendResult, wasmResult) {

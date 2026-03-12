@@ -21,6 +21,8 @@ Reference docs:
 - `docs/current/03-auditor-verification.md` (includes dedicated DID signing/verification section `1.1`)
 - `docs/current/04-did-signing-and-verification-standards.md` (standards mapping and compliance statement)
 - `docs/current/06-vrc-model.md` (current VRC shape, W3C VC alignment, and placeholder template)
+- `docs/current/07-zkp-wasm-path.md` (how the browser WASM proving/verifying path works)
+- `docs/current/08-zkp-wasm-evaluation.md` (benchmark methodology and current WASM evaluation plan)
 
 ## Prerequisites
 - Node.js 18+
