@@ -269,7 +269,50 @@ After evaluation, the main follow-up questions should be:
 3. Should issuer proof eventually move from EIP-712 to a more standard VC proof mechanism?
 4. Should `credentialSubject.id` become more order-oriented or remain seller-oriented?
 
-## 11) Related Docs
+## 11) Field Observation Appendix
+
+The table below makes the evaluation explicit by mapping the currently emitted `VRC 5.0` fields to their purpose and verification source.
+
+| Field | Observed In Sample | Purpose | Verification Source |
+|---|---|---|---|
+| `@context` | Yes | Declares VC 2.0 base context and project-specific context | VRC JSON structure review |
+| `id` | Yes | Unique identifier for the final VRC | VRC JSON structure review |
+| `type` | Yes | Declares credential classes | VRC JSON structure review |
+| `issuer` | Yes | Identifies seller as issuer | VRC JSON plus seller EIP-712 proof |
+| `holder` | Yes | Identifies buyer as credential holder | VRC JSON structure review |
+| `validFrom` | Yes | Establishes issuance-validity timestamp | VRC JSON structure review |
+| `credentialSchema` | Yes | Binds VRC to explicit JSON schema | VRC JSON plus backend schema URL |
+| `credentialStatus` | Yes | Binds VRC to revocation/status endpoint | VRC JSON plus backend status route |
+| `credentialSubject.listing.unitPriceWei` | Yes | Carries public listing unit price | VRC JSON plus listing metadata expectations |
+| `credentialSubject.listing.unitPriceHash` | Yes | Durable listing anchor | VRC JSON plus listing-anchor model |
+| `credentialSubject.listing.sellerRailgunAddress` | Yes | Seller payment rail identifier for current Railgun flow | VRC JSON plus active payment design |
+| `credentialSubject.order.orderId` | Yes | Order anchor linking VRC to escrow order | VRC JSON plus on-chain order state |
+| `credentialSubject.order.memoHash` | Yes | Railgun payment reference anchor | VRC JSON plus on-chain `recordPrivateOrderPayment(...)` state |
+| `credentialSubject.order.railgunTxRef` | Yes | Railgun transfer reference anchor | VRC JSON plus on-chain `recordPrivateOrderPayment(...)` state |
+| `credentialSubject.commitments.quantityCommitment` | Yes | Commitment anchor for hidden quantity | VRC JSON plus ZKP verification flow |
+| `credentialSubject.commitments.totalCommitment` | Yes | Commitment anchor for hidden total | VRC JSON plus ZKP verification flow |
+| `credentialSubject.commitments.paymentCommitment` | Yes | Commitment anchor for hidden payment amount | VRC JSON plus ZKP verification flow |
+| `credentialSubject.zkProofs.quantityTotalProof` | Yes | Embedded proof that `total = unitPrice * quantity` | VRC JSON plus auditor proof verification |
+| `credentialSubject.zkProofs.totalPaymentEqualityProof` | Yes | Embedded proof that committed payment equals committed total | VRC JSON plus auditor proof verification |
+| `credentialSubject.attestation.contextHash` | Yes | Main binding anchor across order, commitments, and proofs | VRC JSON plus proof-binding model |
+| `credentialSubject.attestation.disclosurePubKey` | Yes | Disclosure/attestation support key | VRC JSON structure review |
+| `proof[0].payloadFormat` | Yes | Declares active issuer-signature format | VRC JSON plus backend verifier logic |
+| `proof[0].jws` | Yes | Seller signature payload | VRC JSON plus EIP-712 verification |
+| `proof[0].verificationMethod` | Yes | DID/Ethereum verification reference | VRC JSON plus DID verification flow |
+
+### Appendix Conclusion
+
+The emitted samples contain every field required by the current active verifier path:
+- envelope
+- order and listing anchors
+- commitment anchors
+- both embedded proof objects
+- status/schema references
+- seller signature proof
+
+That supports the evaluation outcome that the current `VRC 5.0` is not only documented as self-contained, but is actually emitted that way in practice.
+
+## 12) Related Docs
 
 - `docs/current/03-auditor-verification.md`
 - `docs/current/04-did-signing-and-verification-standards.md`
