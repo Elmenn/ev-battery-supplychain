@@ -15,7 +15,7 @@ sequenceDiagram
     Auditor->>UI: Open audit panel and load VC CID
     UI->>API: Fetch VC by CID
     API-->>UI: VC JSON (archive-first, IPFS fallback)
-    UI->>API: Fetch VC status by CID
+    UI->>API: Fetch credentialStatus.id from VRC
     API-->>UI: current status (active / revoked / suspended)
 
     Auditor->>UI: Run all verifications
@@ -94,20 +94,22 @@ Resolver config via backend env:
 
 Holder proof remains optional.
 
-## 1.1) What Is Actually Signed in the V2 VC
+## 1.1) What Is Actually Signed in the Current VRC
 Signing path:
 - `frontend/src/components/marketplace/ProductDetail.jsx`
 - `frontend/src/utils/signVcWithMetamask.js`
 - `frontend/src/utils/vcBuilder.mjs`
 
 Current behavior:
-1. Seller builds the final VC with `createFinalOrderVCV2(...)`.
+1. Seller builds the final VRC with `createFinalOrderVCV2(...)`.
 2. `preparePayloadForSigning(...)` strips mutable sections from the typed-data payload:
    - `payment`
    - `delivery`
    - `previousVersion`
-3. For the active V2 order VC, the signer uses the explicit typed payload format `eip712-v2-order-typed`.
-4. Stable V2 listing/order/commitment/attestation/proof anchors are signed as nested typed structs:
+3. For the active `schemaVersion: "5.0"` VRC, the signer uses the explicit typed payload format `eip712-v3-order-typed`.
+4. Stable listing/order/commitment/attestation/proof anchors are signed as nested typed structs:
+   - `CredentialSchema`
+   - `CredentialStatus`
    - `Listing`
    - `Order`
    - `Commitments`
@@ -117,20 +119,23 @@ Current behavior:
 5. Seller signs the EIP-712 payload.
 
 Practical effect:
-- the active V2 path no longer hides anchors inside `credentialSubject.price`
-- the signature directly covers the V2 order anchor payload, including:
+- the active path no longer hides anchors inside `credentialSubject.price`
+- the signature directly covers the current VRC anchor payload, including:
+  - `validFrom`
+  - `credentialSchema`
+  - `credentialStatus`
   - listing unit price anchors
   - `orderId`
   - payment references
   - commitment hashes
   - `contextHash`
   - embedded proof payloads
-- backend verification still supports the legacy payload format for older proofs, but the active order flow uses the typed V2 payload
+- backend verification still supports the legacy and V2 payload formats for older credentials, but the active order flow uses the typed V3 payload
 
 ## 1.2) Verification Path
 Backend verification rebuilds the same canonical payload:
 1. strips mutable post-signing fields
-2. reconstructs either the legacy payload or the typed V2 payload based on `proof.payloadFormat`
+2. reconstructs either the legacy payload, typed V2 payload, or typed V3 payload based on `proof.payloadFormat`
 3. resolves the expected `did:ethr` verification method
 4. verifies the recovered signer matches the authorized DID method address
 
@@ -140,9 +145,11 @@ Detailed standards mapping remains in `docs/current/04-did-signing-and-verificat
 
 ## 2) Credential Status Verification
 - Backend routes:
-  - `GET /vc-status/:cid`
-  - `PATCH /vc-status/:cid`
-- status rows are keyed by CID in backend `vc_status`
+  - `GET /vc-status/order/:orderId`
+  - `PATCH /vc-status/order/:orderId`
+  - legacy compatibility routes still exist for `:cid`
+- the active VRC carries an order-based `credentialStatus.id`
+- backend status rows remain stored in `vc_status`
 - active values today:
   - `active`
   - `revoked`
@@ -150,7 +157,7 @@ Detailed standards mapping remains in `docs/current/04-did-signing-and-verificat
 
 Current behavior:
 - a VC is auto-registered as `active` when archived or fetched
-- auditor `Run All` reads the current status row by CID
+- auditor `Run All` reads the current status row from the VRC `credentialStatus.id`
 - a revoked or suspended VC fails the status check even if its signature and anchors still verify
 
 Operational control:
@@ -237,6 +244,8 @@ These are intentionally not active auditor checks now:
 ## Backend Endpoints Summary
 - `POST /fetch-vc`
 - `POST /vc-archive`
+- `GET /vc-status/order/:orderId`
+- `PATCH /vc-status/order/:orderId`
 - `GET /vc-status/:cid`
 - `PATCH /vc-status/:cid`
 - `POST /verify-vc`

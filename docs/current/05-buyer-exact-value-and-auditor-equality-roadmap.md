@@ -124,7 +124,7 @@ Acceptance:
 
 ---
 
-## Current VC / Sidecar Conventions
+## Current VRC / Order-Row Conventions
 
 Primary VC fields:
 - `credentialSubject.listing.unitPriceWei`
@@ -143,7 +143,7 @@ Primary VC fields:
 - `credentialSubject.attestation.contextHash`
 - `credentialSubject.zkProofs`
 
-Primary embedded proof fields:
+Primary recoverable order-row proof fields:
 - `orderId`
 - `encryptedBlob`
 - `disclosurePubkey`
