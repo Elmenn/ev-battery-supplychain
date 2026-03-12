@@ -13,8 +13,13 @@ export async function fetchVCFromServer(cid, backendUrl = BACKEND_URL) {
   return data.vc;
 }
 
-export async function fetchVCStatusFromServer(cid, backendUrl = BACKEND_URL) {
-  const res = await fetch(`${backendUrl}/vc-status/${encodeURIComponent(String(cid || "").replace(/^ipfs:\/\//, "").trim())}`);
+export async function fetchVCStatusFromServer({ cid = null, vc = null } = {}, backendUrl = BACKEND_URL) {
+  const statusUrl = vc?.credentialStatus?.id;
+  const route = statusUrl && /^https?:\/\//i.test(String(statusUrl))
+    ? statusUrl
+    : `${backendUrl}/vc-status/${encodeURIComponent(String(cid || "").replace(/^ipfs:\/\//, "").trim())}`;
+
+  const res = await fetch(route);
   if (!res.ok) {
     throw new Error("Failed to fetch VC status from server");
   }

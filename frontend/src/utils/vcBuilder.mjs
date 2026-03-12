@@ -32,6 +32,28 @@ const normalizeCommitmentHex = (value) =>
 const normalizeMaybeString = (value) =>
   value == null ? null : String(value);
 
+const getBackendBaseUrl = () => {
+  const configured = process.env.REACT_APP_VC_BACKEND_URL || process.env.REACT_APP_BACKEND_URL;
+  if (configured && typeof configured === "string" && configured.trim().length > 0) {
+    return configured.replace(/\/+$/, "");
+  }
+
+  if (typeof window !== "undefined" && window.location?.hostname) {
+    return `${window.location.protocol}//${window.location.hostname}:5000`;
+  }
+
+  return "http://localhost:5000";
+};
+
+const getVrcContextUrl = () =>
+  `${getBackendBaseUrl()}/contexts/ev-battery-vrc-v1.jsonld`;
+
+const getVrcSchemaUrl = () =>
+  `${getBackendBaseUrl()}/schemas/ev-battery-order-vrc-v5.schema.json`;
+
+const getVrcStatusUrl = (orderId) =>
+  `${getBackendBaseUrl()}/vc-status/order/${String(orderId || "").trim()}`;
+
 // ---------------------------------------------------------------------------
 // Utility exports (preserved from v1.0)
 // ---------------------------------------------------------------------------
@@ -251,8 +273,11 @@ export function createFinalOrderVCV2({
   paymentCommitment,
   contextHash,
   disclosurePubKey,
+  quantityTotalProof,
+  paymentEqualityProof,
 }) {
   const chain = chainId || inferChainId();
+  const now = new Date().toISOString();
   const normalizedCertificate = {
     name: String(certificateCredential?.name || ""),
     cid: String(certificateCredential?.cid || ""),
@@ -264,10 +289,13 @@ export function createFinalOrderVCV2({
     : [];
 
   return {
-    "@context": ["https://www.w3.org/2018/credentials/v1"],
+    "@context": [
+      "https://www.w3.org/ns/credentials/v2",
+      getVrcContextUrl(),
+    ],
     id: `urn:uuid:${uuid()}`,
     type: ["VerifiableCredential", "SupplyChainCredential", "OrderCommitmentCredential"],
-    schemaVersion: "3.0",
+    schemaVersion: "5.0",
 
     issuer: {
       id: `did:ethr:${chain}:${sellerAddr}`,
@@ -277,7 +305,16 @@ export function createFinalOrderVCV2({
       id: `did:ethr:${chain}:${buyerAddr}`,
       name: "Buyer",
     },
-    issuanceDate: new Date().toISOString(),
+    validFrom: now,
+    credentialSchema: {
+      id: getVrcSchemaUrl(),
+      type: "JsonSchema",
+    },
+    credentialStatus: {
+      id: getVrcStatusUrl(orderId),
+      type: "SupplyChainCredentialStatus2026",
+      statusPurpose: "revocation",
+    },
 
     credentialSubject: {
       id: `did:ethr:${chain}:${sellerAddr}`,
@@ -288,7 +325,7 @@ export function createFinalOrderVCV2({
       chainId: String(chain),
 
       listing: {
-        timestamp: new Date().toISOString(),
+        timestamp: now,
         unitPriceWei: String(unitPriceWei || ""),
         unitPriceHash: String(unitPriceHash || ""),
         listingSnapshotCid: String(listingSnapshotCid || ""),
@@ -315,21 +352,29 @@ export function createFinalOrderVCV2({
         paymentCommitment: String(paymentCommitment || ""),
       },
 
-      payment: {
-        timestamp: new Date().toISOString(),
-        buyerAddress: `did:ethr:${chain}:${buyerAddr}`,
-        memoHash,
-        railgunTxRef,
+      zkProofs: {
+        schemaVersion: "1.0",
+        quantityTotalProof: quantityTotalProof
+          ? {
+              proofType: "bulletproofs",
+              proofRHex: String(quantityTotalProof.proof_r_hex || ""),
+              proofSHex: String(quantityTotalProof.proof_s_hex || ""),
+              contextHash: String(quantityTotalProof.context_hash_hex || contextHash || ""),
+            }
+          : null,
+        totalPaymentEqualityProof: paymentEqualityProof
+          ? {
+              proofType: "bulletproofs",
+              proofRHex: String(paymentEqualityProof.proof_r_hex || ""),
+              proofSHex: String(paymentEqualityProof.proof_s_hex || ""),
+              contextHash: String(paymentEqualityProof.context_hash_hex || contextHash || ""),
+            }
+          : null,
       },
 
       attestation: {
-        attestationVersion: "2.0",
+        attestationVersion: "4.0",
         contextHash: String(contextHash || ""),
-        proofSource: {
-          type: "sidecar",
-          orderId: String(orderId || ""),
-          version: "1.0",
-        },
         ...(disclosurePubKey
           ? { disclosurePubKey: String(disclosurePubKey) }
           : {}),
@@ -347,6 +392,7 @@ export function buildVcSigningAnchorPayload(credentialSubject = {}) {
   const listing = credentialSubject?.listing || {};
   const order = credentialSubject?.order || {};
   const commitments = credentialSubject?.commitments || {};
+  const zkProofs = credentialSubject?.zkProofs || {};
   const attestation = credentialSubject?.attestation || {};
 
   const v2Anchors = {
@@ -377,24 +423,40 @@ export function buildVcSigningAnchorPayload(credentialSubject = {}) {
       totalCommitment: normalizeCommitmentHex(commitments.totalCommitment),
       paymentCommitment: normalizeCommitmentHex(commitments.paymentCommitment),
     },
-    attestation: {
-      contextHash: normalizeCommitmentHex(attestation.contextHash),
-      proofSource:
-        attestation.proofSource && typeof attestation.proofSource === "object"
+    zkProofs: {
+      schemaVersion: String(zkProofs.schemaVersion || ""),
+      quantityTotalProof:
+        zkProofs.quantityTotalProof && typeof zkProofs.quantityTotalProof === "object"
           ? {
-              type: String(attestation.proofSource.type || ""),
-              orderId: normalizeMaybeString(attestation.proofSource.orderId),
-              version: String(attestation.proofSource.version || ""),
+              proofType: String(zkProofs.quantityTotalProof.proofType || ""),
+              proofRHex: normalizeMaybeString(zkProofs.quantityTotalProof.proofRHex),
+              proofSHex: normalizeMaybeString(zkProofs.quantityTotalProof.proofSHex),
+              contextHash: normalizeCommitmentHex(zkProofs.quantityTotalProof.contextHash),
             }
           : null,
+      totalPaymentEqualityProof:
+        zkProofs.totalPaymentEqualityProof && typeof zkProofs.totalPaymentEqualityProof === "object"
+          ? {
+              proofType: String(zkProofs.totalPaymentEqualityProof.proofType || ""),
+              proofRHex: normalizeMaybeString(zkProofs.totalPaymentEqualityProof.proofRHex),
+              proofSHex: normalizeMaybeString(zkProofs.totalPaymentEqualityProof.proofSHex),
+              contextHash: normalizeCommitmentHex(zkProofs.totalPaymentEqualityProof.contextHash),
+            }
+          : null,
+    },
+    attestation: {
+      contextHash: normalizeCommitmentHex(attestation.contextHash),
+      disclosurePubKey: normalizeMaybeString(attestation.disclosurePubKey || attestation.disclosurePubkey),
     },
   };
 
   const hasV2Data = Object.values(v2Anchors.listing).some(Boolean)
     || Object.values(v2Anchors.order).some(Boolean)
     || Object.values(v2Anchors.commitments).some(Boolean)
+    || Boolean(v2Anchors.zkProofs.quantityTotalProof)
+    || Boolean(v2Anchors.zkProofs.totalPaymentEqualityProof)
     || Boolean(v2Anchors.attestation.contextHash)
-    || Boolean(v2Anchors.attestation.proofSource);
+    || Boolean(v2Anchors.attestation.disclosurePubKey);
 
   if (!hasV2Data) {
     return null;

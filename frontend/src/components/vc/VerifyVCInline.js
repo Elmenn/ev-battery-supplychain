@@ -1,7 +1,6 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useMemo, useState } from "react";
 import { ethers } from "ethers";
 import { fetchVCFromServer, fetchVCStatusFromServer, verifyVCWithServer, verifyVCChainWithServer } from "../../utils/verifyVc";
-import { getOrderAttestation } from "../../utils/buyerSecretApi";
 import { verifyQuantityTotalProof, verifyTotalPaymentEqualityProof } from "../../utils/equalityProofClient";
 import VCViewer from "./VCViewer";
 import VerificationBox from "./VerifyVCTab-Enhanced";
@@ -163,33 +162,15 @@ const VerifyVCInline = ({ vc, cid, provider, contractAddress }) => {
   const [chainAnchorResult, setChainAnchorResult] = useState(null);
   const [proofResults, setProofResults] = useState({ quantityTotal: null, totalPayment: null, error: null });
   const [statusResult, setStatusResult] = useState(null);
-  const [orderAttestation, setOrderAttestation] = useState(null);
   const [showVC, setShowVC] = useState(false);
   const [loading, setLoading] = useState({ signatures: false, anchor: false, chain: false, chainAnchors: false, proofs: false, vcStatus: false });
 
   const order = vc?.credentialSubject?.order || {};
   const commitments = vc?.credentialSubject?.commitments || {};
+  const zkProofs = vc?.credentialSubject?.zkProofs || {};
   const attestation = vc?.credentialSubject?.attestation || {};
   const listing = vc?.credentialSubject?.listing || {};
   const isV2Order = Boolean(order.orderId && commitments.quantityCommitment && commitments.totalCommitment && commitments.paymentCommitment);
-
-  useEffect(() => {
-    let cancelled = false;
-    const loadAttestation = async () => {
-      if (!isV2Order) {
-        setOrderAttestation(null);
-        return;
-      }
-      const row = await getOrderAttestation(order.orderId);
-      if (!cancelled) {
-        setOrderAttestation(row || null);
-      }
-    };
-    loadAttestation();
-    return () => {
-      cancelled = true;
-    };
-  }, [isV2Order, order.orderId]);
 
   const handleVerify = async () => {
     setLoading((prev) => ({ ...prev, signatures: true }));
@@ -245,7 +226,7 @@ const VerifyVCInline = ({ vc, cid, provider, contractAddress }) => {
     if (!cid) return;
     setLoading((prev) => ({ ...prev, vcStatus: true }));
     try {
-      setStatusResult(await fetchVCStatusFromServer(cid));
+      setStatusResult(await fetchVCStatusFromServer({ cid, vc }));
     } catch (err) {
       setStatusResult({
         registered: false,
@@ -290,24 +271,27 @@ const VerifyVCInline = ({ vc, cid, provider, contractAddress }) => {
   };
 
   const handleVerifyOrderProofs = async () => {
-    if (!isV2Order || !orderAttestation) return;
+    if (!isV2Order) return;
     setLoading((prev) => ({ ...prev, proofs: true }));
     try {
       const contextHash = attestation.contextHash;
+      const quantityTotalProof = zkProofs.quantityTotalProof || {};
+      const totalPaymentEqualityProof = zkProofs.totalPaymentEqualityProof || {};
       const quantityTotalVerified = await verifyQuantityTotalProof({
         cQuantityHex: commitments.quantityCommitment,
         cTotalHex: commitments.totalCommitment,
         unitPriceWei: listing.unitPriceWei,
-        proofRHex: orderAttestation.quantityTotalProof?.proof_r_hex,
-        proofSHex: orderAttestation.quantityTotalProof?.proof_s_hex,
-        contextHashHex: contextHash,
+        proofRHex: quantityTotalProof.proofRHex || quantityTotalProof.proof_r_hex,
+        proofSHex: quantityTotalProof.proofSHex || quantityTotalProof.proof_s_hex,
+        contextHashHex: quantityTotalProof.contextHash || quantityTotalProof.context_hash_hex || contextHash,
       });
       const totalPaymentVerified = await verifyTotalPaymentEqualityProof({
         cTotalHex: commitments.totalCommitment,
         cPayHex: commitments.paymentCommitment,
-        proofRHex: orderAttestation.paymentEqualityProof?.proof_r_hex,
-        proofSHex: orderAttestation.paymentEqualityProof?.proof_s_hex,
-        contextHashHex: contextHash,
+        proofRHex: totalPaymentEqualityProof.proofRHex || totalPaymentEqualityProof.proof_r_hex,
+        proofSHex: totalPaymentEqualityProof.proofSHex || totalPaymentEqualityProof.proof_s_hex,
+        contextHashHex:
+          totalPaymentEqualityProof.contextHash || totalPaymentEqualityProof.context_hash_hex || contextHash,
       });
       setProofResults({
         quantityTotal: Boolean(quantityTotalVerified?.verified),
@@ -338,10 +322,11 @@ const VerifyVCInline = ({ vc, cid, provider, contractAddress }) => {
     if (!cid) items.push("No VC CID loaded for audit.");
     if (!provider) items.push("Wallet/provider not connected, so on-chain anchor checks are unavailable.");
     if (cid && statusResult?.registered === false) items.push("Credential status record is missing, so revocation status cannot be confirmed yet.");
-    if (isV2Order && !orderAttestation) items.push("Order sidecar is not available yet, so order proof checks cannot run.");
     if (isV2Order && !attestation.contextHash) items.push("VC is missing the V2 contextHash, so order-bound proof checks will fail.");
+    if (isV2Order && !zkProofs.quantityTotalProof) items.push("VRC is missing the embedded quantity-total proof.");
+    if (isV2Order && !zkProofs.totalPaymentEqualityProof) items.push("VRC is missing the embedded total-payment equality proof.");
     return items;
-  }, [attestation.contextHash, cid, isV2Order, orderAttestation, provider, statusResult?.registered]);
+  }, [attestation.contextHash, cid, isV2Order, provider, statusResult?.registered, zkProofs.quantityTotalProof, zkProofs.totalPaymentEqualityProof]);
 
   const allPassed =
     verified === true &&
@@ -380,12 +365,12 @@ const VerifyVCInline = ({ vc, cid, provider, contractAddress }) => {
       order: isV2Order
         ? {
             listing,
-            order,
-            commitments,
-            attestation,
-            sidecarAvailable: Boolean(orderAttestation),
-            proofResults,
-          }
+          order,
+          commitments,
+          zkProofs,
+          attestation,
+          proofResults,
+        }
         : null,
     },
   });
@@ -400,7 +385,6 @@ const VerifyVCInline = ({ vc, cid, provider, contractAddress }) => {
     downloadJsonFile(`audit-bundle-${safeId}.json`, {
       report: buildAuditReport(),
       vc,
-      sidecar: orderAttestation,
     });
   };
 
@@ -463,7 +447,9 @@ const VerifyVCInline = ({ vc, cid, provider, contractAddress }) => {
           </div>
           <div className="flex items-center justify-between gap-2">
             <span>Proof Source</span>
-            <span className="font-medium">{orderAttestation ? "order sidecar loaded" : "order sidecar missing"}</span>
+            <span className="font-medium">
+              {zkProofs.quantityTotalProof && zkProofs.totalPaymentEqualityProof ? "embedded in VRC" : "embedded proofs missing"}
+            </span>
           </div>
         </div>
       )}
@@ -649,7 +635,7 @@ const VerifyVCInline = ({ vc, cid, provider, contractAddress }) => {
       {showVC && (
         <div className="border rounded-lg p-4 bg-gray-50">
           <h4 className="font-semibold mb-3">Verifiable Credential</h4>
-          <VCViewer vc={vc} sidecar={orderAttestation} report={buildAuditReport()} />
+          <VCViewer vc={vc} report={buildAuditReport()} />
         </div>
       )}
 

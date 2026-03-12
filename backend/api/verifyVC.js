@@ -94,6 +94,7 @@ const V2_TYPED_EIP712_TYPES = {
     { name: 'listing', type: 'Listing' },
     { name: 'order', type: 'Order' },
     { name: 'commitments', type: 'Commitments' },
+    { name: 'zkProofs', type: 'ZkProofs' },
     { name: 'attestation', type: 'Attestation' },
   ],
   Listing: [
@@ -122,21 +123,63 @@ const V2_TYPED_EIP712_TYPES = {
     { name: 'totalCommitment', type: 'string' },
     { name: 'paymentCommitment', type: 'string' },
   ],
+  ZkProofs: [
+    { name: 'schemaVersion', type: 'string' },
+    { name: 'quantityTotalProof', type: 'ProofData' },
+    { name: 'totalPaymentEqualityProof', type: 'ProofData' },
+  ],
+  ProofData: [
+    { name: 'proofType', type: 'string' },
+    { name: 'proofRHex', type: 'string' },
+    { name: 'proofSHex', type: 'string' },
+    { name: 'contextHash', type: 'string' },
+  ],
   Attestation: [
     { name: 'attestationVersion', type: 'string' },
     { name: 'contextHash', type: 'string' },
     { name: 'disclosurePubKey', type: 'string' },
-    { name: 'proofSource', type: 'ProofSource' },
-  ],
-  ProofSource: [
-    { name: 'type', type: 'string' },
-    { name: 'orderId', type: 'string' },
-    { name: 'version', type: 'string' },
   ],
 };
 
 const VC_SIGN_PAYLOAD_FORMAT_LEGACY = 'eip712-legacy-price-string';
 const VC_SIGN_PAYLOAD_FORMAT_V2_TYPED = 'eip712-v2-order-typed';
+const VC_SIGN_PAYLOAD_FORMAT_V3_TYPED = 'eip712-v3-order-typed';
+
+const V3_TYPED_EIP712_TYPES = {
+  Credential: [
+    { name: 'id', type: 'string' },
+    { name: '@context', type: 'string[]' },
+    { name: 'type', type: 'string[]' },
+    { name: 'schemaVersion', type: 'string' },
+    { name: 'issuer', type: 'Party' },
+    { name: 'holder', type: 'Party' },
+    { name: 'validFrom', type: 'string' },
+    { name: 'credentialSchema', type: 'CredentialSchema' },
+    { name: 'credentialStatus', type: 'CredentialStatus' },
+    { name: 'credentialSubject', type: 'CredentialSubjectV2' },
+  ],
+  Party: [
+    { name: 'id', type: 'string' },
+    { name: 'name', type: 'string' },
+  ],
+  CredentialSchema: [
+    { name: 'id', type: 'string' },
+    { name: 'type', type: 'string' },
+  ],
+  CredentialStatus: [
+    { name: 'id', type: 'string' },
+    { name: 'type', type: 'string' },
+    { name: 'statusPurpose', type: 'string' },
+  ],
+  CredentialSubjectV2: V2_TYPED_EIP712_TYPES.CredentialSubjectV2,
+  Listing: V2_TYPED_EIP712_TYPES.Listing,
+  Certificate: V2_TYPED_EIP712_TYPES.Certificate,
+  Order: V2_TYPED_EIP712_TYPES.Order,
+  Commitments: V2_TYPED_EIP712_TYPES.Commitments,
+  ZkProofs: V2_TYPED_EIP712_TYPES.ZkProofs,
+  ProofData: V2_TYPED_EIP712_TYPES.ProofData,
+  Attestation: V2_TYPED_EIP712_TYPES.Attestation,
+};
 
 const didLibState = {
   loadPromise: null,
@@ -160,6 +203,7 @@ function buildVcSigningAnchorPayload(credentialSubject = {}) {
   const listing = credentialSubject?.listing || {};
   const order = credentialSubject?.order || {};
   const commitments = credentialSubject?.commitments || {};
+  const zkProofs = credentialSubject?.zkProofs || {};
   const attestation = credentialSubject?.attestation || {};
 
   const payload = {
@@ -190,24 +234,50 @@ function buildVcSigningAnchorPayload(credentialSubject = {}) {
       totalCommitment: normalizeHexMaybe(commitments.totalCommitment),
       paymentCommitment: normalizeHexMaybe(commitments.paymentCommitment),
     },
+    zkProofs: {
+      schemaVersion: String(zkProofs.schemaVersion || ''),
+      quantityTotalProof:
+        zkProofs.quantityTotalProof && typeof zkProofs.quantityTotalProof === 'object'
+          ? {
+              proofType: String(zkProofs.quantityTotalProof.proofType || ''),
+              proofRHex: normalizeMaybeString(zkProofs.quantityTotalProof.proofRHex),
+              proofSHex: normalizeMaybeString(zkProofs.quantityTotalProof.proofSHex),
+              contextHash: normalizeHexMaybe(zkProofs.quantityTotalProof.contextHash),
+            }
+          : {
+              proofType: '',
+              proofRHex: '',
+              proofSHex: '',
+              contextHash: '',
+            },
+      totalPaymentEqualityProof:
+        zkProofs.totalPaymentEqualityProof && typeof zkProofs.totalPaymentEqualityProof === 'object'
+          ? {
+              proofType: String(zkProofs.totalPaymentEqualityProof.proofType || ''),
+              proofRHex: normalizeMaybeString(zkProofs.totalPaymentEqualityProof.proofRHex),
+              proofSHex: normalizeMaybeString(zkProofs.totalPaymentEqualityProof.proofSHex),
+              contextHash: normalizeHexMaybe(zkProofs.totalPaymentEqualityProof.contextHash),
+            }
+          : {
+              proofType: '',
+              proofRHex: '',
+              proofSHex: '',
+              contextHash: '',
+            },
+    },
     attestation: {
       contextHash: normalizeHexMaybe(attestation.contextHash),
-      proofSource:
-        attestation.proofSource && typeof attestation.proofSource === 'object'
-          ? {
-              type: String(attestation.proofSource.type || ''),
-              orderId: normalizeMaybeString(attestation.proofSource.orderId),
-              version: String(attestation.proofSource.version || ''),
-            }
-          : null,
+      disclosurePubKey: normalizeMaybeString(attestation.disclosurePubKey || attestation.disclosurePubkey),
     },
   };
 
   const hasV2Data = Object.values(payload.listing).some(Boolean)
     || Object.values(payload.order).some(Boolean)
     || Object.values(payload.commitments).some(Boolean)
+    || Boolean(payload.zkProofs.quantityTotalProof?.proofRHex)
+    || Boolean(payload.zkProofs.totalPaymentEqualityProof?.proofRHex)
     || Boolean(payload.attestation.contextHash)
-    || Boolean(payload.attestation.proofSource);
+    || Boolean(payload.attestation.disclosurePubKey);
 
   return hasV2Data ? payload : null;
 }
@@ -303,6 +373,7 @@ function buildTypedV2Payload(vc) {
   const listing = clone.credentialSubject?.listing || {};
   const order = clone.credentialSubject?.order || {};
   const commitments = clone.credentialSubject?.commitments || {};
+  const zkProofs = clone.credentialSubject?.zkProofs || {};
   const attestation = clone.credentialSubject?.attestation || {};
 
   clone.credentialSubject = {
@@ -338,19 +409,59 @@ function buildTypedV2Payload(vc) {
       totalCommitment: normalizeMaybeString(commitments.totalCommitment),
       paymentCommitment: normalizeMaybeString(commitments.paymentCommitment),
     },
-    attestation: {
-      attestationVersion: String(attestation.attestationVersion || '2.0'),
-      contextHash: normalizeMaybeString(attestation.contextHash),
-      disclosurePubKey: normalizeMaybeString(attestation.disclosurePubKey),
-      proofSource: {
-        type: String(attestation.proofSource?.type || ''),
-        orderId: normalizeMaybeString(attestation.proofSource?.orderId),
-        version: String(attestation.proofSource?.version || ''),
+    zkProofs: {
+      schemaVersion: String(zkProofs.schemaVersion || ''),
+      quantityTotalProof: {
+        proofType: String(zkProofs.quantityTotalProof?.proofType || ''),
+        proofRHex: normalizeMaybeString(zkProofs.quantityTotalProof?.proofRHex),
+        proofSHex: normalizeMaybeString(zkProofs.quantityTotalProof?.proofSHex),
+        contextHash: normalizeMaybeString(zkProofs.quantityTotalProof?.contextHash),
       },
+      totalPaymentEqualityProof: {
+        proofType: String(zkProofs.totalPaymentEqualityProof?.proofType || ''),
+        proofRHex: normalizeMaybeString(zkProofs.totalPaymentEqualityProof?.proofRHex),
+        proofSHex: normalizeMaybeString(zkProofs.totalPaymentEqualityProof?.proofSHex),
+        contextHash: normalizeMaybeString(zkProofs.totalPaymentEqualityProof?.contextHash),
+      },
+    },
+    attestation: {
+      attestationVersion: String(attestation.attestationVersion || '3.0'),
+      contextHash: normalizeMaybeString(attestation.contextHash),
+      disclosurePubKey: normalizeMaybeString(attestation.disclosurePubKey || attestation.disclosurePubkey),
     },
   };
 
   return clone;
+}
+
+function buildTypedV3Payload(vc) {
+  const clone = buildTypedV2Payload(vc);
+
+  return {
+    id: String(vc?.id || ''),
+    '@context': Array.isArray(vc?.['@context']) ? vc['@context'].map((item) => String(item)) : [],
+    type: Array.isArray(vc?.type) ? vc.type.map((item) => String(item)) : [],
+    schemaVersion: String(vc?.schemaVersion || '5.0'),
+    issuer: {
+      id: normalizeId(vc?.issuer?.id || ''),
+      name: String(vc?.issuer?.name || ''),
+    },
+    holder: {
+      id: normalizeId(vc?.holder?.id || ''),
+      name: String(vc?.holder?.name || ''),
+    },
+    validFrom: String(vc?.validFrom || ''),
+    credentialSchema: {
+      id: normalizeMaybeString(vc?.credentialSchema?.id),
+      type: String(vc?.credentialSchema?.type || ''),
+    },
+    credentialStatus: {
+      id: normalizeMaybeString(vc?.credentialStatus?.id),
+      type: String(vc?.credentialStatus?.type || ''),
+      statusPurpose: String(vc?.credentialStatus?.statusPurpose || ''),
+    },
+    credentialSubject: clone.credentialSubject,
+  };
 }
 
 function stripFragment(value) {
@@ -586,6 +697,13 @@ function collectAllowedMethodIdsForPurpose(didDocument, proofPurpose) {
 }
 
 function preparePayloadForVerification(vc, payloadFormat) {
+  if (payloadFormat === VC_SIGN_PAYLOAD_FORMAT_V3_TYPED) {
+    return {
+      payload: buildTypedV3Payload(vc),
+      types: V3_TYPED_EIP712_TYPES,
+    };
+  }
+
   if (payloadFormat === VC_SIGN_PAYLOAD_FORMAT_V2_TYPED) {
     return {
       payload: buildTypedV2Payload(vc),

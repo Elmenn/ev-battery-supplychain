@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { useParams } from "react-router-dom";
 import { ethers } from "ethers";
 import toast from "react-hot-toast";
@@ -15,7 +15,6 @@ import {
 import { uploadJson } from "../../utils/ipfs";
 import { createFinalOrderVCV2 } from "../../utils/vcBuilder.mjs";
 import { signVcAsSeller } from "../../utils/signVcWithMetamask";
-import { getOrderAttestation } from "../../utils/buyerSecretApi";
 import { decodeContractError, getExplorerUrl } from "../../utils/errorHandler";
 import PrivatePaymentModal from "../railgun/PrivatePaymentModal";
 import PhaseTimeline from "../shared/PhaseTimeline";
@@ -61,7 +60,6 @@ const ProductDetail = ({ provider, currentUser }) => {
   const [product, setProduct] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
-  const [role, setRole] = useState({ role: "visitor" });
   const [bids, setBids] = useState([]);
   const [showPrivatePaymentModal, setShowPrivatePaymentModal] = useState(false);
   const [showTransporterConfirm, setShowTransporterConfirm] = useState(null);
@@ -74,6 +72,7 @@ const ProductDetail = ({ provider, currentUser }) => {
   const [auditLoading, setAuditLoading] = useState(false);
   const [auditError, setAuditError] = useState("");
   const [chainId, setChainId] = useState(null);
+  const role = useMemo(() => detectRole(product || {}, currentUser), [product, currentUser]);
 
   const loadProductData = useCallback(async () => {
     if (!provider || !address) return;
@@ -81,7 +80,6 @@ const ProductDetail = ({ provider, currentUser }) => {
       setLoading(true);
       const state = await getProductState(address, provider);
       setProduct(state);
-      setRole(detectRole(state, currentUser));
       try {
         const network = await provider.getNetwork();
         setChainId(Number(network.chainId));
@@ -140,10 +138,9 @@ const ProductDetail = ({ provider, currentUser }) => {
         throw new Error("Active order data is missing.");
       }
 
-      const [metaData, orderRow, attestationRow] = await Promise.all([
+      const [metaData, orderRow] = await Promise.all([
         getProductMeta(address),
         getOrder(activeOrderId),
-        getOrderAttestation(activeOrderId),
       ]);
       const listingMeta = metaData?.productMeta || null;
       if (!listingMeta) {
@@ -178,12 +175,11 @@ const ProductDetail = ({ provider, currentUser }) => {
       }
 
       if (!order) {
-        throw new Error("Order sidecar is missing and reconciliation did not recover it.");
+        throw new Error("Order record is missing and reconciliation did not recover it.");
       }
-      if (!attestationRow) {
-        throw new Error("Order attestation sidecar is missing. The buyer must recover the order bundle before seller confirmation.");
+      if (!order.quantityTotalProof || !order.paymentEqualityProof) {
+        throw new Error("Embedded order proofs are missing from the order record. The buyer must recover the order bundle before seller confirmation.");
       }
-
       const vc = createFinalOrderVCV2({
         sellerAddr,
         buyerAddr: order.buyerAddress || product.buyer,
@@ -205,7 +201,9 @@ const ProductDetail = ({ provider, currentUser }) => {
         totalCommitment: order.totalCommitment,
         paymentCommitment: order.paymentCommitment,
         contextHash: order.contextHash,
-        disclosurePubKey: attestationRow?.disclosurePubkey || null,
+        disclosurePubKey: order.disclosurePubkey || null,
+        quantityTotalProof: order.quantityTotalProof || null,
+        paymentEqualityProof: order.paymentEqualityProof || null,
       });
 
       toast("Signing VC...");
@@ -371,7 +369,7 @@ const ProductDetail = ({ provider, currentUser }) => {
       {role.role === "buyer" && activeOrder && product.phase >= Phase.Purchased && (
         <div className="bg-green-50 border border-green-200 rounded-lg p-4 space-y-3">
           <h3 className="font-semibold text-green-800">Private Order Recorded</h3>
-          <p className="text-sm text-green-700">Your order commitments and payment anchor are stored on-chain and in the sidecar.</p>
+          <p className="text-sm text-green-700">Your order commitments and payment anchor are stored on-chain and in the order record.</p>
           <div className="flex items-center gap-2"><span className="text-xs text-gray-500 w-20 shrink-0">Order ID:</span><code className="text-xs font-mono text-gray-700 bg-gray-100 px-2 py-1 rounded truncate">{product.activeOrderId.slice(0, 10)}...{product.activeOrderId.slice(-8)}</code><CopyButton value={product.activeOrderId} /></div>
           <div className="flex items-center gap-2"><span className="text-xs text-gray-500 w-20 shrink-0">Memo Hash:</span><code className="text-xs font-mono text-gray-700 bg-gray-100 px-2 py-1 rounded truncate">{activeOrder.memoHash.slice(0, 10)}...{activeOrder.memoHash.slice(-8)}</code><CopyButton value={activeOrder.memoHash} /></div>
           <div className="flex items-center gap-2"><span className="text-xs text-gray-500 w-20 shrink-0">Tx Ref:</span><code className="text-xs font-mono text-gray-700 bg-gray-100 px-2 py-1 rounded truncate">{activeOrder.railgunTxRef.slice(0, 10)}...{activeOrder.railgunTxRef.slice(-8)}</code><CopyButton value={activeOrder.railgunTxRef} /></div>
@@ -411,7 +409,7 @@ const ProductDetail = ({ provider, currentUser }) => {
       {product.phase >= Phase.OrderConfirmed && (
         <div className="bg-white border rounded-lg p-4 space-y-4">
           <h3 className="font-semibold">Audit</h3>
-          <p className="text-sm text-gray-600">Load the seller-signed order VC and verify order-bound proofs by `orderId`.</p>
+          <p className="text-sm text-gray-600">Load the seller-signed order VRC and verify the embedded order-bound proofs.</p>
           <div className="flex gap-2">
             <input value={auditCid} onChange={(event) => setAuditCid(event.target.value)} placeholder="Qm... (VC CID)" className="flex-1 rounded border border-gray-300 px-3 py-2 text-sm font-mono outline-none focus:border-blue-500" />
             <Button onClick={handleLoadAuditVC} disabled={auditLoading}>{auditLoading ? "Loading..." : "Load VC"}</Button>

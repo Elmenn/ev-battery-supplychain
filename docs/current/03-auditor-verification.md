@@ -17,8 +17,6 @@ sequenceDiagram
     API-->>UI: VC JSON (archive-first, IPFS fallback)
     UI->>API: Fetch VC status by CID
     API-->>UI: current status (active / revoked / suspended)
-    UI->>API: Fetch order attestation by orderId
-    API-->>UI: Sidecar proof bundle
 
     Auditor->>UI: Run all verifications
     UI->>API: Verify VC signatures
@@ -41,7 +39,7 @@ sequenceDiagram
 Notes:
 - `Backend API + DB` is grouped as one lane to keep the diagram simple.
 - The credential-status check is operational: a VC can be cryptographically valid and still fail if its status is `revoked` or `suspended`.
-- The proof payloads come from sidecar storage keyed by `orderId`; the VC carries the stable anchors and proof-source reference.
+- The proof payloads are embedded in the final VRC itself; the auditor verifies one immutable signed artifact plus on-chain anchor and status checks.
 
 ## Active Verification Checks
 In `VerifyVCInline.js`, `Run All` executes:
@@ -74,10 +72,7 @@ Primary order fields read from the VC:
 - `credentialSubject.commitments.totalCommitment`
 - `credentialSubject.commitments.paymentCommitment`
 - `credentialSubject.attestation.contextHash`
-- `credentialSubject.attestation.proofSource`
-
-Primary sidecar source:
-- backend `order_private_attestations` row loaded by `orderId`
+- `credentialSubject.zkProofs`
 
 Primary operational fetch/status sources:
 - backend `vc_archives` for archive-first VC retrieval
@@ -112,12 +107,13 @@ Current behavior:
    - `delivery`
    - `previousVersion`
 3. For the active V2 order VC, the signer uses the explicit typed payload format `eip712-v2-order-typed`.
-4. Stable V2 listing/order/commitment/attestation anchors are signed as nested typed structs:
+4. Stable V2 listing/order/commitment/attestation/proof anchors are signed as nested typed structs:
    - `Listing`
    - `Order`
    - `Commitments`
    - `Attestation`
-   - `ProofSource`
+   - `ZkProofs`
+   - `ProofData`
 5. Seller signs the EIP-712 payload.
 
 Practical effect:
@@ -128,7 +124,7 @@ Practical effect:
   - payment references
   - commitment hashes
   - `contextHash`
-  - proof source metadata
+  - embedded proof payloads
 - backend verification still supports the legacy payload format for older proofs, but the active order flow uses the typed V2 payload
 
 ## 1.2) Verification Path
@@ -201,7 +197,7 @@ Auditor inputs:
 - `quantityCommitment`
 - `totalCommitment`
 - `contextHash`
-- sidecar `quantityTotalProof`
+- embedded `zkProofs.quantityTotalProof`
 
 Pass means:
 - the private quantity and private total are internally consistent with the public unit price
@@ -221,7 +217,7 @@ Auditor inputs:
 - `totalCommitment`
 - `paymentCommitment`
 - `contextHash`
-- sidecar `paymentEqualityProof`
+- embedded `zkProofs.totalPaymentEqualityProof`
 
 Pass means:
 - the private order total matches the private payment amount
@@ -236,7 +232,7 @@ These are intentionally not active auditor checks now:
 - legacy ZKP price proof cards
 - buyer `Verify Price` flow
 - Workstream A / Workstream B UI terminology
-- old `buyer_secrets.equality_proof` sidecar path for the active order flow
+- old `buyer_secrets.equality_proof` legacy path for the active order flow
 
 ## Backend Endpoints Summary
 - `POST /fetch-vc`
@@ -245,7 +241,6 @@ These are intentionally not active auditor checks now:
 - `PATCH /vc-status/:cid`
 - `POST /verify-vc`
 - `POST /verify-vc-chain`
-- `GET /order-attestations/:orderId`
 - `POST /zkp/verify-quantity-total-proof`
 - `POST /zkp/verify-total-payment-equality-proof`
 

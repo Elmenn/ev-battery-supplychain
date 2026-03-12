@@ -37,13 +37,13 @@ sequenceDiagram
     Railgun-->>UI: memoHash + railgunTxRef
     UI->>SC: recordPrivateOrderPayment(orderId, ..., contextHash)
     SC-->>UI: Order recorded on-chain
-    UI->>API: Update order/attestation sidecar
-    API-->>UI: Sidecar updated
+    UI->>API: Update recoverable order row
+    API-->>UI: Order row updated
     SC-->>API: Order events emitted
     API-->>API: Indexer refreshes tracked order state
 
     Seller->>UI: Confirm order
-    UI->>API: Load metadata + order + attestation
+    UI->>API: Load metadata + order
     API-->>UI: Return order bundle
     UI->>IPFS: Upload final signed VC
     IPFS-->>UI: Return CID
@@ -57,8 +57,6 @@ sequenceDiagram
     Buyer->>UI: Open audit view
     UI->>API: Fetch VC by CID
     API-->>UI: VC JSON (archive-first, IPFS fallback)
-    UI->>API: Fetch attestation by orderId
-    API-->>UI: Sidecar proofs
     UI->>API: Verify VC signature + provenance + status
     API-->>UI: Verification results
     UI->>ZKP: Verify quantity-total and total-payment proofs
@@ -172,12 +170,12 @@ Still in `PrivatePaymentModal.jsx`:
    - phase moves `Listed -> Purchased`
    - `activeOrderId` is set
 
-Before the on-chain call, the app also writes a backend recovery bundle containing the order row and attestation/proof row.
+Before the on-chain call, the app also writes a backend recovery bundle containing the order row, including the proof payloads that will later be embedded in the final VRC.
 
 If the private transfer succeeds but on-chain recording fails, `Retry Recording` recovers from backend state instead of browser-local order storage.
 
-## 4) Off-Chain Order and Attestation Persistence
-The app persists sidecar data through backend APIs, and the backend can later reconcile or refresh from chain:
+## 4) Off-Chain Order Persistence
+The app persists a recoverable order row through backend APIs, and the backend can later reconcile or refresh from chain:
 
 `product_orders`
 - `orderId`
@@ -196,9 +194,8 @@ The app persists sidecar data through backend APIs, and the backend can later re
 - `paymentCommitment`
 - `contextHash`
 
-`order_private_attestations`
+- `disclosurePubkey`
 - encrypted buyer blob
-- disclosure public key
 - encrypted quantity opening
 - encrypted total opening
 - quantity-total proof
@@ -210,21 +207,21 @@ Operational hardening in the current implementation:
 - backend `/orders/:orderId/reconcile` can rebuild missing order rows from chain state
 - backend indexer polls Sepolia events and refreshes tracked product/order rows automatically
 
-The anchored VC CID remains separate from this sidecar data.
+The anchored VC CID remains separate from this recoverable order row. Once the seller confirms, the final VRC becomes the single immutable audit artifact.
 
 ## 5) Seller Confirms Order and Anchors Final VC
 In `ProductDetail.jsx`:
 1. Seller reads:
    - on-chain active order data
    - listing metadata
-   - order sidecar row
-   - order attestation row
+   - recoverable order row
 2. Frontend builds the final order VC with `createFinalOrderVCV2(...)`.
 3. VC includes:
    - listing section with `unitPriceWei` and `unitPriceHash`
    - order section with `orderId`, `memoHash`, `railgunTxRef`
    - commitments section with `C_qty`, `C_total`, `C_pay`
-   - attestation section with `contextHash` and proof source metadata
+   - attestation section with `contextHash`
+   - `zkProofs` section with the embedded quantity-total proof and total-payment equality proof
 4. Seller signs the VC with EIP-712.
 5. VC is uploaded to IPFS.
 6. Frontend best-effort archives the exact VC JSON to backend `vc_archives`.
@@ -248,7 +245,7 @@ In `VerifyVCInline.js`, the auditor flow verifies:
 
 Proof source:
 - final VC attestation fields provide the durable anchor context
-- proof payloads are loaded from `order_private_attestations` by `orderId`
+- the final VRC embeds both proof payloads directly under `credentialSubject.zkProofs`
 - VC JSON is loaded archive-first from backend `vc_archives`, then from IPFS gateways if needed
 
 The auditor learns:

@@ -132,55 +132,7 @@ test('order routes persist by orderId and compute canonical contextHash', async 
   assert.equal(patchVcPayload.order.orderVcHash, ('0x' + '04'.repeat(32)).toLowerCase());
 });
 
-test('order attestation routes store and patch proof bundles by orderId', async () => {
-  const orderId = '0x' + 'ef'.repeat(32);
-
-  const createResponse = await postJson('/order-attestations', {
-    orderId,
-    productAddress: '0x1234567890ABCDEF1234567890ABCDEF12345678',
-    buyerAddress: '0x2222222222222222222222222222222222222222',
-    encryptedBlob: { ciphertext: 'blob' },
-    disclosurePubkey: 'buyer-pubkey',
-    quantityTotalProof: { proof_r_hex: '0x01', proof_s_hex: '0x02' },
-  });
-
-  assert.equal(createResponse.status, 201);
-  const createPayload = await createResponse.json();
-  assert.equal(createPayload.attestation.orderId, orderId);
-  assert.deepEqual(createPayload.attestation.quantityTotalProof, {
-    proof_r_hex: '0x01',
-    proof_s_hex: '0x02',
-  });
-
-  const patchResponse = await patchJson(`/order-attestations/${orderId}/proof-bundle`, {
-    encryptedQuantityOpening: { ciphertext: 'qty' },
-    encryptedTotalOpening: { ciphertext: 'total' },
-    paymentEqualityProof: { proof_r_hex: '0x03', proof_s_hex: '0x04' },
-    proofBundle: {
-      schemaVersion: '1.0',
-      contextHash: '0x' + '99'.repeat(32),
-    },
-  });
-
-  assert.equal(patchResponse.status, 200);
-  const patchPayload = await patchResponse.json();
-  assert.deepEqual(patchPayload.attestation.paymentEqualityProof, {
-    proof_r_hex: '0x03',
-    proof_s_hex: '0x04',
-  });
-  assert.deepEqual(patchPayload.attestation.proofBundle, {
-    schemaVersion: '1.0',
-    contextHash: '0x' + '99'.repeat(32),
-  });
-
-  const getResponse = await getJson(`/order-attestations/${orderId}`);
-  assert.equal(getResponse.status, 200);
-  const getPayload = await getResponse.json();
-  assert.deepEqual(getPayload.encryptedQuantityOpening, { ciphertext: 'qty' });
-  assert.deepEqual(getPayload.encryptedTotalOpening, { ciphertext: 'total' });
-});
-
-test('order recovery bundle writes order and attestation atomically', async () => {
+test('order recovery bundle writes a proof-bearing order row atomically', async () => {
   const orderId = '0x' + 'ab'.repeat(32);
   const response = await postJson('/orders/recovery-bundle', {
     order: {
@@ -219,7 +171,9 @@ test('order recovery bundle writes order and attestation atomically', async () =
   assert.equal(response.status, 201);
   const payload = await response.json();
   assert.equal(payload.order.status, 'payment_pending_recording');
-  assert.equal(payload.attestation.disclosurePubkey, 'pubkey-1');
+  assert.equal(payload.order.disclosurePubkey, 'pubkey-1');
+  assert.deepEqual(payload.order.encryptedBlob, { ciphertext: 'blob' });
+  assert.deepEqual(payload.order.quantityTotalProof, { proof_r_hex: '0x01', proof_s_hex: '0x02' });
 });
 
 test('reconcile route rebuilds order row from chain snapshot and metadata', async () => {
@@ -270,7 +224,7 @@ test('reconcile route rebuilds order row from chain snapshot and metadata', asyn
   assert.equal(reconcilePayload.recoveredFromChain, true);
   assert.equal(reconcilePayload.order.productId, '88');
   assert.equal(reconcilePayload.order.status, 'payment_recorded');
-  assert.equal(reconcilePayload.attestationPresent, false);
+  assert.equal(reconcilePayload.proofsPresent, false);
 });
 
 test('indexer health route reports backend sync status', async () => {
@@ -284,7 +238,7 @@ test('indexer health route reports backend sync status', async () => {
   assert.equal(typeof payload.pollIntervalMs, 'number');
   assert.equal(typeof payload.batchSize, 'number');
   assert.equal(typeof payload.trackedProducts, 'number');
-  assert.equal(typeof payload.ordersMissingAttestation, 'number');
+  assert.equal(typeof payload.ordersMissingEmbeddedProofs, 'number');
   assert.equal(typeof payload.trackedProductsMissingMetadata, 'number');
   assert.equal(typeof payload.trackedProductsIncompatible, 'number');
 });
@@ -397,13 +351,14 @@ test('vc archive route stores canonical VC data and fetch-vc can read it without
 
 test('vc status route reports active status from archive and supports token-gated updates', async () => {
   const cid = 'QmStatusTestCid1234567890123456789012345678901234567';
+  const orderId = '0x' + 'fa'.repeat(32);
   const vc = {
     '@context': ['https://www.w3.org/2018/credentials/v1'],
     type: ['VerifiableCredential'],
     credentialSubject: {
       productContract: '0x1234567890ABCDEF1234567890ABCDEF12345678',
       order: {
-        orderId: '0x' + 'fa'.repeat(32),
+        orderId,
       },
     },
   };
@@ -417,6 +372,13 @@ test('vc status route reports active status from archive and supports token-gate
   assert.equal(initialStatusPayload.registered, true);
   assert.equal(initialStatusPayload.status, 'active');
   assert.equal(initialStatusPayload.verified, true);
+
+  const orderStatusResponse = await getJson(`/vc-status/order/${orderId}`);
+  assert.equal(orderStatusResponse.status, 200);
+  const orderStatusPayload = await orderStatusResponse.json();
+  assert.equal(orderStatusPayload.registered, true);
+  assert.equal(orderStatusPayload.orderId, orderId);
+  assert.equal(orderStatusPayload.status, 'active');
 
   const unauthorizedPatch = await fetch(`${baseUrl}/vc-status/${cid}`, {
     method: 'PATCH',
@@ -438,4 +400,29 @@ test('vc status route reports active status from archive and supports token-gate
   assert.equal(authorizedPatchPayload.status.status, 'revoked');
   assert.equal(authorizedPatchPayload.status.verified, false);
   assert.equal(authorizedPatchPayload.status.reason, 'test revoke');
+
+  const authorizedOrderPatch = await fetch(`${baseUrl}/vc-status/order/${orderId}`, {
+    method: 'PATCH',
+    headers: {
+      'Content-Type': 'application/json',
+      'x-vc-status-token': 'test-status-token',
+    },
+    body: JSON.stringify({ status: 'active', reason: null }),
+  });
+  assert.equal(authorizedOrderPatch.status, 200);
+  const authorizedOrderPatchPayload = await authorizedOrderPatch.json();
+  assert.equal(authorizedOrderPatchPayload.status.status, 'active');
+  assert.equal(authorizedOrderPatchPayload.status.orderId, orderId);
+});
+
+test('static VRC context and schema routes are served by the backend', async () => {
+  const contextResponse = await getJson('/contexts/ev-battery-vrc-v1.jsonld');
+  assert.equal(contextResponse.status, 200);
+  const contextJson = await contextResponse.json();
+  assert.ok(contextJson['@context']);
+
+  const schemaResponse = await getJson('/schemas/ev-battery-order-vrc-v5.schema.json');
+  assert.equal(schemaResponse.status, 200);
+  const schemaJson = await schemaResponse.json();
+  assert.equal(schemaJson.properties.schemaVersion.const, '5.0');
 });

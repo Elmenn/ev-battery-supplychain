@@ -79,6 +79,14 @@ db.exec(`
     total_proof           TEXT,
     payment_commitment    TEXT,
     payment_proof         TEXT,
+    disclosure_pubkey     TEXT,
+    encrypted_blob        TEXT,
+    encrypted_quantity_opening  TEXT,
+    encrypted_total_opening     TEXT,
+    quantity_total_proof_json   TEXT,
+    payment_equality_proof_json TEXT,
+    proof_bundle_json           TEXT,
+    proof_embedded_in_vc  INTEGER NOT NULL DEFAULT 0,
     context_hash          TEXT NOT NULL,
     order_vc_cid          TEXT,
     order_vc_hash         TEXT,
@@ -87,22 +95,14 @@ db.exec(`
   )
 `);
 
-db.exec(`
-  CREATE TABLE IF NOT EXISTS order_private_attestations (
-    order_id                    TEXT PRIMARY KEY NOT NULL,
-    product_address             TEXT NOT NULL,
-    buyer_address               TEXT NOT NULL,
-    encrypted_blob              TEXT NOT NULL,
-    disclosure_pubkey           TEXT NOT NULL,
-    encrypted_quantity_opening  TEXT,
-    encrypted_total_opening     TEXT,
-    quantity_total_proof_json   TEXT,
-    payment_equality_proof_json TEXT,
-    proof_bundle_json           TEXT,
-    created_at                  TEXT NOT NULL DEFAULT (datetime('now')),
-    updated_at                  TEXT NOT NULL DEFAULT (datetime('now'))
-  )
-`);
+ensureColumn('product_orders', 'disclosure_pubkey', 'TEXT');
+ensureColumn('product_orders', 'encrypted_blob', 'TEXT');
+ensureColumn('product_orders', 'encrypted_quantity_opening', 'TEXT');
+ensureColumn('product_orders', 'encrypted_total_opening', 'TEXT');
+ensureColumn('product_orders', 'quantity_total_proof_json', 'TEXT');
+ensureColumn('product_orders', 'payment_equality_proof_json', 'TEXT');
+ensureColumn('product_orders', 'proof_bundle_json', 'TEXT');
+ensureColumn('product_orders', 'proof_embedded_in_vc', 'INTEGER NOT NULL DEFAULT 0');
 
 db.exec(`
   CREATE TABLE IF NOT EXISTS indexed_products (

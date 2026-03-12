@@ -57,14 +57,17 @@ function Field({ label, value, mono = false, source }) {
   );
 }
 
-const VCViewer = ({ vc, sidecar, report }) => {
+const VCViewer = ({ vc, report }) => {
   const [showRaw, setShowRaw] = useState(false);
   const safeVc = vc || {};
   const subject = safeVc.credentialSubject || {};
   const listing = subject.listing || {};
   const order = subject.order || {};
   const commitments = subject.commitments || {};
+  const zkProofs = subject.zkProofs || {};
   const attestation = subject.attestation || {};
+  const credentialSchema = safeVc.credentialSchema || {};
+  const credentialStatus = safeVc.credentialStatus || {};
   const proofs = Array.isArray(safeVc.proof) ? safeVc.proof : [];
 
   const summary = useMemo(() => ({
@@ -91,9 +94,22 @@ const VCViewer = ({ vc, sidecar, report }) => {
           <Field label="Contract" value={summary.contractAddress} mono source="vc" />
           <Field label="Order ID" value={summary.orderId} mono source="vc" />
           <Field label="Context Hash" value={summary.contextHash} mono source="vc" />
+          <Field label="Valid From" value={safeVc.validFrom || safeVc.issuanceDate} source="vc" />
           <Field label="Audit All Passed" value={report?.summary?.allPassed} source="report" />
         </div>
       </div>
+
+      <Section title="VC Envelope">
+        <Field label="Schema Version" value={safeVc.schemaVersion} source="vc" />
+        {Array.isArray(safeVc["@context"]) && safeVc["@context"].map((entry, index) => (
+          <Field key={`context-${index}`} label={`Context ${index + 1}`} value={entry} mono source="vc" />
+        ))}
+        <Field label="Credential Schema ID" value={credentialSchema.id} mono source="vc" />
+        <Field label="Credential Schema Type" value={credentialSchema.type} source="vc" />
+        <Field label="Credential Status ID" value={credentialStatus.id} mono source="vc" />
+        <Field label="Credential Status Type" value={credentialStatus.type} source="vc" />
+        <Field label="Credential Status Purpose" value={credentialStatus.statusPurpose} source="vc" />
+      </Section>
 
       <Section title="Listing">
         <Field label="Unit Price Wei" value={listing.unitPriceWei} source="vc" />
@@ -127,19 +143,19 @@ const VCViewer = ({ vc, sidecar, report }) => {
 
       <Section title="Attestation">
         <Field label="Context Hash" value={attestation.contextHash} mono source="vc" />
-        <Field label="Proof Source Type" value={attestation.proofSource?.type} source="vc" />
-        <Field label="Proof Source Order ID" value={attestation.proofSource?.orderId} mono source="vc" />
-        <Field label="Proof Source Version" value={attestation.proofSource?.version} source="vc" />
         <Field label="Disclosure Public Key" value={attestation.disclosurePubKey || attestation.disclosurePubkey} mono source="vc" />
-        {sidecar && (
-          <div className="rounded border border-gray-200 bg-gray-50 p-3 space-y-2">
-            <div className="font-medium text-gray-700 text-sm">Resolved Sidecar</div>
-            <Field label="Sidecar Order ID" value={sidecar.orderId} mono source="sidecar" />
-            <Field label="Sidecar Buyer Address" value={sidecar.buyerAddress} mono source="sidecar" />
-            <Field label="Quantity Proof Present" value={Boolean(sidecar.quantityTotalProof)} source="sidecar" />
-            <Field label="Payment Proof Present" value={Boolean(sidecar.paymentEqualityProof)} source="sidecar" />
-          </div>
-        )}
+      </Section>
+
+      <Section title="Embedded ZK Proofs">
+        <Field label="Proof Schema Version" value={zkProofs.schemaVersion} source="vc" />
+        <Field label="Quantity Proof Type" value={zkProofs.quantityTotalProof?.proofType} source="vc" />
+        <Field label="Quantity Proof R" value={zkProofs.quantityTotalProof?.proofRHex || zkProofs.quantityTotalProof?.proof_r_hex} mono source="vc" />
+        <Field label="Quantity Proof S" value={zkProofs.quantityTotalProof?.proofSHex || zkProofs.quantityTotalProof?.proof_s_hex} mono source="vc" />
+        <Field label="Quantity Proof Context" value={zkProofs.quantityTotalProof?.contextHash || zkProofs.quantityTotalProof?.context_hash_hex} mono source="vc" />
+        <Field label="Payment Proof Type" value={zkProofs.totalPaymentEqualityProof?.proofType} source="vc" />
+        <Field label="Payment Proof R" value={zkProofs.totalPaymentEqualityProof?.proofRHex || zkProofs.totalPaymentEqualityProof?.proof_r_hex} mono source="vc" />
+        <Field label="Payment Proof S" value={zkProofs.totalPaymentEqualityProof?.proofSHex || zkProofs.totalPaymentEqualityProof?.proof_s_hex} mono source="vc" />
+        <Field label="Payment Proof Context" value={zkProofs.totalPaymentEqualityProof?.contextHash || zkProofs.totalPaymentEqualityProof?.context_hash_hex} mono source="vc" />
       </Section>
 
       <Section title="Proof Entries">

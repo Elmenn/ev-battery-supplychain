@@ -178,12 +178,14 @@ const stmtUpdateMetadataVcCid = db.prepare(
 );
 
 const stmtHealthTrackedProducts = db.prepare('SELECT COUNT(*) AS count FROM indexed_products');
-const stmtHealthOrdersMissingAttestation = db.prepare(`
+const stmtHealthOrdersMissingEmbeddedProofs = db.prepare(`
   SELECT COUNT(*) AS count
-  FROM product_orders o
-  LEFT JOIN order_private_attestations a ON a.order_id = o.order_id
-  WHERE o.status IN ('payment_pending_recording', 'payment_recorded', 'order_confirmed', 'bound', 'delivered', 'expired')
-    AND a.order_id IS NULL
+  FROM product_orders
+  WHERE status IN ('payment_pending_recording', 'payment_recorded', 'order_confirmed', 'bound', 'delivered', 'expired')
+    AND (
+      quantity_total_proof_json IS NULL
+      OR payment_equality_proof_json IS NULL
+    )
 `);
 const stmtHealthTrackedMissingMetadata = db.prepare(`
   SELECT COUNT(*) AS count
@@ -615,7 +617,7 @@ class BackendIndexer {
       lastPollDurationMs: this.lastPollDurationMs,
       lastError: this.lastError || this.getIndexerState('last_poll_error'),
       trackedProducts: stmtHealthTrackedProducts.get().count,
-      ordersMissingAttestation: stmtHealthOrdersMissingAttestation.get().count,
+      ordersMissingEmbeddedProofs: stmtHealthOrdersMissingEmbeddedProofs.get().count,
       trackedProductsMissingMetadata: stmtHealthTrackedMissingMetadata.get().count,
       trackedProductsIncompatible: stmtHealthTrackedIncompatible.get().count,
     };

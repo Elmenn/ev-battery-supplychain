@@ -20,6 +20,7 @@ Reference docs:
 - `docs/current/02-railgun-integration.md`
 - `docs/current/03-auditor-verification.md` (includes dedicated DID signing/verification section `1.1`)
 - `docs/current/04-did-signing-and-verification-standards.md` (standards mapping and compliance statement)
+- `docs/current/06-vrc-model.md` (current VRC shape, W3C VC alignment, and placeholder template)
 
 ## Prerequisites
 - Node.js 18+

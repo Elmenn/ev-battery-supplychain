@@ -12,31 +12,55 @@ function App() {
   const [myAddress, setMyAddress] = useState(null);
 
   useEffect(() => {
+    if (!window.ethereum) {
+      console.warn("MetaMask not found");
+      return undefined;
+    }
+
+    let cancelled = false;
+
+    const syncWalletState = async (accounts = null) => {
+      const nextProvider = new ethers.BrowserProvider(window.ethereum);
+      const nextAddress =
+        Array.isArray(accounts) && accounts.length > 0
+          ? accounts[0]
+          : await nextProvider.send("eth_accounts", []);
+
+      if (cancelled) return;
+
+      setProvider(nextProvider);
+      setMyAddress(
+        Array.isArray(nextAddress)
+          ? (nextAddress[0] ? nextAddress[0].toLowerCase() : null)
+          : (nextAddress ? nextAddress.toLowerCase() : null)
+      );
+    };
+
     const init = async () => {
-      if (window.ethereum) {
-        const p = new ethers.BrowserProvider(window.ethereum);
-        const signer = await p.getSigner();
-        const address = await signer.getAddress();
-        setProvider(p);
-        setMyAddress(address.toLowerCase());
-
-        window.ethereum.on("accountsChanged", (accounts) => {
-          if (accounts.length > 0) {
-            setMyAddress(accounts[0].toLowerCase());
-          } else {
-            setMyAddress(null);
-          }
-        });
-
-        window.ethereum.on("chainChanged", () => {
-          window.location.reload();
-        });
-      } else {
-        console.warn("MetaMask not found");
-      }
+      await syncWalletState();
     };
 
     init();
+
+    const handleAccountsChanged = (accounts) => {
+      syncWalletState(accounts).catch((error) => {
+        console.error("Failed to sync wallet after account change:", error);
+        setMyAddress(null);
+      });
+    };
+
+    const handleChainChanged = () => {
+      window.location.reload();
+    };
+
+    window.ethereum.on("accountsChanged", handleAccountsChanged);
+    window.ethereum.on("chainChanged", handleChainChanged);
+
+    return () => {
+      cancelled = true;
+      window.ethereum?.removeListener?.("accountsChanged", handleAccountsChanged);
+      window.ethereum?.removeListener?.("chainChanged", handleChainChanged);
+    };
   }, []);
 
   const backendUrl = "http://localhost:5000";

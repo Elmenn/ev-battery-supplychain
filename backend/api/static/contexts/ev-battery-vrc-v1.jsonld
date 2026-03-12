@@ -1,0 +1,36 @@
+{
+  "@context": {
+    "@version": 1.1,
+    "@protected": true,
+    "evsc": "https://example.org/vocab/ev-battery-supply-chain#",
+    "listing": "evsc:listing",
+    "order": "evsc:order",
+    "commitments": "evsc:commitments",
+    "zkProofs": "evsc:zkProofs",
+    "attestation": "evsc:attestation",
+    "certificateCredential": "evsc:certificateCredential",
+    "componentCredentials": {
+      "@id": "evsc:componentCredential",
+      "@container": "@set"
+    },
+    "unitPriceWei": "evsc:unitPriceWei",
+    "unitPriceHash": "evsc:unitPriceHash",
+    "listingSnapshotCid": "evsc:listingSnapshotCid",
+    "sellerRailgunAddress": "evsc:sellerRailgunAddress",
+    "orderId": "evsc:orderId",
+    "escrowAddr": "evsc:escrowAddress",
+    "memoHash": "evsc:memoHash",
+    "railgunTxRef": "evsc:railgunTxRef",
+    "quantityCommitment": "evsc:quantityCommitment",
+    "totalCommitment": "evsc:totalCommitment",
+    "paymentCommitment": "evsc:paymentCommitment",
+    "quantityTotalProof": "evsc:quantityTotalProof",
+    "totalPaymentEqualityProof": "evsc:totalPaymentEqualityProof",
+    "proofType": "evsc:proofType",
+    "proofRHex": "evsc:proofRHex",
+    "proofSHex": "evsc:proofSHex",
+    "contextHash": "evsc:contextHash",
+    "disclosurePubKey": "evsc:disclosurePubKey",
+    "attestationVersion": "evsc:attestationVersion"
+  }
+}

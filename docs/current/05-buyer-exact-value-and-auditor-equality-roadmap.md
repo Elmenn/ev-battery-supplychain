@@ -48,7 +48,7 @@ Private:
 ### Active storage paths
 - listing metadata: `product_metadata`
 - order records: `product_orders`
-- proof / attestation sidecar: `order_private_attestations`
+- recoverable proof-bearing order row: `product_orders`
 - archived VC JSON: `vc_archives`
 - credential-status registry: `vc_status`
 
@@ -114,13 +114,13 @@ Acceptance:
    - quantity-total proof
    - total-payment equality proof
 6. Buyer completes Railgun transfer and captures `memoHash` / `railgunTxRef`.
-7. Frontend writes a backend recovery bundle for the order and attestation rows.
+7. Frontend writes a backend recovery bundle for the order row, including the proof payloads.
 8. Frontend records the order on-chain via `recordPrivateOrderPayment(...)`.
 9. Backend reconciliation / indexer can refresh the canonical order row from chain.
 10. Seller builds and signs the final order VC.
 11. Frontend uploads and archives the VC.
 12. Seller anchors the VC CID on-chain with `confirmOrderById(...)`.
-13. Auditor loads the VC, status row, and sidecar proof bundle and verifies the active checks.
+13. Auditor loads the final VRC, status row, and verifies the active checks directly from the embedded proofs.
 
 ---
 
@@ -141,9 +141,9 @@ Primary VC fields:
 - `credentialSubject.commitments.totalCommitment`
 - `credentialSubject.commitments.paymentCommitment`
 - `credentialSubject.attestation.contextHash`
-- `credentialSubject.attestation.proofSource`
+- `credentialSubject.zkProofs`
 
-Primary sidecar fields:
+Primary embedded proof fields:
 - `orderId`
 - `encryptedBlob`
 - `disclosurePubkey`
@@ -154,8 +154,8 @@ Primary sidecar fields:
 - `proofBundle`
 
 Operational rule:
-- the VC carries the stable anchors and proof-source reference
-- proof payloads are loaded from sidecar by `orderId`
+- the final VRC carries the stable anchors and the proof payloads
+- auditors verify directly from the VRC without a separate auxiliary lookup
 
 ---
 
@@ -170,9 +170,9 @@ Operational rule:
 ### Integration tests
 - create listing with `createProductV2`
 - buyer private quantity order flow
-- sidecar persistence for order and attestation rows
+- recovery-bundle persistence for a proof-bearing order row
 - seller `confirmOrderById`
-- auditor verify from VC + sidecar
+- auditor verify from one self-contained final VRC
 
 ### Security tests
 - replay with different `orderId`: fail
@@ -194,7 +194,7 @@ Operational rule:
 - Risk: numeric drift in JavaScript.
   - Mitigation: exact integer-string handling in frontend and strict scalar-path normalization before proof calls.
 - Risk: proof / VC schema drift.
-  - Mitigation: explicit field names, schema versions, and order-based sidecar storage.
+  - Mitigation: explicit field names, schema versions, and a single self-contained final VRC format.
 - Risk: browser crash or device switch during payment flow.
   - Mitigation: backend recovery bundle, reconcile route, and event-driven indexer refresh.
 - Risk: single IPFS gateway / pin failure during audit retrieval.

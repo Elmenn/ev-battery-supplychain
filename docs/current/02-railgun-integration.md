@@ -16,7 +16,7 @@ sequenceDiagram
     Buyer->>UI: Open listing and enter private quantity
     UI->>ZKP: Generate C_qty, C_total, C_pay and proof bundle
     ZKP-->>UI: Commitments + proofs
-    UI->>API: Save recovery bundle (order + attestation)
+    UI->>API: Save recovery bundle (proof-bearing order row)
     API-->>UI: Recovery bundle stored
 
     Buyer->>UI: Approve private payment
@@ -25,7 +25,7 @@ sequenceDiagram
     UI->>SC: recordPrivateOrderPayment(orderId, ..., contextHash)
     SC-->>UI: Order recorded on-chain
 
-    UI->>API: Update sidecar order status
+    UI->>API: Update recoverable order row
     API-->>UI: Order row updated
     SC-->>API: Order event emitted
     API-->>API: Indexer refreshes canonical order state
@@ -128,7 +128,7 @@ Verified privately:
 This means Railgun provides the private transfer path, while the application adds order-specific commitment and proof binding around that transfer.
 
 ## Operational Recovery and Durability
-- the backend stores recoverable `product_orders` and `order_private_attestations` rows keyed by `orderId`
+- the backend stores one recoverable `product_orders` row keyed by `orderId`, including the proof payloads that are later embedded in the final VRC
 - a backend reconciler can rebuild missing order rows from live chain state
 - a backend indexer polls Sepolia events and refreshes tracked order state automatically
 - final VCs are archived to backend storage and later fetched archive-first, then from multiple IPFS gateways if needed

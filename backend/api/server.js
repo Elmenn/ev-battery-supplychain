@@ -35,8 +35,6 @@ const {
   validateReconcileBody,
   validateOrderStatusBody,
   validateOrderVcBody,
-  validateOrderAttestationBody,
-  validateProofBundlePatchBody,
   validateVcArchiveBody,
   validateVcStatusPatchBody,
 } = require('./requestSchemas');
@@ -45,6 +43,7 @@ const db = require('./db');
 const app = express();
 const port = Number(process.env.PORT || 5000);
 const abiCoder = AbiCoder.defaultAbiCoder();
+const STATIC_DIR = path.resolve(__dirname, 'static');
 
 const corsOptions = {
   origin: ['http://localhost:3000', 'http://localhost:3001'],
@@ -302,28 +301,17 @@ function mapOrderRow(row) {
     totalProof: parseMaybeJson(row.total_proof),
     paymentCommitment: row.payment_commitment,
     paymentProof: parseMaybeJson(row.payment_proof),
-    contextHash: row.context_hash,
-    orderVcCid: row.order_vc_cid,
-    orderVcHash: row.order_vc_hash,
-    createdAt: row.created_at,
-    updatedAt: row.updated_at,
-  };
-}
-
-function mapOrderAttestationRow(row) {
-  if (!row) return null;
-
-  return {
-    orderId: row.order_id,
-    productAddress: row.product_address,
-    buyerAddress: row.buyer_address,
-    encryptedBlob: row.encrypted_blob,
     disclosurePubkey: row.disclosure_pubkey,
+    encryptedBlob: parseMaybeJson(row.encrypted_blob),
     encryptedQuantityOpening: parseMaybeJson(row.encrypted_quantity_opening),
     encryptedTotalOpening: parseMaybeJson(row.encrypted_total_opening),
     quantityTotalProof: parseMaybeJson(row.quantity_total_proof_json),
     paymentEqualityProof: parseMaybeJson(row.payment_equality_proof_json),
     proofBundle: parseMaybeJson(row.proof_bundle_json),
+    proofEmbeddedInVc: Boolean(row.proof_embedded_in_vc),
+    contextHash: row.context_hash,
+    orderVcCid: row.order_vc_cid,
+    orderVcHash: row.order_vc_hash,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
@@ -452,6 +440,14 @@ const stmtUpsertOrder = db.prepare(`
     total_proof,
     payment_commitment,
     payment_proof,
+    disclosure_pubkey,
+    encrypted_blob,
+    encrypted_quantity_opening,
+    encrypted_total_opening,
+    quantity_total_proof_json,
+    payment_equality_proof_json,
+    proof_bundle_json,
+    proof_embedded_in_vc,
     context_hash,
     order_vc_cid,
     order_vc_hash,
@@ -475,6 +471,14 @@ const stmtUpsertOrder = db.prepare(`
     @totalProof,
     @paymentCommitment,
     @paymentProof,
+    @disclosurePubkey,
+    @encryptedBlob,
+    @encryptedQuantityOpening,
+    @encryptedTotalOpening,
+    @quantityTotalProof,
+    @paymentEqualityProof,
+    @proofBundle,
+    @proofEmbeddedInVc,
     @contextHash,
     @orderVcCid,
     @orderVcHash,
@@ -498,6 +502,14 @@ const stmtUpsertOrder = db.prepare(`
     total_proof = excluded.total_proof,
     payment_commitment = excluded.payment_commitment,
     payment_proof = excluded.payment_proof,
+    disclosure_pubkey = excluded.disclosure_pubkey,
+    encrypted_blob = excluded.encrypted_blob,
+    encrypted_quantity_opening = excluded.encrypted_quantity_opening,
+    encrypted_total_opening = excluded.encrypted_total_opening,
+    quantity_total_proof_json = excluded.quantity_total_proof_json,
+    payment_equality_proof_json = excluded.payment_equality_proof_json,
+    proof_bundle_json = excluded.proof_bundle_json,
+    proof_embedded_in_vc = excluded.proof_embedded_in_vc,
     context_hash = excluded.context_hash,
     order_vc_cid = excluded.order_vc_cid,
     order_vc_hash = excluded.order_vc_hash,
@@ -518,61 +530,6 @@ const stmtUpdateOrderStatus = db.prepare(
 const stmtUpdateOrderVc = db.prepare(
   "UPDATE product_orders SET order_vc_cid = ?, order_vc_hash = ?, updated_at = datetime('now') WHERE order_id = ?"
 );
-
-const stmtUpsertOrderAttestation = db.prepare(`
-  INSERT INTO order_private_attestations (
-    order_id,
-    product_address,
-    buyer_address,
-    encrypted_blob,
-    disclosure_pubkey,
-    encrypted_quantity_opening,
-    encrypted_total_opening,
-    quantity_total_proof_json,
-    payment_equality_proof_json,
-    proof_bundle_json,
-    updated_at
-  ) VALUES (
-    @orderId,
-    @productAddress,
-    @buyerAddress,
-    @encryptedBlob,
-    @disclosurePubkey,
-    @encryptedQuantityOpening,
-    @encryptedTotalOpening,
-    @quantityTotalProof,
-    @paymentEqualityProof,
-    @proofBundle,
-    datetime('now')
-  )
-  ON CONFLICT(order_id) DO UPDATE SET
-    product_address = excluded.product_address,
-    buyer_address = excluded.buyer_address,
-    encrypted_blob = excluded.encrypted_blob,
-    disclosure_pubkey = excluded.disclosure_pubkey,
-    encrypted_quantity_opening = excluded.encrypted_quantity_opening,
-    encrypted_total_opening = excluded.encrypted_total_opening,
-    quantity_total_proof_json = excluded.quantity_total_proof_json,
-    payment_equality_proof_json = excluded.payment_equality_proof_json,
-    proof_bundle_json = excluded.proof_bundle_json,
-    updated_at = datetime('now')
-`);
-
-const stmtGetOrderAttestation = db.prepare(
-  'SELECT * FROM order_private_attestations WHERE order_id = ?'
-);
-
-const stmtUpdateOrderAttestationProofBundle = db.prepare(`
-  UPDATE order_private_attestations
-  SET
-    encrypted_quantity_opening = @encryptedQuantityOpening,
-    encrypted_total_opening = @encryptedTotalOpening,
-    quantity_total_proof_json = @quantityTotalProof,
-    payment_equality_proof_json = @paymentEqualityProof,
-    proof_bundle_json = @proofBundle,
-    updated_at = datetime('now')
-  WHERE order_id = @orderId
-`);
 
 const stmtUpsertVcArchive = db.prepare(`
   INSERT INTO vc_archives (
@@ -614,6 +571,13 @@ const stmtGetVcStatus = db.prepare(`
   FROM vc_status
   WHERE cid = ?
 `);
+const stmtGetVcStatusByOrderId = db.prepare(`
+  SELECT cid, vc_payload_hash, product_address, order_id, current_status, reason, revoked_at, created_at, updated_at
+  FROM vc_status
+  WHERE order_id = ?
+  ORDER BY updated_at DESC, created_at DESC
+  LIMIT 1
+`);
 const stmtInsertVcStatusIfMissing = db.prepare(`
   INSERT OR IGNORE INTO vc_status (
     cid,
@@ -648,13 +612,14 @@ const stmtUpdateVcStatus = db.prepare(`
   WHERE cid = @cid
 `);
 
-const txUpsertOrderRecoveryBundle = db.transaction((orderParams, attestationParams) => {
+const txUpsertOrderRecoveryBundle = db.transaction((orderParams) => {
   stmtUpsertOrder.run(orderParams);
-  stmtUpsertOrderAttestation.run(attestationParams);
 });
 
 app.use(cors(corsOptions));
 app.use(express.json());
+app.use('/contexts', express.static(path.join(STATIC_DIR, 'contexts')));
+app.use('/schemas', express.static(path.join(STATIC_DIR, 'schemas')));
 
 app.get('/health', (_req, res) => {
   return res.json({
@@ -763,6 +728,16 @@ app.get('/vc-status/:cid', (req, res) => {
   }
 });
 
+app.get('/vc-status/order/:orderId', (req, res) => {
+  try {
+    const orderId = normalizeBytes32(req.params.orderId, 'orderId', { required: true });
+    return res.json(mapVcStatusRow(stmtGetVcStatusByOrderId.get(orderId)));
+  } catch (error) {
+    console.error('Error fetching VC status by orderId:', error);
+    return res.status(400).json({ error: error.message || 'Invalid VC status lookup' });
+  }
+});
+
 app.patch('/vc-status/:cid', (req, res) => {
   try {
     assertVcStatusAdmin(req);
@@ -797,6 +772,39 @@ app.patch('/vc-status/:cid', (req, res) => {
     return res.json({ success: true, status: mapVcStatusRow(stmtGetVcStatus.get(cid)) });
   } catch (error) {
     console.error('Error updating VC status:', error);
+    const statusCode = error.httpStatus || 400;
+    return res.status(statusCode).json({ error: error.message || 'Invalid VC status update' });
+  }
+});
+
+app.patch('/vc-status/order/:orderId', (req, res) => {
+  try {
+    assertVcStatusAdmin(req);
+    validateVcStatusPatchBody(req.body || {});
+    const orderId = normalizeBytes32(req.params.orderId, 'orderId', { required: true });
+    const existingStatus = stmtGetVcStatusByOrderId.get(orderId);
+    if (!existingStatus) {
+      return res.status(404).json({ error: 'Not found' });
+    }
+
+    const params = buildVcStatusParams(
+      {
+        cid: existingStatus.cid,
+        vcPayloadHash: existingStatus.vc_payload_hash,
+        productAddress: existingStatus.product_address,
+        orderId: existingStatus.order_id,
+      },
+      {
+        status: req.body.status,
+        reason: req.body.reason,
+        revokedAt: req.body.revokedAt,
+      }
+    );
+
+    stmtUpdateVcStatus.run(params);
+    return res.json({ success: true, status: mapVcStatusRow(stmtGetVcStatusByOrderId.get(orderId)) });
+  } catch (error) {
+    console.error('Error updating VC status by orderId:', error);
     const statusCode = error.httpStatus || 400;
     return res.status(statusCode).json({ error: error.message || 'Invalid VC status update' });
   }
@@ -949,6 +957,14 @@ app.post('/orders', (req, res) => {
       totalProof,
       paymentCommitment,
       paymentProof,
+      disclosurePubkey,
+      encryptedBlob,
+      encryptedQuantityOpening,
+      encryptedTotalOpening,
+      quantityTotalProof,
+      paymentEqualityProof,
+      proofBundle,
+      proofEmbeddedInVc,
       contextHash,
       context,
       orderVcCid,
@@ -980,6 +996,14 @@ app.post('/orders', (req, res) => {
       totalProof: stringifyMaybeJson(totalProof),
       paymentCommitment: normalizeBytes32(paymentCommitment, 'paymentCommitment'),
       paymentProof: stringifyMaybeJson(paymentProof),
+      disclosurePubkey: normalizeString(disclosurePubkey, 'disclosurePubkey'),
+      encryptedBlob: stringifyMaybeJson(encryptedBlob),
+      encryptedQuantityOpening: stringifyMaybeJson(encryptedQuantityOpening),
+      encryptedTotalOpening: stringifyMaybeJson(encryptedTotalOpening),
+      quantityTotalProof: stringifyMaybeJson(quantityTotalProof),
+      paymentEqualityProof: stringifyMaybeJson(paymentEqualityProof),
+      proofBundle: stringifyMaybeJson(proofBundle),
+      proofEmbeddedInVc: proofEmbeddedInVc ? 1 : 0,
       contextHash: resolvedContextHash,
       orderVcCid: orderVcCid || null,
       orderVcHash: normalizeBytes32(orderVcHash, 'orderVcHash'),
@@ -1006,48 +1030,57 @@ app.post('/orders/recovery-bundle', (req, res) => {
     const normalizedProductAddress = normalizeAddress(order.productAddress, 'order.productAddress', { required: true });
     const normalizedBuyerAddress = normalizeAddress(order.buyerAddress, 'order.buyerAddress', { required: true });
 
-    txUpsertOrderRecoveryBundle(
-      {
-        orderId: normalizedOrderId,
-        productAddress: normalizedProductAddress,
-        productId: normalizeString(order.productId, 'order.productId', { required: true }),
-        escrowAddress: normalizeAddress(order.escrowAddress || order.productAddress, 'order.escrowAddress', { required: true }),
-        chainId: normalizeString(order.chainId, 'order.chainId', { required: true }),
-        sellerAddress: normalizeAddress(order.sellerAddress, 'order.sellerAddress', { required: true }),
-        buyerAddress: normalizedBuyerAddress,
-        status: normalizeString(order.status, 'order.status', { required: true }),
-        memoHash: normalizeBytes32(order.memoHash, 'order.memoHash', { required: true }),
-        railgunTxRef: normalizeBytes32(order.railgunTxRef, 'order.railgunTxRef', { required: true }),
-        unitPriceWei: normalizeString(order.unitPriceWei, 'order.unitPriceWei', { required: true }),
-        unitPriceHash: normalizeBytes32(order.unitPriceHash, 'order.unitPriceHash', { required: true }),
-        quantityCommitment: normalizeBytes32(order.quantityCommitment, 'order.quantityCommitment', { required: true }),
-        quantityProof: stringifyMaybeJson(order.quantityProof),
-        totalCommitment: normalizeBytes32(order.totalCommitment, 'order.totalCommitment', { required: true }),
-        totalProof: stringifyMaybeJson(order.totalProof),
-        paymentCommitment: normalizeBytes32(order.paymentCommitment, 'order.paymentCommitment', { required: true }),
-        paymentProof: stringifyMaybeJson(order.paymentProof),
-        contextHash: resolvedContextHash,
-        orderVcCid: order.orderVcCid || null,
-        orderVcHash: normalizeBytes32(order.orderVcHash, 'order.orderVcHash'),
-      },
-      {
-        orderId: normalizedOrderId,
-        productAddress: normalizedProductAddress,
-        buyerAddress: normalizedBuyerAddress,
-        encryptedBlob: stringifyMaybeJson(attestation.encryptedBlob ?? null),
-        disclosurePubkey: normalizeString(attestation.disclosurePubkey, 'attestation.disclosurePubkey', { required: true }),
-        encryptedQuantityOpening: stringifyMaybeJson(attestation.encryptedQuantityOpening),
-        encryptedTotalOpening: stringifyMaybeJson(attestation.encryptedTotalOpening),
-        quantityTotalProof: stringifyMaybeJson(attestation.quantityTotalProof),
-        paymentEqualityProof: stringifyMaybeJson(attestation.paymentEqualityProof),
-        proofBundle: stringifyMaybeJson(attestation.proofBundle),
-      }
+    const mergedDisclosurePubkey = normalizeString(
+      order.disclosurePubkey ?? attestation?.disclosurePubkey,
+      'order.disclosurePubkey'
     );
+    const mergedEncryptedBlob = order.encryptedBlob ?? attestation?.encryptedBlob ?? null;
+    const mergedEncryptedQuantityOpening =
+      order.encryptedQuantityOpening ?? attestation?.encryptedQuantityOpening ?? null;
+    const mergedEncryptedTotalOpening =
+      order.encryptedTotalOpening ?? attestation?.encryptedTotalOpening ?? null;
+    const mergedQuantityTotalProof =
+      order.quantityTotalProof ?? attestation?.quantityTotalProof ?? null;
+    const mergedPaymentEqualityProof =
+      order.paymentEqualityProof ?? attestation?.paymentEqualityProof ?? null;
+    const mergedProofBundle =
+      order.proofBundle ?? attestation?.proofBundle ?? null;
+
+    txUpsertOrderRecoveryBundle({
+      orderId: normalizedOrderId,
+      productAddress: normalizedProductAddress,
+      productId: normalizeString(order.productId, 'order.productId', { required: true }),
+      escrowAddress: normalizeAddress(order.escrowAddress || order.productAddress, 'order.escrowAddress', { required: true }),
+      chainId: normalizeString(order.chainId, 'order.chainId', { required: true }),
+      sellerAddress: normalizeAddress(order.sellerAddress, 'order.sellerAddress', { required: true }),
+      buyerAddress: normalizedBuyerAddress,
+      status: normalizeString(order.status, 'order.status', { required: true }),
+      memoHash: normalizeBytes32(order.memoHash, 'order.memoHash', { required: true }),
+      railgunTxRef: normalizeBytes32(order.railgunTxRef, 'order.railgunTxRef', { required: true }),
+      unitPriceWei: normalizeString(order.unitPriceWei, 'order.unitPriceWei', { required: true }),
+      unitPriceHash: normalizeBytes32(order.unitPriceHash, 'order.unitPriceHash', { required: true }),
+      quantityCommitment: normalizeBytes32(order.quantityCommitment, 'order.quantityCommitment', { required: true }),
+      quantityProof: stringifyMaybeJson(order.quantityProof),
+      totalCommitment: normalizeBytes32(order.totalCommitment, 'order.totalCommitment', { required: true }),
+      totalProof: stringifyMaybeJson(order.totalProof),
+      paymentCommitment: normalizeBytes32(order.paymentCommitment, 'order.paymentCommitment', { required: true }),
+      paymentProof: stringifyMaybeJson(order.paymentProof),
+      disclosurePubkey: mergedDisclosurePubkey,
+      encryptedBlob: stringifyMaybeJson(mergedEncryptedBlob),
+      encryptedQuantityOpening: stringifyMaybeJson(mergedEncryptedQuantityOpening),
+      encryptedTotalOpening: stringifyMaybeJson(mergedEncryptedTotalOpening),
+      quantityTotalProof: stringifyMaybeJson(mergedQuantityTotalProof),
+      paymentEqualityProof: stringifyMaybeJson(mergedPaymentEqualityProof),
+      proofBundle: stringifyMaybeJson(mergedProofBundle),
+      proofEmbeddedInVc: order.proofEmbeddedInVc ? 1 : 0,
+      contextHash: resolvedContextHash,
+      orderVcCid: order.orderVcCid || null,
+      orderVcHash: normalizeBytes32(order.orderVcHash, 'order.orderVcHash'),
+    });
 
     return res.status(201).json({
       success: true,
       order: mapOrderRow(stmtGetOrder.get(normalizedOrderId)),
-      attestation: mapOrderAttestationRow(stmtGetOrderAttestation.get(normalizedOrderId)),
     });
   } catch (error) {
     console.error('Error saving order recovery bundle:', error);
@@ -1153,17 +1186,33 @@ app.post('/orders/:orderId/reconcile', (req, res) => {
       totalProof: stringifyMaybeJson(existingOrder?.totalProof ?? null),
       paymentCommitment: onChainOrder.paymentCommitment,
       paymentProof: stringifyMaybeJson(existingOrder?.paymentProof ?? null),
+      disclosurePubkey: normalizeString(
+        req.body.disclosurePubkey ?? existingOrder?.disclosurePubkey,
+        'disclosurePubkey'
+      ),
+      encryptedBlob: stringifyMaybeJson(req.body.encryptedBlob ?? existingOrder?.encryptedBlob ?? null),
+      encryptedQuantityOpening: stringifyMaybeJson(
+        req.body.encryptedQuantityOpening ?? existingOrder?.encryptedQuantityOpening ?? null
+      ),
+      encryptedTotalOpening: stringifyMaybeJson(
+        req.body.encryptedTotalOpening ?? existingOrder?.encryptedTotalOpening ?? null
+      ),
+      quantityTotalProof: stringifyMaybeJson(req.body.quantityTotalProof ?? existingOrder?.quantityTotalProof ?? null),
+      paymentEqualityProof: stringifyMaybeJson(
+        req.body.paymentEqualityProof ?? existingOrder?.paymentEqualityProof ?? null
+      ),
+      proofBundle: stringifyMaybeJson(req.body.proofBundle ?? existingOrder?.proofBundle ?? null),
+      proofEmbeddedInVc: req.body.proofEmbeddedInVc || existingOrder?.proofEmbeddedInVc ? 1 : 0,
       contextHash: resolvedContextHash,
       orderVcCid: existingOrder?.orderVcCid || null,
       orderVcHash: onChainOrder.vcHash ?? existingOrder?.orderVcHash ?? null,
     });
 
     const reconciledOrder = mapOrderRow(stmtGetOrder.get(orderId));
-    const attestation = mapOrderAttestationRow(stmtGetOrderAttestation.get(orderId));
     return res.json({
       success: true,
       order: reconciledOrder,
-      attestationPresent: Boolean(attestation),
+      proofsPresent: Boolean(reconciledOrder?.quantityTotalProof && reconciledOrder?.paymentEqualityProof),
       recoveredFromChain: !existingRow,
     });
   } catch (error) {
@@ -1198,92 +1247,6 @@ app.patch('/orders/:orderId/vc-cid', (req, res) => {
   } catch (error) {
     console.error('Error updating order VC CID:', error);
     return handleValidationError(res, error, 'Invalid VC patch payload');
-  }
-});
-
-app.post('/order-attestations', (req, res) => {
-  try {
-    validateOrderAttestationBody(req.body || {});
-    const {
-      orderId,
-      productAddress,
-      buyerAddress,
-      encryptedBlob,
-      disclosurePubkey,
-      encryptedQuantityOpening,
-      encryptedTotalOpening,
-      quantityTotalProof,
-      paymentEqualityProof,
-      proofBundle,
-    } = req.body;
-
-    stmtUpsertOrderAttestation.run({
-      orderId: normalizeBytes32(orderId, 'orderId', { required: true }),
-      productAddress: normalizeAddress(productAddress, 'productAddress', { required: true }),
-      buyerAddress: normalizeAddress(buyerAddress, 'buyerAddress', { required: true }),
-      encryptedBlob: stringifyMaybeJson(encryptedBlob ?? null),
-      disclosurePubkey: normalizeString(disclosurePubkey, 'disclosurePubkey', { required: true }),
-      encryptedQuantityOpening: stringifyMaybeJson(encryptedQuantityOpening),
-      encryptedTotalOpening: stringifyMaybeJson(encryptedTotalOpening),
-      quantityTotalProof: stringifyMaybeJson(quantityTotalProof),
-      paymentEqualityProof: stringifyMaybeJson(paymentEqualityProof),
-      proofBundle: stringifyMaybeJson(proofBundle),
-    });
-
-    const row = stmtGetOrderAttestation.get(normalizeBytes32(orderId, 'orderId', { required: true }));
-    return res.status(201).json({ success: true, attestation: mapOrderAttestationRow(row) });
-  } catch (error) {
-    console.error('Error saving order attestation:', error);
-    return handleValidationError(res, error, 'Invalid order attestation payload');
-  }
-});
-
-app.get('/order-attestations/:orderId', (req, res) => {
-  try {
-    const orderId = normalizeBytes32(req.params.orderId, 'orderId', { required: true });
-    const row = stmtGetOrderAttestation.get(orderId);
-    if (!row) return res.status(404).json({ error: 'Not found' });
-    return res.json(mapOrderAttestationRow(row));
-  } catch (error) {
-    console.error('Error fetching order attestation:', error);
-    return res.status(400).json({ error: error.message || 'Invalid orderId' });
-  }
-});
-
-app.patch('/order-attestations/:orderId/proof-bundle', (req, res) => {
-  try {
-    validateProofBundlePatchBody(req.body || {});
-    const orderId = normalizeBytes32(req.params.orderId, 'orderId', { required: true });
-    const existing = stmtGetOrderAttestation.get(orderId);
-    if (!existing) return res.status(404).json({ error: 'Not found' });
-
-    const merged = {
-      orderId,
-      encryptedQuantityOpening: stringifyMaybeJson(
-        req.body.encryptedQuantityOpening ?? parseMaybeJson(existing.encrypted_quantity_opening)
-      ),
-      encryptedTotalOpening: stringifyMaybeJson(
-        req.body.encryptedTotalOpening ?? parseMaybeJson(existing.encrypted_total_opening)
-      ),
-      quantityTotalProof: stringifyMaybeJson(
-        req.body.quantityTotalProof ?? parseMaybeJson(existing.quantity_total_proof_json)
-      ),
-      paymentEqualityProof: stringifyMaybeJson(
-        req.body.paymentEqualityProof ?? parseMaybeJson(existing.payment_equality_proof_json)
-      ),
-      proofBundle: stringifyMaybeJson(
-        req.body.proofBundle ?? parseMaybeJson(existing.proof_bundle_json)
-      ),
-    };
-
-    stmtUpdateOrderAttestationProofBundle.run(merged);
-    return res.json({
-      success: true,
-      attestation: mapOrderAttestationRow(stmtGetOrderAttestation.get(orderId)),
-    });
-  } catch (error) {
-    console.error('Error updating order proof bundle:', error);
-    return handleValidationError(res, error, 'Invalid proof bundle payload');
   }
 });
 

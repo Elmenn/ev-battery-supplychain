@@ -10,7 +10,6 @@ import { NetworkName, NETWORK_CONFIG } from "@railgun-community/shared-models";
 import { connectRailgun, refreshBalances, getAllBalances, privateTransfer, checkWalletState } from "../../lib/railgun-clean";
 import { getProductMeta } from "../../utils/productMetaApi";
 import { generateX25519Keypair } from "../../utils/ecies";
-import { getOrderAttestation } from "../../utils/buyerSecretApi";
 import { getLatestOrderForProductBuyer, saveOrderRecoveryBundle, updateOrderStatus } from "../../utils/orderApi";
 import { assertScalarValue, computeOrderContextHash, generateOrderId, generateRandomBlinding, multiplyIntegerStrings, normalizeBytes32Hex, normalizeIntegerString } from "../../utils/commitmentUtils";
 import { generateQuantityTotalProof, generateTotalPaymentEqualityProof } from "../../utils/equalityProofClient";
@@ -110,18 +109,8 @@ const PrivatePaymentModal = ({ product, isOpen, onClose, onSuccess, currentUser 
     if (currentUser) {
       const latestOrder = await getLatestOrderForProductBuyer(product.address, currentUser);
       if (latestOrder?.status === "payment_pending_recording") {
-        const latestAttestation = await getOrderAttestation(latestOrder.orderId);
-        const recoveredPending = {
-          ...latestOrder,
-          disclosurePubkey: latestAttestation?.disclosurePubkey || null,
-          encryptedBlob: latestAttestation?.encryptedBlob || null,
-          encryptedQuantityOpening: latestAttestation?.encryptedQuantityOpening || null,
-          encryptedTotalOpening: latestAttestation?.encryptedTotalOpening || null,
-          quantityTotalProof: latestAttestation?.quantityTotalProof || null,
-          paymentEqualityProof: latestAttestation?.paymentEqualityProof || null,
-        };
-        setPendingOrder(recoveredPending);
-        setResult(recoveredPending);
+        setPendingOrder(latestOrder);
+        setResult(latestOrder);
       }
     }
   }, [currentUser, product?.address, product?.unitPriceHash]);
@@ -184,14 +173,8 @@ const PrivatePaymentModal = ({ product, isOpen, onClose, onSuccess, currentUser 
           proof: normalized.paymentCommitmentProof ?? null,
           proofType: normalized.paymentCommitmentProofType || "pedersen-scalar-v2",
         },
-        contextHash: normalized.contextHash,
-      },
-      attestation: {
-        orderId: normalized.orderId,
-        productAddress: product.address,
-        buyerAddress: normalized.buyerAddress,
-        encryptedBlob: normalized.encryptedBlob,
         disclosurePubkey: normalized.disclosurePubkey,
+        encryptedBlob: normalized.encryptedBlob,
         encryptedQuantityOpening: normalized.encryptedQuantityOpening,
         encryptedTotalOpening: normalized.encryptedTotalOpening,
         quantityTotalProof: normalized.quantityTotalProof,
@@ -200,6 +183,8 @@ const PrivatePaymentModal = ({ product, isOpen, onClose, onSuccess, currentUser 
           quantityTotalProof: normalized.quantityTotalProof,
           paymentEqualityProof: normalized.paymentEqualityProof,
         },
+        proofEmbeddedInVc: false,
+        contextHash: normalized.contextHash,
       },
     });
   }, [normalizeOrderPayload, product.address, product.owner]);

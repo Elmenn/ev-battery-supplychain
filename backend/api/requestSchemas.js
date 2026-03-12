@@ -292,11 +292,19 @@ function validateOrderBody(body) {
     'quantityProof',
     'totalCommitment',
     'totalProof',
-    'paymentCommitment',
-    'paymentProof',
-    'contextHash',
-    'context',
-    'orderVcCid',
+  'paymentCommitment',
+  'paymentProof',
+  'disclosurePubkey',
+  'encryptedBlob',
+  'encryptedQuantityOpening',
+  'encryptedTotalOpening',
+  'quantityTotalProof',
+  'paymentEqualityProof',
+  'proofBundle',
+  'proofEmbeddedInVc',
+  'contextHash',
+  'context',
+  'orderVcCid',
     'orderVcHash',
   ]);
   assertRequiredKeys(body, 'body', [
@@ -330,6 +338,14 @@ function validateOrderBody(body) {
   assertOptionalObjectLike(body.totalProof, 'body.totalProof');
   assertOptionalBytes32(body.paymentCommitment, 'body.paymentCommitment');
   assertOptionalObjectLike(body.paymentProof, 'body.paymentProof');
+  assertOptionalString(body.disclosurePubkey, 'body.disclosurePubkey');
+  assertOptionalJsonLike(body.encryptedBlob, 'body.encryptedBlob');
+  assertOptionalJsonLike(body.encryptedQuantityOpening, 'body.encryptedQuantityOpening');
+  assertOptionalJsonLike(body.encryptedTotalOpening, 'body.encryptedTotalOpening');
+  assertOptionalObjectLike(body.quantityTotalProof, 'body.quantityTotalProof');
+  assertOptionalObjectLike(body.paymentEqualityProof, 'body.paymentEqualityProof');
+  assertOptionalObjectLike(body.proofBundle, 'body.proofBundle');
+  assertOptionalBoolean(body.proofEmbeddedInVc, 'body.proofEmbeddedInVc');
   assertOptionalBytes32(body.contextHash, 'body.contextHash');
   validateContextObject(body.context, 'body.context');
   assertOptionalString(body.orderVcCid, 'body.orderVcCid');
@@ -364,25 +380,27 @@ function validateOrderAttestation(attestation, fieldName = 'body') {
 
 function validateRecoveryBundleBody(body) {
   assertNoUnknownKeys(body, 'body', ['order', 'attestation']);
-  assertRequiredKeys(body, 'body', ['order', 'attestation']);
+  assertRequiredKeys(body, 'body', ['order']);
   validateOrderBody(body.order);
-  assertNoUnknownKeys(body.attestation, 'body.attestation', [
-    'encryptedBlob',
-    'disclosurePubkey',
-    'encryptedQuantityOpening',
-    'encryptedTotalOpening',
-    'quantityTotalProof',
-    'paymentEqualityProof',
-    'proofBundle',
-  ]);
-  assertRequiredKeys(body.attestation, 'body.attestation', ['disclosurePubkey']);
-  assertOptionalJsonLike(body.attestation.encryptedBlob, 'body.attestation.encryptedBlob');
-  assertOptionalString(body.attestation.disclosurePubkey, 'body.attestation.disclosurePubkey');
-  assertOptionalJsonLike(body.attestation.encryptedQuantityOpening, 'body.attestation.encryptedQuantityOpening');
-  assertOptionalJsonLike(body.attestation.encryptedTotalOpening, 'body.attestation.encryptedTotalOpening');
-  assertOptionalObjectLike(body.attestation.quantityTotalProof, 'body.attestation.quantityTotalProof');
-  assertOptionalObjectLike(body.attestation.paymentEqualityProof, 'body.attestation.paymentEqualityProof');
-  assertOptionalObjectLike(body.attestation.proofBundle, 'body.attestation.proofBundle');
+  if (body.attestation != null) {
+    assertNoUnknownKeys(body.attestation, 'body.attestation', [
+      'encryptedBlob',
+      'disclosurePubkey',
+      'encryptedQuantityOpening',
+      'encryptedTotalOpening',
+      'quantityTotalProof',
+      'paymentEqualityProof',
+      'proofBundle',
+    ]);
+    assertRequiredKeys(body.attestation, 'body.attestation', ['disclosurePubkey']);
+    assertOptionalJsonLike(body.attestation.encryptedBlob, 'body.attestation.encryptedBlob');
+    assertOptionalString(body.attestation.disclosurePubkey, 'body.attestation.disclosurePubkey');
+    assertOptionalJsonLike(body.attestation.encryptedQuantityOpening, 'body.attestation.encryptedQuantityOpening');
+    assertOptionalJsonLike(body.attestation.encryptedTotalOpening, 'body.attestation.encryptedTotalOpening');
+    assertOptionalObjectLike(body.attestation.quantityTotalProof, 'body.attestation.quantityTotalProof');
+    assertOptionalObjectLike(body.attestation.paymentEqualityProof, 'body.attestation.paymentEqualityProof');
+    assertOptionalObjectLike(body.attestation.proofBundle, 'body.attestation.proofBundle');
+  }
 }
 
 function validateReconcileBody(body) {
