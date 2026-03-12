@@ -29,6 +29,7 @@ import { fetchVCFromServer } from "../../utils/verifyVc";
 import { getProductMeta, updateVcCid } from "../../utils/productMetaApi";
 import { getOrder, reconcileOrder, updateOrderStatus, updateOrderVc } from "../../utils/orderApi";
 import { Button } from "../ui/button";
+import { markFlowStep } from "../../utils/flowTiming";
 
 const phaseColors = {
   [Phase.Listed]: "bg-gray-100 text-gray-700",
@@ -130,6 +131,10 @@ const ProductDetail = ({ provider, currentUser }) => {
   const handleConfirmOrder = async () => {
     setActionLoading(true);
     try {
+      markFlowStep("seller_confirm_start", {
+        productAddress: address,
+        activeOrderId: product?.activeOrderId || null,
+      });
       const signer = await provider.getSigner();
       const sellerAddr = await signer.getAddress();
       const activeOrderId = product?.activeOrderId;
@@ -223,10 +228,19 @@ const ProductDetail = ({ provider, currentUser }) => {
       ]);
 
       const explorerUrl = getExplorerUrl(receipt.hash);
+      markFlowStep("seller_confirm_complete", {
+        orderId: order.orderId,
+        cid,
+        txHash: receipt.hash,
+      });
       toast.success(explorerUrl ? `Order confirmed: ${explorerUrl}` : "Order confirmed on-chain.");
       setAuditCid(cid);
       await loadProductData();
     } catch (err) {
+      markFlowStep("seller_confirm_failed", {
+        productAddress: address,
+        error: decodeContractError(err) || err.message,
+      });
       toast.error(`Confirm failed: ${decodeContractError(err) || err.message}`);
     } finally {
       setActionLoading(false);
@@ -278,11 +292,21 @@ const ProductDetail = ({ provider, currentUser }) => {
     setAuditLoading(true);
     setAuditError("");
     try {
+      markFlowStep("auditor_load_start", {
+        cid,
+      });
       const vc = await fetchVCFromServer(cid);
       setAuditVC(vc);
       await Promise.allSettled([updateVcCid(address, cid)]);
+      markFlowStep("auditor_load_complete", {
+        cid,
+      });
       toast.success("VC loaded for audit.");
     } catch (err) {
+      markFlowStep("auditor_load_failed", {
+        cid,
+        error: err.message || "Failed to load VC.",
+      });
       setAuditVC(null);
       setAuditError(err.message || "Failed to load VC.");
     } finally {

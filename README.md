@@ -23,6 +23,9 @@ Reference docs:
 - `docs/current/06-vrc-model.md` (current VRC shape, W3C VC alignment, and placeholder template)
 - `docs/current/07-zkp-wasm-path.md` (how the browser WASM proving/verifying path works)
 - `docs/current/08-zkp-wasm-evaluation.md` (benchmark methodology and current WASM evaluation plan)
+- `docs/current/09-end-to-end-latency-and-recovery-evaluation.md` (system-level workflow latency and failure-recovery evaluation)
+- `docs/current/10-vrc-and-standards-evaluation.md` (VRC quality and standards-alignment evaluation plan)
+- `docs/current/11-cost-evaluation.md` (gas, IPFS, backend, and operational cost evaluation plan)
 
 ## Prerequisites
 - Node.js 18+

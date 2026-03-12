@@ -7,6 +7,7 @@ import VerificationBox from "./VerifyVCTab-Enhanced";
 import ProductEscrowABI from "../../abis/ProductEscrow_Initializer.json";
 import { Button } from "../ui/button";
 import { CheckCircle2, Eye, EyeOff } from "lucide-react";
+import { markFlowStep } from "../../utils/flowTiming";
 
 const normalizeHex = (value) => String(value || "").toLowerCase().replace(/^0x/, "");
 
@@ -306,6 +307,10 @@ const VerifyVCInline = ({ vc, cid, provider, contractAddress }) => {
   };
 
   const handleRunAll = async () => {
+    markFlowStep("auditor_verify_all_start", {
+      cid,
+      orderId: order.orderId || null,
+    });
     await handleVerify();
     await handleVerifyStatus();
     await handleVerifyCommitmentMatch();
@@ -314,6 +319,11 @@ const VerifyVCInline = ({ vc, cid, provider, contractAddress }) => {
     if (isV2Order) {
       await handleVerifyOrderProofs();
     }
+    markFlowStep("auditor_verify_all_complete", {
+      cid,
+      orderId: order.orderId || null,
+      isV2Order,
+    });
   };
 
   const chainLength = chainResult?.nodes?.length || 0;

@@ -6,6 +6,7 @@ import "./App.css";
 import MarketplaceView from "./views/MarketplaceView";
 import ProductDetail from "./components/marketplace/ProductDetail";
 import RailgunInitializationTest from "./components/railgun/RailgunInitializationTest";
+import FlowTimingPanel from "./components/shared/FlowTimingPanel";
 
 function App() {
   const [provider, setProvider] = useState(null);
@@ -70,6 +71,7 @@ function App() {
   return (
     <BrowserRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
       <div className="App">
+        <FlowTimingPanel />
         <Routes>
           <Route
             path="/"

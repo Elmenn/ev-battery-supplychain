@@ -14,6 +14,7 @@ import { getLatestOrderForProductBuyer, saveOrderRecoveryBundle, updateOrderStat
 import { assertScalarValue, computeOrderContextHash, generateOrderId, generateRandomBlinding, multiplyIntegerStrings, normalizeBytes32Hex, normalizeIntegerString } from "../../utils/commitmentUtils";
 import { generateQuantityTotalProof, generateTotalPaymentEqualityProof } from "../../utils/equalityProofClient";
 import { generateScalarCommitmentWithBlinding } from "../../utils/zkp/zkpClient";
+import { markFlowStep } from "../../utils/flowTiming";
 
 const MSG = "EV Supply Chain Buyer Privacy Key v1";
 const SEPOLIA_WETH_ADDRESS = NETWORK_CONFIG[NetworkName.EthereumSepolia]?.baseToken?.wrappedAddress || "0xfFf9976782d46CC05630D1f6eBAb18b2324d6B14";
@@ -191,6 +192,9 @@ const PrivatePaymentModal = ({ product, isOpen, onClose, onSuccess, currentUser 
 
   useEffect(() => {
     if (!isOpen) return;
+    markFlowStep("buyer_modal_opened", {
+      productAddress: product?.address || "",
+    });
     setStep("connect");
     setError("");
     setProgress("");
@@ -248,6 +252,10 @@ const PrivatePaymentModal = ({ product, isOpen, onClose, onSuccess, currentUser 
     setError("");
     let transferResult = null;
     try {
+      markFlowStep("buyer_flow_start", {
+        productAddress: product.address,
+        quantity: quantityValue,
+      });
       const { signer, productId } = await preflight();
       const buyerAddress = await signer.getAddress();
       const network = await signer.provider.getNetwork();
@@ -260,6 +268,10 @@ const PrivatePaymentModal = ({ product, isOpen, onClose, onSuccess, currentUser 
       if (!sellerAddress.startsWith("0zk")) throw new Error("Seller Railgun address is missing or invalid.");
 
       setProgress("Processing private transfer...");
+      markFlowStep("railgun_payment_start", {
+        productAddress: product.address,
+        totalWei,
+      });
       transferResult = await privateTransfer({
         toRailgunAddress: sellerAddress,
         amountWei: BigInt(totalWei),
@@ -268,6 +280,10 @@ const PrivatePaymentModal = ({ product, isOpen, onClose, onSuccess, currentUser 
         onProgress: (state) => setProgress(state?.message || "Processing private transfer..."),
       });
       if (!transferResult?.success) throw new Error(transferResult?.error || "Private transfer failed.");
+      markFlowStep("railgun_payment_complete", {
+        memoHash: transferResult.memoHash,
+        railgunTxRef: transferResult.railgunTxRef,
+      });
 
       const orderId = generateOrderId();
       const contextHash = computeOrderContextHash({
@@ -285,6 +301,12 @@ const PrivatePaymentModal = ({ product, isOpen, onClose, onSuccess, currentUser 
       const rTotal = generateRandomBlinding();
       const rPay = generateRandomBlinding();
 
+      markFlowStep("buyer_crypto_start", {
+        orderId,
+        unitPriceWei,
+        quantity: quantityValue,
+        totalWei,
+      });
       const [qCommit, tCommit, pCommit] = await Promise.all([
         generateScalarCommitmentWithBlinding({ value: quantityValue, blindingHex: `0x${rQuantity}` }),
         generateScalarCommitmentWithBlinding({ value: totalWei, blindingHex: `0x${rTotal}` }),
@@ -308,6 +330,12 @@ const PrivatePaymentModal = ({ product, isOpen, onClose, onSuccess, currentUser 
           contextHashHex: contextHash,
         }),
       ]);
+      markFlowStep("buyer_crypto_ready", {
+        orderId,
+        quantityCommitment: qCommit.commitment,
+        totalCommitment: tCommit.commitment,
+        paymentCommitment: pCommit.commitment,
+      });
 
       const signature = await signer.signMessage(MSG);
       const aad = `${chainId}/${product.address.toLowerCase()}/${buyerAddress.toLowerCase()}/${orderId.toLowerCase()}`;
@@ -365,14 +393,28 @@ const PrivatePaymentModal = ({ product, isOpen, onClose, onSuccess, currentUser 
 
       setStep("recording");
       setProgress("Recording order payment on-chain...");
+      markFlowStep("onchain_record_start", {
+        orderId: payload.orderId,
+      });
       const recordTxHash = await recordOnChain(payload);
       await updateOrderStatus(payload.orderId, "payment_recorded");
+      markFlowStep("onchain_record_complete", {
+        orderId: payload.orderId,
+        txHash: recordTxHash,
+      });
       setPendingOrder(null);
       setResult({ ...payload, recordTxHash });
       setStep("complete");
+      markFlowStep("buyer_flow_complete", {
+        orderId: payload.orderId,
+      });
       toast.success("Private order payment recorded on-chain.");
     } catch (err) {
       const msg = decodeContractError(err) || err.message;
+      markFlowStep("buyer_flow_failed", {
+        error: msg,
+        transferSucceeded: Boolean(transferResult?.memoHash),
+      });
       setError(
         transferResult?.memoHash
           ? `Private transfer succeeded, but on-chain recording failed: ${msg}. Use Retry Recording.`
@@ -395,15 +437,26 @@ const PrivatePaymentModal = ({ product, isOpen, onClose, onSuccess, currentUser 
     setStep("recording");
     setProgress("Retrying on-chain record...");
     try {
+      markFlowStep("recovery_retry_start", {
+        orderId: pendingOrder.orderId,
+      });
       await saveRecoveryBundle(pendingOrder, "payment_pending_recording");
       const recordTxHash = await recordOnChain(pendingOrder);
       await updateOrderStatus(pendingOrder.orderId, "payment_recorded");
+      markFlowStep("recovery_retry_complete", {
+        orderId: pendingOrder.orderId,
+        txHash: recordTxHash,
+      });
       setPendingOrder(null);
       setResult({ ...pendingOrder, recordTxHash });
       setStep("complete");
       toast.success("Pending order recorded on-chain.");
     } catch (err) {
       const msg = decodeContractError(err) || err.message;
+      markFlowStep("recovery_retry_failed", {
+        orderId: pendingOrder.orderId,
+        error: msg,
+      });
       setError(msg);
       setStep("pay");
       toast.error(`Retry failed: ${msg}`);

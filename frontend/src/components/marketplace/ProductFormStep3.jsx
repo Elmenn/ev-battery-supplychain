@@ -5,6 +5,7 @@ import ProductFactoryABI from "../../abis/ProductFactory.json";
 import ProductEscrowABI from "../../abis/ProductEscrow_Initializer.json";
 import { computeUnitPriceHash } from "../../utils/commitmentUtils";
 import { saveProductMeta } from "../../utils/productMetaApi";
+import { markFlowStep } from "../../utils/flowTiming";
 
 // Copyable component for CIDs
 function truncate(text, length = 12) {
@@ -100,6 +101,9 @@ const ProductFormStep3 = ({ onNext, productData, backendUrl }) => {
 
   const handleConfirm = async () => {
     try {
+      markFlowStep("listing_create_start", {
+        productName: productData.productName || "",
+      });
       console.log('[Flow][Seller] Step 1: Seller confirming product listing and preparing VC.');
       setLoading(true);
       toast("Connecting to MetaMask...");
@@ -277,7 +281,15 @@ const ProductFormStep3 = ({ onNext, productData, backendUrl }) => {
         console.warn('[Flow][Seller] Step 8 -> Backend DB save failed (localStorage still has data):', dbErr.message);
       }
 
+      markFlowStep("listing_create_complete", {
+        productAddress: validatedProductAddress,
+        productId: productId.toString(),
+      });
+
     } catch (err) {
+      markFlowStep("listing_create_failed", {
+        error: err.message || "Failed to create product",
+      });
       console.error("handleConfirm:", err);
       toast.error(err.message || "Failed to create product");
     } finally {
