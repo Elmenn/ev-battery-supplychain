@@ -421,6 +421,91 @@ function validateOrderVcBody(body) {
   assertOptionalBytes32(body.vcHash, 'body.vcHash');
 }
 
+function validateErc7984OrderSnapshotBody(body) {
+  assertNoUnknownKeys(body, 'body', [
+    'orderId',
+    'productAddress',
+    'escrowAddress',
+    'productId',
+    'chainId',
+    'sellerAddress',
+    'buyerAddress',
+    'transporterAddress',
+    'status',
+    'phase',
+    'delivered',
+    'unitPriceWei',
+    'unitPriceHash',
+    'paymentToken',
+    'contextHash',
+    'buyerDepositTxHash',
+    'buyerDepositReference',
+    'sellerBondAttestation',
+    'transporterBondAttestation',
+    'quantityCommitment',
+    'quantityProof',
+    'totalCommitment',
+    'totalProof',
+    'paymentCommitment',
+    'paymentProof',
+    'orderVcCid',
+    'orderVcHash',
+    'deliveryTxHash',
+    'deliveryConfirmedVcHash',
+    'deliveryConfirmedTransporter',
+  ]);
+  assertRequiredKeys(body, 'body', [
+    'orderId',
+    'productAddress',
+    'chainId',
+    'sellerAddress',
+    'status',
+    'unitPriceHash',
+    'contextHash',
+  ]);
+  assertOptionalBytes32(body.orderId, 'body.orderId');
+  assertOptionalAddress(body.productAddress, 'body.productAddress');
+  assertOptionalAddress(body.escrowAddress, 'body.escrowAddress');
+  if (body.productId != null && typeof body.productId !== 'string') {
+    throw new RequestValidationError('body.productId must be a string');
+  }
+  assertOptionalString(body.chainId, 'body.chainId');
+  assertOptionalAddress(body.sellerAddress, 'body.sellerAddress');
+  assertOptionalAddress(body.buyerAddress, 'body.buyerAddress');
+  assertOptionalAddress(body.transporterAddress, 'body.transporterAddress');
+  assertOptionalString(body.status, 'body.status');
+  if (body.status && !ORDER_STATUSES.has(body.status)) {
+    throw new RequestValidationError('body.status is not allowed');
+  }
+  assertOptionalNumber(body.phase, 'body.phase');
+  assertOptionalBoolean(body.delivered, 'body.delivered');
+  if (body.unitPriceWei != null && typeof body.unitPriceWei !== 'string') {
+    throw new RequestValidationError('body.unitPriceWei must be a string');
+  }
+  assertOptionalBytes32(body.unitPriceHash, 'body.unitPriceHash');
+  assertOptionalAddress(body.paymentToken, 'body.paymentToken');
+  assertOptionalBytes32(body.contextHash, 'body.contextHash');
+  assertOptionalBytes32(body.buyerDepositTxHash, 'body.buyerDepositTxHash');
+  assertOptionalBytes32(body.buyerDepositReference, 'body.buyerDepositReference');
+  if (body.sellerBondAttestation != null) {
+    assertOptionalObjectLike(body.sellerBondAttestation, 'body.sellerBondAttestation');
+  }
+  if (body.transporterBondAttestation != null) {
+    assertOptionalObjectLike(body.transporterBondAttestation, 'body.transporterBondAttestation');
+  }
+  assertOptionalBytes32(body.quantityCommitment, 'body.quantityCommitment');
+  assertOptionalObjectLike(body.quantityProof, 'body.quantityProof');
+  assertOptionalBytes32(body.totalCommitment, 'body.totalCommitment');
+  assertOptionalObjectLike(body.totalProof, 'body.totalProof');
+  assertOptionalBytes32(body.paymentCommitment, 'body.paymentCommitment');
+  assertOptionalObjectLike(body.paymentProof, 'body.paymentProof');
+  assertOptionalString(body.orderVcCid, 'body.orderVcCid');
+  assertOptionalBytes32(body.orderVcHash, 'body.orderVcHash');
+  assertOptionalBytes32(body.deliveryTxHash, 'body.deliveryTxHash');
+  assertOptionalBytes32(body.deliveryConfirmedVcHash, 'body.deliveryConfirmedVcHash');
+  assertOptionalAddress(body.deliveryConfirmedTransporter, 'body.deliveryConfirmedTransporter');
+}
+
 function validateOrderAttestationBody(body) {
   validateOrderAttestation(body, 'body');
 }
@@ -474,6 +559,7 @@ module.exports = {
   validateReconcileBody,
   validateOrderStatusBody,
   validateOrderVcBody,
+  validateErc7984OrderSnapshotBody,
   validateOrderAttestationBody,
   validateProofBundlePatchBody,
   validateVcArchiveBody,

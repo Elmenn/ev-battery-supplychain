@@ -15,6 +15,8 @@ use zk::bp_plus_pedersen::{prove_txid_commitment as prove_plus, verify_txid_comm
 use zk::txid_pedersen_proof::{prove_txid_commitment, prove_txid_commitment_from_hex_with_binding, verify_txid_commitment, verify_txid_commitment_with_binding};
 use bulletproofs::r1cs::ConstraintSystem;
 use zk::pedersen::{commit_scalar_with_blinding, prove_value_commitment, prove_value_commitment_with_blinding, prove_value_commitment_with_binding, verify_value_commitment, verify_value_commitment_with_binding};
+use zk::bp_payment_total_proof::{prove_payment_total_equality, verify_payment_total_equality};
+use zk::bp_quantity_total_proof::{prove_quantity_total_bulletproof, verify_quantity_total_bulletproof};
 use zk::equality_proof::{prove_equality, verify_equality, EqualityProof};
 use zk::quantity_total_proof::{prove_quantity_total, verify_quantity_total, QuantityTotalProof};
 
@@ -831,6 +833,39 @@ struct QuantityTotalVerifyResponse {
 }
 
 #[derive(Deserialize)]
+struct QuantityTotalBulletproofRequest {
+    c_quantity_hex: String,
+    c_total_hex: String,
+    quantity_value: IntegerLike,
+    total_value: IntegerLike,
+    unit_price_wei: String,
+    r_quantity_hex: String,
+    r_total_hex: String,
+    context_hash_hex: String,
+}
+
+#[derive(Deserialize)]
+struct QuantityTotalBulletproofVerifyRequest {
+    c_quantity_hex: String,
+    c_total_hex: String,
+    unit_price_wei: String,
+    proof_hex: String,
+    context_hash_hex: String,
+}
+
+#[derive(Serialize)]
+struct QuantityTotalBulletproofResponse {
+    proof_hex: String,
+    verified: bool,
+    proof_size_bytes: usize,
+}
+
+#[derive(Serialize)]
+struct QuantityTotalBulletproofVerifyResponse {
+    verified: bool,
+}
+
+#[derive(Deserialize)]
 struct TotalPaymentEqualityProofRequest {
     c_total_hex: String,
     c_pay_hex: String,
@@ -846,6 +881,37 @@ struct TotalPaymentEqualityVerifyRequest {
     proof_r_hex: String,
     proof_s_hex: String,
     context_hash_hex: String,
+}
+
+#[derive(Deserialize)]
+struct TotalPaymentEqualityBulletproofRequest {
+    c_total_hex: String,
+    c_pay_hex: String,
+    total_value: IntegerLike,
+    payment_value: IntegerLike,
+    r_total_hex: String,
+    r_pay_hex: String,
+    context_hash_hex: String,
+}
+
+#[derive(Deserialize)]
+struct TotalPaymentEqualityBulletproofVerifyRequest {
+    c_total_hex: String,
+    c_pay_hex: String,
+    proof_hex: String,
+    context_hash_hex: String,
+}
+
+#[derive(Serialize)]
+struct TotalPaymentEqualityBulletproofResponse {
+    proof_hex: String,
+    verified: bool,
+    proof_size_bytes: usize,
+}
+
+#[derive(Serialize)]
+struct TotalPaymentEqualityBulletproofVerifyResponse {
+    verified: bool,
 }
 
 #[post("/zkp/generate-equality-proof")]
@@ -1006,7 +1072,113 @@ async fn verify_quantity_total_proof_ep(req: web::Json<QuantityTotalVerifyReques
     };
 
     let verified = verify_quantity_total(c_quantity, c_total, unit_price, &proof, &context_hash);
+    println!("[API] Quantity-total proof verification: {}", verified);
     HttpResponse::Ok().json(QuantityTotalVerifyResponse { verified })
+}
+
+#[post("/zkp/generate-quantity-total-bulletproof")]
+async fn generate_quantity_total_bulletproof_ep(
+    req: web::Json<QuantityTotalBulletproofRequest>
+) -> impl Responder {
+    println!("[API] /zkp/generate-quantity-total-bulletproof");
+
+    let c_quantity = match parse_compressed_ristretto(&req.c_quantity_hex) {
+        Some(value) => value,
+        None => return bad_req("invalid c_quantity_hex"),
+    };
+    let c_total = match parse_compressed_ristretto(&req.c_total_hex) {
+        Some(value) => value,
+        None => return bad_req("invalid c_total_hex"),
+    };
+    let quantity_value = match req.quantity_value.parse_scalar("quantity_value") {
+        Ok(value) => value,
+        Err(response) => return response,
+    };
+    let total_value = match req.total_value.parse_scalar("total_value") {
+        Ok(value) => value,
+        Err(response) => return response,
+    };
+    let unit_price = match parse_decimal_scalar_strict(&req.unit_price_wei) {
+        Some(value) => value,
+        None => return bad_req("invalid unit_price_wei"),
+    };
+    let r_quantity = match parse_scalar_hex(&req.r_quantity_hex) {
+        Some(value) => value,
+        None => return bad_req("invalid r_quantity_hex"),
+    };
+    let r_total = match parse_scalar_hex(&req.r_total_hex) {
+        Some(value) => value,
+        None => return bad_req("invalid r_total_hex"),
+    };
+    let context_hash = match parse_context_hash_hex(&req.context_hash_hex) {
+        Some(bytes) => bytes,
+        None => return bad_req("invalid context_hash_hex"),
+    };
+
+    match prove_quantity_total_bulletproof(
+        c_quantity,
+        c_total,
+        quantity_value,
+        total_value,
+        unit_price,
+        r_quantity,
+        r_total,
+        &context_hash,
+    ) {
+        Ok(proof_bytes) => {
+            let verified = verify_quantity_total_bulletproof(
+                c_quantity,
+                c_total,
+                unit_price,
+                &proof_bytes,
+                &context_hash,
+            );
+            HttpResponse::Ok().json(QuantityTotalBulletproofResponse {
+                proof_hex: hex::encode(&proof_bytes),
+                verified,
+                proof_size_bytes: proof_bytes.len(),
+            })
+        }
+        Err(error) => HttpResponse::BadRequest().json(json!({ "error": error })),
+    }
+}
+
+#[post("/zkp/verify-quantity-total-bulletproof")]
+async fn verify_quantity_total_bulletproof_ep(
+    req: web::Json<QuantityTotalBulletproofVerifyRequest>
+) -> impl Responder {
+    println!("[API] /zkp/verify-quantity-total-bulletproof");
+
+    let c_quantity = match parse_compressed_ristretto(&req.c_quantity_hex) {
+        Some(value) => value,
+        None => return bad_req("invalid c_quantity_hex"),
+    };
+    let c_total = match parse_compressed_ristretto(&req.c_total_hex) {
+        Some(value) => value,
+        None => return bad_req("invalid c_total_hex"),
+    };
+    let unit_price = match parse_decimal_scalar_strict(&req.unit_price_wei) {
+        Some(value) => value,
+        None => return bad_req("invalid unit_price_wei"),
+    };
+    let proof_bytes = match Vec::from_hex(&req.proof_hex) {
+        Ok(bytes) => bytes,
+        Err(_) => return bad_req("invalid proof_hex"),
+    };
+    let context_hash = match parse_context_hash_hex(&req.context_hash_hex) {
+        Some(bytes) => bytes,
+        None => return bad_req("invalid context_hash_hex"),
+    };
+
+    let verified = verify_quantity_total_bulletproof(
+        c_quantity,
+        c_total,
+        unit_price,
+        &proof_bytes,
+        &context_hash,
+    );
+    println!("[API] Quantity-total Bulletproof verification: {}", verified);
+    HttpResponse::Ok().json(QuantityTotalBulletproofVerifyResponse { verified })
 }
 
 #[post("/zkp/generate-total-payment-equality-proof")]
@@ -1075,7 +1247,92 @@ async fn verify_total_payment_equality_proof_ep(req: web::Json<TotalPaymentEqual
     };
 
     let verified = verify_equality(c_total, c_pay, &proof, &context_hash);
+    println!("[API] Total-payment equality proof verification: {}", verified);
     HttpResponse::Ok().json(EqualityVerifyResponse { verified })
+}
+
+#[post("/zkp/generate-total-payment-equality-bulletproof")]
+async fn generate_total_payment_equality_bulletproof_ep(
+    req: web::Json<TotalPaymentEqualityBulletproofRequest>
+) -> impl Responder {
+    println!("[API] /zkp/generate-total-payment-equality-bulletproof");
+
+    let c_total = match parse_compressed_ristretto(&req.c_total_hex) {
+        Some(value) => value,
+        None => return bad_req("invalid c_total_hex"),
+    };
+    let c_pay = match parse_compressed_ristretto(&req.c_pay_hex) {
+        Some(value) => value,
+        None => return bad_req("invalid c_pay_hex"),
+    };
+    let total_value = match req.total_value.parse_scalar("total_value") {
+        Ok(value) => value,
+        Err(response) => return response,
+    };
+    let payment_value = match req.payment_value.parse_scalar("payment_value") {
+        Ok(value) => value,
+        Err(response) => return response,
+    };
+    let r_total = match parse_scalar_hex(&req.r_total_hex) {
+        Some(value) => value,
+        None => return bad_req("invalid r_total_hex"),
+    };
+    let r_pay = match parse_scalar_hex(&req.r_pay_hex) {
+        Some(value) => value,
+        None => return bad_req("invalid r_pay_hex"),
+    };
+    let context_hash = match parse_context_hash_hex(&req.context_hash_hex) {
+        Some(bytes) => bytes,
+        None => return bad_req("invalid context_hash_hex"),
+    };
+
+    match prove_payment_total_equality(
+        c_total,
+        c_pay,
+        total_value,
+        payment_value,
+        r_total,
+        r_pay,
+        &context_hash,
+    ) {
+        Ok(proof_bytes) => {
+            let verified = verify_payment_total_equality(c_total, c_pay, &proof_bytes, &context_hash);
+            HttpResponse::Ok().json(TotalPaymentEqualityBulletproofResponse {
+                proof_size_bytes: proof_bytes.len(),
+                proof_hex: hex::encode(&proof_bytes),
+                verified,
+            })
+        }
+        Err(error) => HttpResponse::BadRequest().json(json!({ "error": error })),
+    }
+}
+
+#[post("/zkp/verify-total-payment-equality-bulletproof")]
+async fn verify_total_payment_equality_bulletproof_ep(
+    req: web::Json<TotalPaymentEqualityBulletproofVerifyRequest>
+) -> impl Responder {
+    println!("[API] /zkp/verify-total-payment-equality-bulletproof");
+
+    let c_total = match parse_compressed_ristretto(&req.c_total_hex) {
+        Some(value) => value,
+        None => return bad_req("invalid c_total_hex"),
+    };
+    let c_pay = match parse_compressed_ristretto(&req.c_pay_hex) {
+        Some(value) => value,
+        None => return bad_req("invalid c_pay_hex"),
+    };
+    let proof_bytes = match Vec::from_hex(&req.proof_hex) {
+        Ok(bytes) => bytes,
+        Err(_) => return bad_req("invalid proof_hex"),
+    };
+    let context_hash = match parse_context_hash_hex(&req.context_hash_hex) {
+        Some(bytes) => bytes,
+        None => return bad_req("invalid context_hash_hex"),
+    };
+
+    let verified = verify_payment_total_equality(c_total, c_pay, &proof_bytes, &context_hash);
+    println!("[API] Total-payment Bulletproof verification: {}", verified);
+    HttpResponse::Ok().json(TotalPaymentEqualityBulletproofVerifyResponse { verified })
 }
 
 #[actix_web::main]
@@ -1112,8 +1369,12 @@ async fn main() -> std::io::Result<()> {
             .service(verify_equality_proof_ep)
             .service(generate_quantity_total_proof_ep)
             .service(verify_quantity_total_proof_ep)
+            .service(generate_quantity_total_bulletproof_ep)
+            .service(verify_quantity_total_bulletproof_ep)
             .service(generate_total_payment_equality_proof_ep)
             .service(verify_total_payment_equality_proof_ep)
+            .service(generate_total_payment_equality_bulletproof_ep)
+            .service(verify_total_payment_equality_bulletproof_ep)
     })
     .bind((host.as_str(), port))?
     .run()

@@ -2,6 +2,18 @@
 import { v4 as uuid } from "uuid";
 import { keccak256, ZeroAddress } from "ethers";
 import { canonicalize } from "json-canonicalize";
+import {
+  buildDepositReference,
+  buildPaymentBridgeArtifact,
+  PaymentBridgeVerificationMethod,
+  PaymentBridgeVerificationStatus,
+} from "./erc7984/paymentBridgeModel.js";
+import {
+  buildConfidentialSettlementPolicy,
+  buildEqualityAttestationRecord,
+  EqualityStatus,
+  EqualityTarget,
+} from "./erc7984/equalityAttestationModel.js";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -31,6 +43,36 @@ const normalizeCommitmentHex = (value) =>
 
 const normalizeMaybeString = (value) =>
   value == null ? null : String(value);
+
+const normalizeNumberish = (value) => {
+  if (value == null || value === "") {
+    return null;
+  }
+
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : null;
+};
+
+const getBackendBaseUrl = () => {
+  const configured = process.env.REACT_APP_VC_BACKEND_URL || process.env.REACT_APP_BACKEND_URL;
+  if (configured && typeof configured === "string" && configured.trim().length > 0) {
+    return configured.replace(/\/+$/, "");
+  }
+
+  if (typeof window !== "undefined" && window.location?.hostname) {
+    return `${window.location.protocol}//${window.location.hostname}:5000`;
+  }
+
+  return "http://localhost:5000";
+};
+
+const getVrcStatusUrl = (orderId) =>
+  `${getBackendBaseUrl()}/vc-status/order/${String(orderId || "").trim()}`;
+
+const ERC7984_COMMITMENT_VRC_SCHEMA_VERSION = "6.1";
+
+const getErc7984VrcSchemaId = () =>
+  `urn:ev-battery:erc7984:order-vrc:${ERC7984_COMMITMENT_VRC_SCHEMA_VERSION}`;
 
 // ---------------------------------------------------------------------------
 // Utility exports (preserved from v1.0)
@@ -336,6 +378,239 @@ export function createFinalOrderVCV2({
       },
 
       delivery: null,
+    },
+
+    previousVersion: null,
+    proof: [],
+  };
+}
+
+export function createErc7984OrderVRCV6({
+  sellerAddr,
+  buyerAddr,
+  sellerName = "Seller",
+  buyerName = "Buyer",
+  productName,
+  batch,
+  productContract,
+  productId,
+  chainId,
+  unitPriceWei,
+  unitPriceHash,
+  listingSnapshotCid,
+  certificateCredential,
+  componentCredentials,
+  orderId,
+  escrowAddress,
+  paymentToken,
+  quantityCommitment,
+  totalCommitment,
+  paymentCommitment,
+  contextHash,
+  disclosurePubKey,
+  quantityTotalProof,
+  paymentEqualityProof,
+  sellerBondAttestation,
+  settlementPolicy,
+  paymentBridge,
+  buyerDepositTxHash,
+  buyerDepositReference,
+  paymentBridgeStatus = PaymentBridgeVerificationStatus.Pending,
+  paymentBridgeMethod = PaymentBridgeVerificationMethod.ProofBoundDepositReference,
+  proofSourceType = "local-proof-generation",
+  proofSourceVersion = "1.0",
+}) {
+  const chain = chainId || inferChainId();
+  const now = new Date().toISOString();
+  const normalizedEscrowAddress = String(escrowAddress || productContract || "");
+  const normalizedOrderId = String(orderId || "");
+  const normalizedBuyerAddress = String(buyerAddr || "");
+  const normalizedContextHash = String(contextHash || "");
+  const normalizedPaymentToken = String(paymentToken || "");
+  const normalizedCertificate = {
+    name: String(certificateCredential?.name || ""),
+    cid: String(certificateCredential?.cid || ""),
+  };
+  const normalizedComponents = Array.isArray(componentCredentials)
+    ? componentCredentials
+        .filter((item) => item != null && String(item).trim().length > 0)
+        .map((item) => String(item))
+    : [];
+
+  const normalizedSellerAttestation = buildEqualityAttestationRecord({
+    orderId: normalizedOrderId,
+    target: EqualityTarget.SellerBondMatchesBuyerDeposit,
+    status: EqualityStatus.None,
+    ...(sellerBondAttestation || {}),
+  });
+  const normalizedSettlementPolicy = settlementPolicy
+    ? {
+        paymentToken: String(settlementPolicy.paymentToken || normalizedPaymentToken),
+        buyerDepositRequired: settlementPolicy.buyerDepositRequired !== false,
+        sellerBondPolicy: String(settlementPolicy.sellerBondPolicy || "equalToBuyerDeposit"),
+        transporterBondPolicy: String(
+          settlementPolicy.transporterBondPolicy || "equalToBuyerDeposit"
+        ),
+        sellerDeliveryFeePolicy: String(
+          settlementPolicy.sellerDeliveryFeePolicy || "separateConfidentialDeposit"
+        ),
+      }
+    : buildConfidentialSettlementPolicy({
+        paymentToken: normalizedPaymentToken,
+      });
+
+  const normalizedPaymentBridge =
+    paymentBridge ||
+    buildPaymentBridgeArtifact({
+      contextHash: normalizedContextHash,
+      totalCommitment: String(totalCommitment || ""),
+      paymentToken: normalizedPaymentToken,
+      escrowAddress: normalizedEscrowAddress,
+      orderId: normalizedOrderId,
+      buyerAddress: normalizedBuyerAddress,
+      depositTxHash: String(buyerDepositTxHash || ""),
+      depositReference:
+        buyerDepositReference ||
+        buildDepositReference({
+          depositTxHash: buyerDepositTxHash,
+          orderId: normalizedOrderId,
+          depositKind: "buyerPurchaseDeposit",
+          paymentToken: normalizedPaymentToken,
+          escrowAddress: normalizedEscrowAddress,
+          buyerAddress: normalizedBuyerAddress,
+        }),
+      verificationStatus: paymentBridgeStatus,
+      verificationMethod: paymentBridgeMethod,
+    });
+
+  const normalizePublicProofRecord = (proof, defaultType) => ({
+    proofType: String(proof?.type || defaultType || ""),
+    proofRHex: String(proof?.proof_r_hex || ""),
+    proofSHex: String(proof?.proof_s_hex || ""),
+  });
+
+  return {
+    "@context": ["https://www.w3.org/ns/credentials/v2"],
+    id: `urn:uuid:${uuid()}`,
+    type: [
+      "VerifiableCredential",
+      "SupplyChainCredential",
+      "OrderCommitmentCredential",
+      "ERC7984ConfidentialOrderVRC",
+    ],
+    schemaVersion: ERC7984_COMMITMENT_VRC_SCHEMA_VERSION,
+
+    issuer: {
+      id: `did:ethr:${chain}:${sellerAddr}`,
+      name: String(sellerName || "Seller"),
+    },
+    holder: {
+      id: `did:ethr:${chain}:${buyerAddr}`,
+      name: String(buyerName || "Buyer"),
+    },
+    validFrom: now,
+    credentialSchema: {
+      id: getErc7984VrcSchemaId(),
+      type: "JsonSchema",
+    },
+    credentialStatus: {
+      id: getVrcStatusUrl(orderId),
+      type: "SupplyChainCredentialStatus2026",
+      statusPurpose: "revocation",
+    },
+
+    credentialSubject: {
+      id: `did:ethr:${chain}:${sellerAddr}`,
+      productName: String(productName || ""),
+      batch: String(batch || ""),
+      productContract: String(productContract || ""),
+      productId: String(productId ?? ""),
+      chainId: String(chain),
+
+      listing: {
+        timestamp: now,
+        unitPriceWei: String(unitPriceWei || ""),
+        unitPriceHash: String(unitPriceHash || ""),
+        listingSnapshotCid: String(listingSnapshotCid || ""),
+        certificateCredential: normalizedCertificate,
+        componentCredentials: normalizedComponents,
+      },
+
+      order: {
+        orderId: normalizedOrderId,
+        productId: String(productId ?? ""),
+        escrowAddr: normalizedEscrowAddress,
+        chainId: String(chain),
+        buyerAddress: `did:ethr:${chain}:${buyerAddr}`,
+      },
+
+      commitments: {
+        quantityCommitment: String(quantityCommitment || ""),
+        totalCommitment: String(totalCommitment || ""),
+        paymentCommitment: String(paymentCommitment || ""),
+      },
+
+      settlementPolicy: normalizedSettlementPolicy,
+
+      equalityAttestations: {
+        sellerBond: {
+          orderId: normalizedSellerAttestation.orderId,
+          target: normalizedSellerAttestation.target,
+          status: normalizedSellerAttestation.status,
+          handle: String(normalizedSellerAttestation.handle || ""),
+          requestedAt: normalizeNumberish(normalizedSellerAttestation.requestedAt) || 0,
+          verifiedAt: normalizeNumberish(normalizedSellerAttestation.verifiedAt) || 0,
+          verifiedTxHash: String(normalizedSellerAttestation.verifiedTxHash || ""),
+        },
+      },
+
+      paymentBridge: {
+        version: String(normalizedPaymentBridge.version || "1.0"),
+        bridgeType: String(normalizedPaymentBridge.bridgeType || ""),
+        statement: String(normalizedPaymentBridge.statement || ""),
+        contextHash: String(normalizedPaymentBridge.contextHash || ""),
+        bridgeHash: String(normalizedPaymentBridge.bridgeHash || ""),
+        proofSide: {
+          totalCommitment: String(normalizedPaymentBridge.proofSide?.totalCommitment || ""),
+          contextHash: String(normalizedPaymentBridge.proofSide?.contextHash || ""),
+        },
+        depositSide: {
+          paymentToken: String(normalizedPaymentBridge.depositSide?.paymentToken || ""),
+          escrowAddress: String(normalizedPaymentBridge.depositSide?.escrowAddress || ""),
+          orderId: String(normalizedPaymentBridge.depositSide?.orderId || ""),
+          buyerAddress: String(normalizedPaymentBridge.depositSide?.buyerAddress || ""),
+          depositTxHash: String(normalizedPaymentBridge.depositSide?.depositTxHash || ""),
+          depositReference: String(
+            normalizedPaymentBridge.depositSide?.depositReference || ""
+          ),
+        },
+        verification: {
+          method: String(normalizedPaymentBridge.verification?.method || ""),
+          status: String(normalizedPaymentBridge.verification?.status || ""),
+        },
+      },
+
+      privacyProofs: {
+        quantityTotal: normalizePublicProofRecord(
+          quantityTotalProof,
+          "quantity-total-sigma"
+        ),
+        totalPaymentEquality: normalizePublicProofRecord(
+          paymentEqualityProof,
+          "total-payment-equality-sigma"
+        ),
+      },
+
+      attestation: {
+        attestationVersion: ERC7984_COMMITMENT_VRC_SCHEMA_VERSION,
+        contextHash: normalizedContextHash,
+        disclosurePubKey: String(disclosurePubKey || ""),
+        proofSource: {
+          type: String(proofSourceType || "local-proof-generation"),
+          orderId: normalizedOrderId,
+          version: String(proofSourceVersion || "1.0"),
+        },
+      },
     },
 
     previousVersion: null,

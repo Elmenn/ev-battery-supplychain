@@ -1,33 +1,23 @@
 import React from "react";
 
 const ProductFormStep4 = ({ productData }) => {
-  // Fallback in case productData is missing
-  if (!productData) return <div className="form-step">❌ No product data provided</div>;
+  if (!productData) return <div className="form-step">No product data provided.</div>;
 
-  const { productName, price, quantity, cid, vcPreview, productContract } = productData;
+  const { productName, displayUnitPrice, unitPriceWei, productId, paymentToken, vcPreview, productContract } = productData;
 
   return (
     <div className="form-step">
-      <h3>✅ Product Created Successfully</h3>
+      <h3>Product Created Successfully</h3>
 
       <p><strong>Name:</strong> {productName}</p>
-      <p><strong>Price:</strong> {price} ETH</p>
-      <p><strong>Quantity:</strong> {quantity}</p>
-
-      {cid ? (
-        <p>
-          <strong>VC CID:</strong>{" "}
-          <a
-            href={`https://ipfs.io/ipfs/${cid}`}
-            target="_blank"
-            rel="noreferrer"
-          >
-            {cid.slice(0, 10)}…
-          </a>
-        </p>
-      ) : (
-        <p className="text-sm text-gray-600">
-          <strong>VC:</strong> Will be generated when seller confirms order after buyer payment.
+      <p><strong>Public Unit Price:</strong> {displayUnitPrice} WETH</p>
+      <p className="break-all"><strong>Stored Unit Price Wei:</strong> {unitPriceWei}</p>
+      {(productId || vcPreview?.productId) && (
+        <p><strong>Product ID:</strong> {productId || vcPreview?.productId}</p>
+      )}
+      {(paymentToken || vcPreview?.paymentToken) && (
+        <p className="break-all">
+          <strong>Confidential Payment Token:</strong> {paymentToken || vcPreview?.paymentToken}
         </p>
       )}
 
@@ -39,10 +29,15 @@ const ProductFormStep4 = ({ productData }) => {
             target="_blank"
             rel="noreferrer"
           >
-            {(productContract || vcPreview?.productContract).slice(0, 10)}…
+            {(productContract || vcPreview?.productContract).slice(0, 10)}...
           </a>
         </p>
       )}
+
+      <p className="text-sm text-gray-600">
+        Buyer orders happen next from the product page. The single commitment VRC is created later
+        when the seller confirms a real order.
+      </p>
     </div>
   );
 };

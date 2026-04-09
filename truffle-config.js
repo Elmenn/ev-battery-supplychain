@@ -131,7 +131,7 @@ module.exports = {
   // Configure your compilers
   compilers: {
     solc: {
-      version: "0.8.21",      // Fetch exact version from solc-bin (default: truffle's version)
+      version: "0.8.27",      // Required by OpenZeppelin confidential-contracts ERC7984
       settings: {
         optimizer: {
           enabled: true,

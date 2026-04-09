@@ -210,16 +210,25 @@ module.exports = function override(config, env) {
     );
   });
 
-  // Fix webpack dev server deprecation warnings
-  if (config.devServer) {
-    config.devServer = {
-      ...config.devServer,
-      setupMiddlewares: (middlewares, devServer) => {
-        // This replaces the deprecated onAfterSetupMiddleware and onBeforeSetupMiddleware
-        return middlewares;
-      }
-    };
-  }
-
   return config;
+};
+
+module.exports.devServer = function overrideDevServer(configFunction) {
+  return function proxy(devServerConfig, ...rest) {
+    const config = configFunction(devServerConfig, ...rest);
+    return {
+      ...config,
+      headers: {
+        ...(config.headers || {}),
+        "Cross-Origin-Opener-Policy": "same-origin",
+        "Cross-Origin-Embedder-Policy": "require-corp",
+      },
+      setupMiddlewares: (middlewares, devServer) => {
+        if (typeof config.setupMiddlewares === "function") {
+          return config.setupMiddlewares(middlewares, devServer);
+        }
+        return middlewares;
+      },
+    };
+  };
 };

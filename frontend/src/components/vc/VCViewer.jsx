@@ -64,6 +64,7 @@ const VCViewer = ({ vc, sidecar, report }) => {
   const listing = subject.listing || {};
   const order = subject.order || {};
   const commitments = subject.commitments || {};
+  const privacyProofs = subject.privacyProofs || {};
   const attestation = subject.attestation || {};
   const proofs = Array.isArray(safeVc.proof) ? safeVc.proof : [];
 
@@ -123,6 +124,15 @@ const VCViewer = ({ vc, sidecar, report }) => {
         <Field label="Quantity Commitment" value={commitments.quantityCommitment} mono source="vc" />
         <Field label="Total Commitment" value={commitments.totalCommitment} mono source="vc" />
         <Field label="Payment Commitment" value={commitments.paymentCommitment} mono source="vc" />
+      </Section>
+
+      <Section title="Privacy Proofs">
+        <Field label="Quantity-Total Proof Type" value={privacyProofs.quantityTotal?.proofType} source="vc" />
+        <Field label="Quantity-Total Proof R" value={privacyProofs.quantityTotal?.proofRHex} mono source="vc" />
+        <Field label="Quantity-Total Proof S" value={privacyProofs.quantityTotal?.proofSHex} mono source="vc" />
+        <Field label="Total-Payment Proof Type" value={privacyProofs.totalPaymentEquality?.proofType} source="vc" />
+        <Field label="Total-Payment Proof R" value={privacyProofs.totalPaymentEquality?.proofRHex} mono source="vc" />
+        <Field label="Total-Payment Proof S" value={privacyProofs.totalPaymentEquality?.proofSHex} mono source="vc" />
       </Section>
 
       <Section title="Attestation">

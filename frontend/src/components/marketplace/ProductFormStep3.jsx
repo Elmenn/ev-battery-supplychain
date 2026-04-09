@@ -1,17 +1,20 @@
-import React, { useState, useEffect } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import toast from "react-hot-toast";
-import { ethers, getAddress, isAddress } from "ethers";
-import ProductFactoryABI from "../../abis/ProductFactory.json";
-import ProductEscrowABI from "../../abis/ProductEscrow_Initializer.json";
+import { Contract, ethers } from "ethers";
 import { computeUnitPriceHash } from "../../utils/commitmentUtils";
 import { saveProductMeta } from "../../utils/productMetaApi";
+import { loadErc7984DeploymentConfig } from "../../utils/erc7984Deployment";
 
-// Copyable component for CIDs
+const FACTORY_ABI = [
+  "function createProductConfidentialV1(string name, uint64 unitPrice, bytes32 unitPriceHash, address paymentToken) returns (address product)",
+  "event ProductCreatedConfidential(address indexed product, address indexed seller, uint256 indexed productId, address paymentToken, uint64 unitPrice, bytes32 unitPriceHash)",
+];
+
+const MAX_UINT64 = (1n << 64n) - 1n;
+
 function truncate(text, length = 12) {
   if (!text || text.length <= length) return text;
-  const start = text.slice(0, 6);
-  const end = text.slice(-4);
-  return `${start}...${end}`;
+  return `${text.slice(0, 6)}...${text.slice(-4)}`;
 }
 
 function Copyable({ value }) {
@@ -26,278 +29,205 @@ function Copyable({ value }) {
   );
 }
 
-
-// Validate factory address from environment
-const factoryAddress = process.env.REACT_APP_FACTORY_ADDRESS;
-if (!factoryAddress || !isAddress(factoryAddress)) {
-  throw new Error(`Invalid factory address: ${factoryAddress}. Set REACT_APP_FACTORY_ADDRESS in .env`);
-}
-
-const VC_CHAIN =
-  process.env.REACT_APP_CHAIN_ID ||
-  process.env.REACT_APP_CHAIN_ALIAS ||
-  process.env.REACT_APP_NETWORK_ID ||
-  "1337";
-
-const ProductFormStep3 = ({ onNext, productData, backendUrl }) => {
+const ProductFormStep3 = ({ onNext, productData }) => {
   const [loading, setLoading] = useState(false);
-  const [showFullVC, setShowFullVC] = useState(false);
-  const [showBondConfirm, setShowBondConfirm] = useState(false);
-  const [bondAmount, setBondAmount] = useState(null);
-  const [bondLoading, setBondLoading] = useState(true);
+  const [configLoading, setConfigLoading] = useState(true);
+  const [deploymentConfig, setDeploymentConfig] = useState(null);
+  const [showMetadataPreview, setShowMetadataPreview] = useState(false);
 
-  const getFallbackSellerRailgunAddress = () => {
-    try {
-      const stored = JSON.parse(localStorage.getItem("railgun.wallet") || "null");
-      const candidate = stored?.railgunAddress;
-      if (typeof candidate === "string" && candidate.startsWith("0zk")) {
-        return candidate;
-      }
-    } catch {
-      // no-op
-    }
-    return null;
-  };
-
-  // Fetch bond amount from factory on mount
   useEffect(() => {
     let cancelled = false;
-    async function fetchBondAmount() {
+
+    async function loadConfig() {
       try {
-        const provider = new ethers.JsonRpcProvider(process.env.REACT_APP_RPC_URL);
-        const validatedFactoryAddress = getAddress(factoryAddress);
-        const factory = new ethers.Contract(validatedFactoryAddress, ProductFactoryABI.abi, provider);
-        const amount = await factory.bondAmount();
+        const nextConfig = await loadErc7984DeploymentConfig();
         if (!cancelled) {
-          setBondAmount(amount);
-          setBondLoading(false);
+          setDeploymentConfig(nextConfig);
         }
-      } catch (err) {
-        console.error("Failed to fetch bond amount:", err);
+      } finally {
         if (!cancelled) {
-          setBondLoading(false);
+          setConfigLoading(false);
         }
       }
     }
-    fetchBondAmount();
-    return () => { cancelled = true; };
+
+    loadConfig();
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
-  // Build a preview VC for the collapsible developer view (pre-deployment)
-  const vcPreviewData = {
-    schemaVersion: "2.0",
-    productName: productData.productName,
-    batch: productData.batch || "",
-    quantity: productData.quantity || 1,
-    issuer: productData.issuerAddress || "(connected wallet)",
-    chainId: VC_CHAIN,
-    certificateCredential: {
-      name: productData.certificateName || "",
-      cid: productData.certificateCid || "",
-    },
-    componentCredentials: productData.componentCredentials || [],
-  };
+  const componentCredentials = useMemo(
+    () => productData.componentCredentials || [],
+    [productData.componentCredentials]
+  );
+  const hasComponents = componentCredentials.length > 0;
+  const hasCertification =
+    productData.certificateCid && productData.certificateCid.trim() !== "";
+
+  const listingPreviewData = useMemo(() => {
+    const unitPriceWei = String(productData.unitPriceWei || "").trim();
+    const unitPriceHash = unitPriceWei ? computeUnitPriceHash(unitPriceWei) : "";
+
+    return {
+      schemaVersion: "6.1",
+      productName: productData.productName,
+      batch: productData.batch || "",
+      orderModel: "erc7984-confidential-v1",
+      displayUnitPrice: productData.displayUnitPrice || "",
+      unitPriceWei,
+      unitPriceHash,
+      paymentToken: deploymentConfig?.confidentialToken || "",
+      certificateCredential: {
+        name: productData.certificateName || "",
+        cid: productData.certificateCid || "",
+      },
+      componentCredentials,
+    };
+  }, [componentCredentials, deploymentConfig?.confidentialToken, productData]);
 
   const handleConfirm = async () => {
     try {
-      console.log('[Flow][Seller] Step 1: Seller confirming product listing and preparing VC.');
       setLoading(true);
-      toast("Connecting to MetaMask...");
 
-      // Ensure MetaMask pops up for account access
+      if (!window.ethereum) {
+        throw new Error("MetaMask is required to create a product listing.");
+      }
+
+      const resolvedFactory = String(deploymentConfig?.factory || "").trim();
+      const resolvedPaymentToken = String(
+        deploymentConfig?.confidentialToken || ""
+      ).trim();
+
+      if (!ethers.isAddress(resolvedFactory)) {
+        throw new Error("ERC-7984 factory address is not configured.");
+      }
+
+      if (!ethers.isAddress(resolvedPaymentToken)) {
+        throw new Error("ERC-7984 confidential payment token is not configured.");
+      }
+
+      toast("Connecting wallet...");
       await window.ethereum.request({ method: "eth_requestAccounts" });
 
       const provider = new ethers.BrowserProvider(window.ethereum);
       const signer = await provider.getSigner();
       const sellerAddr = await signer.getAddress();
-      console.log('[Flow][Seller] Step 1 -> MetaMask connected, seller address:', sellerAddr);
+      const network = await provider.getNetwork();
 
-      // Ensure seller Railgun address exists before deployment so buyer flow is never broken.
-      const sellerRailgunAddress =
-        (productData.sellerRailgunAddress &&
-          String(productData.sellerRailgunAddress).trim()) ||
-        getFallbackSellerRailgunAddress();
-      if (!sellerRailgunAddress || !sellerRailgunAddress.startsWith("0zk")) {
-        throw new Error(
-          "Seller Railgun wallet not connected. Go back to Step 2.5 and connect Railgun before deploying product."
-        );
-      }
-
-      // Validate seller address
-      if (!isAddress(sellerAddr)) {
-        throw new Error(`Invalid seller address: ${sellerAddr}`);
-      }
-
-      // MetaMask connected
-      const unitPriceWei = ethers.parseEther(productData.price).toString();
+      const productName = String(productData.productName || "").trim();
+      const unitPriceWei = String(productData.unitPriceWei || "").trim();
       const unitPriceHash = computeUnitPriceHash(unitPriceWei);
+      let unitPriceValue;
 
-      toast("Deploying ProductEscrow via Factory...");
-      console.log('[Flow][Seller] Step 2: Deploying ProductEscrow through factory.');
+      if (!productName) {
+        throw new Error("Product name is required.");
+      }
+      if (!unitPriceWei) {
+        throw new Error("A valid public unit price is required.");
+      }
+      unitPriceValue = BigInt(unitPriceWei);
+      if (unitPriceValue <= 0n || unitPriceValue > MAX_UINT64) {
+        throw new Error("Unit price must fit in uint64 and be greater than zero.");
+      }
 
-      // Ensure factory address is valid hex
-      const validatedFactoryAddress = getAddress(factoryAddress);
-      const factory = new ethers.Contract(
-        validatedFactoryAddress,
-        [
-          ...ProductFactoryABI.abi,
-          "function createProductV2(string name, bytes32 unitPriceHash) payable returns (address product)",
-          "event ProductCreatedV2(address indexed product, address indexed seller, uint256 indexed productId, bytes32 priceCommitment, bytes32 unitPriceHash, uint256 bondAmount)",
-        ],
-        signer
+      toast("Creating ERC-7984 listing...");
+      const factory = new Contract(resolvedFactory, FACTORY_ABI, signer);
+      const tx = await factory.createProductConfidentialV1(
+        productName,
+        unitPriceValue,
+        unitPriceHash,
+        resolvedPaymentToken
       );
-
-      // Test if contract is responsive
-      const code = await provider.getCode(factoryAddress);
-      if (code === "0x") {
-        throw new Error("No contract deployed at this address");
-      }
-
-      try {
-        await factory.productCount(); // Test contract responsiveness
-        console.log('[Flow][Seller] Step 2 -> Factory contract responsive.');
-      } catch (funcError) {
-        throw new Error("Contract exists but doesn't have ProductFactory functions: " + funcError.message);
-      }
-
-      const currentBondAmount = bondAmount || await factory.bondAmount();
-      if (currentBondAmount <= 0n) {
-        throw new Error("Factory bond amount is not configured.");
-      }
-      const tx = await factory.createProductV2(productData.productName, unitPriceHash, {
-        value: currentBondAmount,
-      });
       const receipt = await tx.wait();
-      console.log('[Flow][Seller] Step 2 -> ProductEscrow deployed, tx hash:', receipt.hash);
 
-      const event = receipt.logs.map(log => {
-        try {
-          return factory.interface.parseLog(log);
-        } catch {
-          return null;
-        }
-      }).find(e => e && e.name === "ProductCreatedV2");
+      const createdEvent = receipt.logs
+        .map((log) => {
+          try {
+            return factory.interface.parseLog(log);
+          } catch {
+            return null;
+          }
+        })
+        .find((log) => log && log.name === "ProductCreatedConfidential");
 
-      const productAddress = event?.args?.product ?? event?.args?.productAddress;
-
-      if (!productAddress) throw new Error("Missing product address from event");
-
-      if (!isAddress(productAddress)) {
-        throw new Error(`Invalid product address from event: ${productAddress}`);
+      if (!createdEvent) {
+        throw new Error("ProductCreatedConfidential event not found in receipt.");
       }
 
-      console.log('[Flow][Seller] Step 2 -> ProductEscrow deployed at:', productAddress);
-      const validatedProductAddress = getAddress(productAddress);
+      const productAddress = ethers.getAddress(createdEvent.args.product);
+      const productId = createdEvent.args.productId?.toString?.() || "";
+      const paymentToken = ethers.getAddress(createdEvent.args.paymentToken);
 
-      // Fetch product ID from contract
-      toast("Fetching product ID...");
-      let productId;
-      try {
-        const escrow = new ethers.Contract(validatedProductAddress, ProductEscrowABI.abi, provider);
-        productId = await escrow.id();
-        console.log("Product ID:", productId.toString());
-      } catch (error) {
-        console.error("Failed to fetch product ID:", error);
-        toast.error("Failed to fetch product ID: " + error.message);
-        throw error;
-      }
-
-      console.log('[Flow][Seller] Step 3: Storing V2 listing metadata locally.');
       const listingMeta = {
-        schemaVersion: "3.0",
-        productName: productData.productName,
+        schemaVersion: "6.1",
+        productName,
+        name: productName,
         batch: productData.batch || "",
-        productContract: validatedProductAddress,
-        productId: productId.toString(),
-        chainId: VC_CHAIN,
+        productContract: productAddress,
+        productId,
+        chainId: String(network.chainId),
         sellerAddr,
-        sellerRailgunAddress,
-        orderModel: "v2",
+        orderModel: "erc7984-confidential-v1",
+        displayUnitPrice: productData.displayUnitPrice || "",
         unitPriceWei,
         unitPriceHash,
+        paymentToken,
         listingSnapshotCid: "",
         certificateCredential: {
           name: productData.certificateName || "",
           cid: productData.certificateCid || "",
         },
-        componentCredentials: productData.componentCredentials || [],
+        componentCredentials,
         createdAt: new Date().toISOString(),
       };
 
-      toast.success("Product created successfully.");
+      const normalizedProductAddress = productAddress.toLowerCase();
+      localStorage.setItem(`unitPriceWei_${normalizedProductAddress}`, unitPriceWei);
+      localStorage.setItem(`unitPriceHash_${normalizedProductAddress}`, unitPriceHash);
+      localStorage.setItem(`productMeta_${normalizedProductAddress}`, JSON.stringify(listingMeta));
+
+      try {
+        await saveProductMeta({
+          productAddress,
+          productMeta: listingMeta,
+          priceWei: unitPriceWei,
+          priceCommitment: unitPriceHash,
+          sellerRailgunAddress: "",
+          unitPriceWei,
+          unitPriceHash,
+          schemaVersion: "6.1",
+        });
+      } catch (metadataError) {
+        console.warn("Failed to persist ERC-7984 product metadata", metadataError);
+      }
+
+      toast.success("Product listing created.");
       onNext({
         productData: {
           ...productData,
           productContract: productAddress,
+          productId,
+          unitPriceWei,
+          unitPriceHash,
+          paymentToken,
           vcPreview: listingMeta,
-          priceWei: unitPriceWei,
-          unitPriceWei,
-          unitPriceHash,
-          sellerRailgunAddress,
-          sellerWalletID: productData.sellerWalletID,
-          sellerEOA: productData.sellerEOA,
-          privatePaymentsDisabled: productData.privatePaymentsDisabled || false,
-        }
+        },
       });
-
-      console.log('[Flow][Seller] Step 8: Caching price and Railgun metadata locally for reuse.');
-      localStorage.setItem(`unitPriceWei_${productAddress}`, unitPriceWei);
-      localStorage.setItem(`unitPriceHash_${productAddress}`, unitPriceHash);
-      localStorage.setItem(`productMeta_${productAddress}`, JSON.stringify(listingMeta));
-
-      if (sellerRailgunAddress) {
-        localStorage.setItem(`sellerRailgunAddress_${productAddress}`, sellerRailgunAddress);
-        localStorage.setItem(`sellerWalletID_${productAddress}`, productData.sellerWalletID || '');
-        console.log('[Flow][Seller] Step 8 -> Railgun metadata saved for product:', {
-          productAddress,
-          sellerRailgunAddress,
-          sellerWalletID: productData.sellerWalletID
-        });
-      } else {
-        console.log('[Flow][Seller] Step 8 -> No Railgun metadata provided for product:', productAddress);
-      }
-
-      // Persist metadata to backend DB for cross-device access.
-      // localStorage writes above remain as local cache (belt-and-suspenders).
-      // Fire-and-forget with error logging — DB failure must NOT block the seller flow.
-      // sellerWalletID is intentionally excluded: the seller re-derives it from their wallet on any device.
-      try {
-        await saveProductMeta({
-          productAddress: validatedProductAddress,
-          productMeta: listingMeta,
-          priceWei: unitPriceWei,
-          priceCommitment: unitPriceHash,
-          sellerRailgunAddress: sellerRailgunAddress || '',
-          unitPriceWei,
-          unitPriceHash,
-          schemaVersion: "3.0",
-        });
-        console.log('[Flow][Seller] Step 8 -> Metadata saved to backend DB for product:', validatedProductAddress);
-      } catch (dbErr) {
-        console.warn('[Flow][Seller] Step 8 -> Backend DB save failed (localStorage still has data):', dbErr.message);
-      }
-
     } catch (err) {
       console.error("handleConfirm:", err);
-      toast.error(err.message || "Failed to create product");
+      toast.error(err.message || "Failed to create product listing");
     } finally {
       setLoading(false);
     }
   };
 
-
-  // Extract data for summary
-  const componentCredentials = productData.componentCredentials || [];
-  const hasComponents = componentCredentials.length > 0;
-  const hasCertification = productData.certificateCid && productData.certificateCid.trim() !== "";
-
   return (
     <div className="form-step">
-      <h3 className="text-xl font-semibold mb-4">Step 3: Review & Confirm</h3>
+      <h3 className="text-xl font-semibold mb-4">Step 3: Review & Create Listing</h3>
 
-      {/* Clean Summary */}
       <div className="bg-gray-50 border border-gray-200 rounded-lg p-6 mb-6">
-        <h4 className="mt-0 mb-4 text-gray-800 font-semibold">Product Summary</h4>
+        <h4 className="mt-0 mb-4 text-gray-800 font-semibold">Listing Summary</h4>
 
         <div className="grid gap-3">
           <div>
@@ -305,11 +235,11 @@ const ProductFormStep3 = ({ onNext, productData, backendUrl }) => {
           </div>
 
           <div>
-            <strong>Price:</strong> {productData.price} ETH
-          </div>
-
-          <div>
-            <strong>Quantity:</strong> {productData.quantity || 1}
+            <strong>Public Unit Price:</strong> {productData.displayUnitPrice} WETH
+            <div className="text-xs text-gray-500 mt-1">
+              Stored canonically as raw WETH wei:{" "}
+              <span className="font-mono">{listingPreviewData.unitPriceWei}</span>
+            </div>
           </div>
 
           {productData.batch && productData.batch.trim() !== "" && (
@@ -342,61 +272,46 @@ const ProductFormStep3 = ({ onNext, productData, backendUrl }) => {
         </div>
       </div>
 
-      {/* Bond Disclosure Card */}
-      <div className="bg-amber-50 border border-amber-300 rounded-lg p-5 mb-6">
-        <div className="flex items-start gap-3">
-          <svg
-            xmlns="http://www.w3.org/2000/svg"
-            width="24"
-            height="24"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="2"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            className="text-amber-600 mt-0.5 flex-shrink-0"
-          >
-            <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
-          </svg>
-          <div>
-            <h4 className="font-semibold text-amber-800 mt-0 mb-2">Protocol Collateral</h4>
-            {bondLoading ? (
-              <div className="h-6 w-32 bg-amber-200 rounded animate-pulse" />
-            ) : bondAmount !== null ? (
-              <>
-                <p className="text-2xl font-bold text-amber-900 mb-2">
-                  {ethers.formatEther(bondAmount)} ETH
-                </p>
-                <p className="text-sm text-amber-700 m-0">
-                  You will lock {ethers.formatEther(bondAmount)} ETH as seller bond. This is
-                  refundable upon successful delivery completion. Bond will be forfeited if you
-                  fail to confirm the order within the timeout window.
-                </p>
-              </>
-            ) : (
-              <p className="text-sm text-amber-700 m-0">
-                Unable to fetch bond amount. Deployment may still proceed.
-              </p>
-            )}
+      <div className="bg-blue-50 border border-blue-200 rounded-lg p-5 mb-6">
+        <h4 className="font-semibold text-blue-900 mt-0 mb-2">ERC-7984 Deployment</h4>
+        {configLoading ? (
+          <p className="text-sm text-blue-700 m-0">Loading Sepolia deployment config...</p>
+        ) : deploymentConfig?.factory && deploymentConfig?.confidentialToken ? (
+          <div className="space-y-2 text-sm text-blue-800">
+            <div>
+              <strong>Factory:</strong> <Copyable value={deploymentConfig.factory} />
+            </div>
+            <div>
+              <strong>Confidential payment token:</strong>{" "}
+              <Copyable value={deploymentConfig.confidentialToken} />
+            </div>
           </div>
-        </div>
+        ) : (
+          <p className="text-sm text-red-700 m-0">
+            Deployment config is missing. Check the local Sepolia config before creating a listing.
+          </p>
+        )}
       </div>
 
-      {/* Optional: Full VC Structure (collapsible) */}
+      <div className="bg-emerald-50 border border-emerald-200 rounded-lg p-5 mb-6">
+        <h4 className="font-semibold text-emerald-900 mt-0 mb-2">What happens now</h4>
+        <p className="text-sm text-emerald-800 m-0">
+          This step creates the ERC-7984 product listing only. The commitment VRC is not created
+          yet. It will be built and signed later when the seller confirms a buyer order.
+        </p>
+      </div>
+
       <div className="mb-6">
         <button
-          onClick={() => setShowFullVC(!showFullVC)}
+          onClick={() => setShowMetadataPreview((previous) => !previous)}
           className="bg-transparent border border-gray-200 rounded px-4 py-2 cursor-pointer text-gray-500 text-sm hover:bg-gray-50"
         >
-          {showFullVC ? "Hide" : "Show"} Full VC Structure (for developers)
+          {showMetadataPreview ? "Hide" : "Show"} Stored Listing Metadata
         </button>
 
-        {showFullVC && (
-          <pre
-            className="vc-preview mt-2 max-h-96 overflow-auto text-sm bg-gray-100 p-4 rounded border border-gray-200"
-          >
-            {JSON.stringify(vcPreviewData, null, 2)}
+        {showMetadataPreview && (
+          <pre className="vc-preview mt-2 max-h-96 overflow-auto text-sm bg-gray-100 p-4 rounded border border-gray-200">
+            {JSON.stringify(listingPreviewData, null, 2)}
           </pre>
         )}
       </div>
@@ -404,46 +319,17 @@ const ProductFormStep3 = ({ onNext, productData, backendUrl }) => {
       <div className="mt-4">
         <button
           className="button bg-blue-600 text-white px-6 py-3 rounded-lg font-semibold hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
-          disabled={loading}
-          onClick={() => setShowBondConfirm(true)}
+          disabled={
+            loading ||
+            configLoading ||
+            !deploymentConfig?.factory ||
+            !deploymentConfig?.confidentialToken
+          }
+          onClick={handleConfirm}
         >
-          {loading ? "Processing..." : "Confirm & Deploy"}
+          {loading ? "Creating Listing..." : "Create Listing"}
         </button>
       </div>
-
-      {/* Bond Confirmation Modal */}
-      {showBondConfirm && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-xl p-6 max-w-md w-full mx-4 shadow-xl">
-            <h3 className="text-lg font-bold mb-4">Confirm Bond Deposit</h3>
-            <p className="text-gray-600 mb-4">
-              You are about to lock{" "}
-              <strong>
-                {bondAmount ? ethers.formatEther(bondAmount) : "..."} ETH
-              </strong>{" "}
-              as seller bond and deploy a new product escrow. This bond is
-              refundable after successful delivery.
-            </p>
-            <div className="flex gap-3 justify-end">
-              <button
-                className="px-4 py-2 rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-50"
-                onClick={() => setShowBondConfirm(false)}
-              >
-                Cancel
-              </button>
-              <button
-                className="px-4 py-2 rounded-lg bg-blue-600 text-white font-semibold hover:bg-blue-700"
-                onClick={() => {
-                  setShowBondConfirm(false);
-                  handleConfirm();
-                }}
-              >
-                Confirm & Lock Bond
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 };

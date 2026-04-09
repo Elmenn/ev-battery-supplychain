@@ -60,8 +60,9 @@ async function dispatchWithMode({
   backendFn,
   wasmFn,
   comparer,
+  modeOverride = null,
 }) {
-  const mode = getZkpMode();
+  const mode = modeOverride || getZkpMode();
 
   if (mode === ZKP_MODE_BACKEND) {
     return backendFn(params);
@@ -98,43 +99,75 @@ function compareVerificationResult(backendResult, wasmResult) {
   return Boolean(backendResult?.verified) === Boolean(wasmResult?.verified);
 }
 
-export async function generateValueCommitmentWithBlinding(params) {
+export async function generateValueCommitmentWithBlinding(params, options = {}) {
   return dispatchWithMode({
     operation: "generate-value-commitment-with-blinding",
     params,
     backendFn: generateValueCommitmentWithBlindingBackend,
     wasmFn: generateValueCommitmentWithBlindingWasm,
     comparer: compareGenerationResult,
+    modeOverride: options.modeOverride || null,
   });
 }
 
-export async function generateScalarCommitmentWithBlinding(params) {
+export async function generateValueCommitmentWithBlindingPreferWasm(params) {
+  try {
+    const result = await generateValueCommitmentWithBlindingWasm(params);
+    return { ...result, source: "WASM" };
+  } catch (error) {
+    const fallback = await generateValueCommitmentWithBlindingBackend(params);
+    return {
+      ...fallback,
+      source: "Backend Fallback",
+      fallbackReason: error?.message || "WASM value commitment generation failed",
+    };
+  }
+}
+
+export async function generateScalarCommitmentWithBlinding(params, options = {}) {
   return dispatchWithMode({
     operation: "generate-scalar-commitment-with-blinding",
     params,
     backendFn: generateScalarCommitmentWithBlindingBackend,
     wasmFn: generateScalarCommitmentWithBlindingWasm,
     comparer: compareGenerationResult,
+    modeOverride: options.modeOverride || null,
   });
 }
 
-export async function generateValueCommitmentWithBinding(params) {
+export async function generateScalarCommitmentWithBlindingPreferWasm(params) {
+  try {
+    const result = await generateScalarCommitmentWithBlindingWasm(params);
+    return { ...result, source: "WASM" };
+  } catch (error) {
+    const fallback = await generateScalarCommitmentWithBlindingBackend(params);
+    return {
+      ...fallback,
+      source: "Backend Fallback",
+      fallbackReason: error?.message || "WASM scalar commitment generation failed",
+    };
+  }
+}
+
+export async function generateValueCommitmentWithBinding(params, options = {}) {
   return dispatchWithMode({
     operation: "generate-value-commitment-with-binding",
     params,
     backendFn: generateValueCommitmentWithBindingBackend,
     wasmFn: generateValueCommitmentWithBindingWasm,
     comparer: compareGenerationResult,
+    modeOverride: options.modeOverride || null,
   });
 }
 
-export async function verifyValueCommitment(params) {
+export async function verifyValueCommitment(params, options = {}) {
   return dispatchWithMode({
     operation: "verify-value-commitment",
     params,
     backendFn: verifyValueCommitmentBackend,
     wasmFn: verifyValueCommitmentWasm,
     comparer: compareVerificationResult,
+    modeOverride: options.modeOverride || null,
   });
 }
 

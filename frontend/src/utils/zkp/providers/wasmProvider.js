@@ -83,7 +83,7 @@ function mapWasmError(operation, error) {
   return new Error(`[ZKP][wasm] ${operation} failed: ${message}`);
 }
 
-function callWorker(method, payload, timeoutMs = DEFAULT_WORKER_TIMEOUT_MS) {
+export function callWasmZkpWorker(method, payload, timeoutMs = DEFAULT_WORKER_TIMEOUT_MS) {
   const worker = ensureWasmWorker();
   const id = `${Date.now()}-${nextRequestId++}`;
 
@@ -108,7 +108,7 @@ export async function generateValueCommitmentWithBlindingWasm({
   blindingHex,
 }) {
   try {
-    const result = await callWorker("generate-value-commitment-with-blinding", {
+    const result = await callWasmZkpWorker("generate-value-commitment-with-blinding", {
       value: normalizeValue(value),
       blindingHex: normalizeHex(blindingHex),
     });
@@ -124,7 +124,7 @@ export async function generateValueCommitmentWithBindingWasm({
   bindingTagHex,
 }) {
   try {
-    const result = await callWorker("generate-value-commitment-with-binding", {
+    const result = await callWasmZkpWorker("generate-value-commitment-with-binding", {
       value: normalizeValue(value),
       blindingHex: normalizeHex(blindingHex),
       bindingTagHex: bindingTagHex ? normalizeHex(bindingTagHex) : undefined,
@@ -135,10 +135,19 @@ export async function generateValueCommitmentWithBindingWasm({
   }
 }
 
-export async function generateScalarCommitmentWithBlindingWasm() {
-  throw new Error(
-    "[ZKP][wasm] generate-scalar-commitment-with-blinding is not implemented. Use REACT_APP_ZKP_MODE=backend."
-  );
+export async function generateScalarCommitmentWithBlindingWasm({
+  value,
+  blindingHex,
+}) {
+  try {
+    const result = await callWasmZkpWorker("generate-scalar-commitment-with-blinding", {
+      value: normalizeValue(value),
+      blindingHex: normalizeHex(blindingHex),
+    });
+    return result;
+  } catch (error) {
+    throw mapWasmError("generate-scalar-commitment-with-blinding", error);
+  }
 }
 
 export async function verifyValueCommitmentWasm({
@@ -147,7 +156,7 @@ export async function verifyValueCommitmentWasm({
   bindingTagHex,
 }) {
   try {
-    const result = await callWorker("verify-value-commitment", {
+    const result = await callWasmZkpWorker("verify-value-commitment", {
       commitment: normalizeHex(commitment),
       proof: normalizeHex(proof),
       bindingTagHex: bindingTagHex ? normalizeHex(bindingTagHex) : undefined,

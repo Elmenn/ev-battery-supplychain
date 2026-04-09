@@ -5,8 +5,8 @@
   "scripts": {
     "start": "node server.js",
     "start:watcher": "node watcher.js",
-    "start:sepolia": "copy ..\\.env.sepolia .env && node server.js",
-    "start:ganache": "copy ..\\.env.ganache .env && node server.js"
+    "start:sepolia": "node server.js",
+    "start:ganache": "node server.js"
   },
   "dependencies": {
     "@truffle/hdwallet-provider": "^2.1.15",

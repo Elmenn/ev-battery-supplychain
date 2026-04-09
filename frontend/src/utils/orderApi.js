@@ -29,12 +29,43 @@ export async function saveOrderRecoveryBundle({ order, attestation }) {
 
 export async function getOrder(orderId) {
   try {
-    const res = await fetch(`${BACKEND_URL}/orders/${String(orderId).toLowerCase()}`);
+    const res = await fetch(`${BACKEND_URL}/orders/${String(orderId).toLowerCase()}`, {
+      cache: 'no-store',
+    });
     if (res.status === 404) return null;
     if (!res.ok) return null;
     return res.json();
   } catch (err) {
     console.warn('getOrder: network error', err.message);
+    return null;
+  }
+}
+
+export async function getOrderByVcHash(vcHash) {
+  try {
+    const res = await fetch(`${BACKEND_URL}/orders/by-vc-hash/${String(vcHash).toLowerCase()}`, {
+      cache: 'no-store',
+    });
+    if (res.status === 404) return null;
+    if (!res.ok) return null;
+    return res.json();
+  } catch (err) {
+    console.warn('getOrderByVcHash: network error', err.message);
+    return null;
+  }
+}
+
+export async function getOrderByVcCid(vcCid) {
+  try {
+    const encoded = encodeURIComponent(String(vcCid).replace(/^ipfs:\/\//, ''));
+    const res = await fetch(`${BACKEND_URL}/orders/by-vc-cid/${encoded}`, {
+      cache: 'no-store',
+    });
+    if (res.status === 404) return null;
+    if (!res.ok) return null;
+    return res.json();
+  } catch (err) {
+    console.warn('getOrderByVcCid: network error', err.message);
     return null;
   }
 }

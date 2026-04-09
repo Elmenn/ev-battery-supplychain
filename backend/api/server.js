@@ -35,12 +35,20 @@ const {
   validateReconcileBody,
   validateOrderStatusBody,
   validateOrderVcBody,
+  validateErc7984OrderSnapshotBody,
   validateOrderAttestationBody,
   validateProofBundlePatchBody,
   validateVcArchiveBody,
   validateVcStatusPatchBody,
 } = require('./requestSchemas');
 const db = require('./db');
+const {
+  validatePaymentBridgeArtifact,
+} = require('./erc7984/paymentBridgeModel');
+const {
+  validateEqualityAttestationRecord,
+  EqualityStatus,
+} = require('./erc7984/equalityAttestationModel');
 
 const app = express();
 const port = Number(process.env.PORT || 5000);
@@ -70,10 +78,197 @@ function canonicalizeJson(value) {
   return stableStringify(value);
 }
 
+function normalizeEqualityAttestationForValidation(record) {
+  if (!record || typeof record !== 'object' || Array.isArray(record)) {
+    return record;
+  }
+
+  return {
+    ...record,
+    handle: record.handle === '' ? null : record.handle,
+    verifiedTxHash: record.verifiedTxHash === '' ? null : record.verifiedTxHash,
+  };
+}
+
+function normalizeEqualityAttestationSnapshot(record, fieldName, fallbackOrderId = null) {
+  if (record == null) return null;
+
+  const normalized = normalizeEqualityAttestationForValidation({
+    ...record,
+    orderId: record.orderId ?? fallbackOrderId ?? null,
+  });
+  validateEqualityAttestationRecord(normalized, fieldName);
+  return {
+    orderId: normalizeBytes32(normalized.orderId, `${fieldName}.orderId`, { required: true }),
+    target: normalizeString(normalized.target, `${fieldName}.target`, { required: true }),
+    status: normalizeString(normalized.status, `${fieldName}.status`, { required: true }),
+    handle: normalizeBytes32(normalized.handle, `${fieldName}.handle`),
+    requestedAt: normalized.requestedAt == null ? null : Number(normalized.requestedAt),
+    verifiedAt: normalized.verifiedAt == null ? null : Number(normalized.verifiedAt),
+    verifiedTxHash: normalizeBytes32(normalized.verifiedTxHash, `${fieldName}.verifiedTxHash`),
+  };
+}
+
+function getEqualityStatusRank(status) {
+  switch (status) {
+    case EqualityStatus.VerifiedTrue:
+    case EqualityStatus.VerifiedFalse:
+      return 3;
+    case EqualityStatus.Pending:
+      return 2;
+    case EqualityStatus.Cleared:
+    case EqualityStatus.None:
+    default:
+      return 1;
+  }
+}
+
+function mergeEqualityAttestationSnapshot(existing, incoming) {
+  if (!existing) return incoming || null;
+  if (!incoming) return existing;
+
+  const existingRank = getEqualityStatusRank(existing.status);
+  const incomingRank = getEqualityStatusRank(incoming.status);
+  if (existingRank > incomingRank) {
+    return existing;
+  }
+  if (incomingRank > existingRank) {
+    return incoming;
+  }
+
+  return {
+    ...existing,
+    ...incoming,
+    handle: incoming.handle ?? existing.handle ?? null,
+    requestedAt: incoming.requestedAt ?? existing.requestedAt ?? null,
+    verifiedAt: incoming.verifiedAt ?? existing.verifiedAt ?? null,
+    verifiedTxHash: incoming.verifiedTxHash ?? existing.verifiedTxHash ?? null,
+  };
+}
+
+function buildVcArchiveMetadata(vc) {
+  const schemaVersion = normalizeString(vc?.schemaVersion, 'vc.schemaVersion') || null;
+  const credentialSubject = vc?.credentialSubject || {};
+  const paymentBridge = credentialSubject?.paymentBridge || null;
+  const equalityAttestations = credentialSubject?.equalityAttestations || {};
+  const sellerBondAttestation = equalityAttestations?.sellerBond || null;
+  const transporterBondAttestation = equalityAttestations?.transporterBond || null;
+  const proofSource = credentialSubject?.attestation?.proofSource || null;
+
+  if (schemaVersion === '6.0' || schemaVersion === '6.1') {
+    if (paymentBridge) {
+      validatePaymentBridgeArtifact(paymentBridge, 'vc.credentialSubject.paymentBridge');
+    }
+    if (sellerBondAttestation) {
+      validateEqualityAttestationRecord(
+        normalizeEqualityAttestationForValidation(sellerBondAttestation),
+        'vc.credentialSubject.equalityAttestations.sellerBond'
+      );
+    }
+    if (transporterBondAttestation) {
+      validateEqualityAttestationRecord(
+        normalizeEqualityAttestationForValidation(transporterBondAttestation),
+        'vc.credentialSubject.equalityAttestations.transporterBond'
+      );
+    }
+  }
+
+  return {
+    schemaVersion,
+    credentialTypes: Array.isArray(vc?.type) ? vc.type.map((entry) => String(entry)) : [],
+    attestationVersion: normalizeString(
+      credentialSubject?.attestation?.attestationVersion,
+      'vc.credentialSubject.attestation.attestationVersion'
+    ),
+    contextHash: normalizeString(
+      paymentBridge?.contextHash || credentialSubject?.attestation?.contextHash,
+      'vc.credentialSubject.attestation.contextHash'
+    ),
+    proofSourceType: normalizeString(proofSource?.type, 'vc.credentialSubject.attestation.proofSource.type'),
+    proofSourceVersion: normalizeString(
+      proofSource?.version,
+      'vc.credentialSubject.attestation.proofSource.version'
+    ),
+    paymentBridgeHash: normalizeString(paymentBridge?.bridgeHash, 'vc.credentialSubject.paymentBridge.bridgeHash'),
+    paymentBridgeStatus: normalizeString(
+      paymentBridge?.verification?.status,
+      'vc.credentialSubject.paymentBridge.verification.status'
+    ),
+    paymentBridgeMethod: normalizeString(
+      paymentBridge?.verification?.method,
+      'vc.credentialSubject.paymentBridge.verification.method'
+    ),
+    sellerBondAttestationStatus: normalizeString(
+      sellerBondAttestation?.status,
+      'vc.credentialSubject.equalityAttestations.sellerBond.status'
+    ),
+    transporterBondAttestationStatus: normalizeString(
+      transporterBondAttestation?.status,
+      'vc.credentialSubject.equalityAttestations.transporterBond.status'
+    ),
+  };
+}
+
+function tryParseDecimalBigInt(value) {
+  if (value == null) return null;
+  const raw = String(value).trim();
+  if (!raw || !/^\d+$/.test(raw)) return null;
+  try {
+    return BigInt(raw);
+  } catch {
+    return null;
+  }
+}
+
+function validateOrderVcBinding(vcCid, vcHash, fieldPrefix = 'orderVc') {
+  const normalizedCid = normalizeString(vcCid, `${fieldPrefix}.cid`);
+  const normalizedHash = normalizeBytes32(vcHash, `${fieldPrefix}.hash`);
+
+  if (
+    !normalizedCid ||
+    !normalizedHash ||
+    normalizedHash === '0x0000000000000000000000000000000000000000000000000000000000000000'
+  ) {
+    return;
+  }
+
+  const computedHash = keccak256(toUtf8Bytes(normalizedCid));
+  if (computedHash.toLowerCase() !== normalizedHash.toLowerCase()) {
+    throw new RequestValidationError(`${fieldPrefix} hash does not match cid`);
+  }
+}
+
+function validateBridgeCoherence({ unitPriceWei, quantityProof, totalProof, paymentProof }, fieldPrefix = 'body') {
+  const quantityValue = tryParseDecimalBigInt(quantityProof?.quantity);
+  const quantityUnitPrice = tryParseDecimalBigInt(quantityProof?.unitPriceWei);
+  const explicitUnitPrice = tryParseDecimalBigInt(unitPriceWei);
+  const totalValue = tryParseDecimalBigInt(totalProof?.value);
+  const paymentValue = tryParseDecimalBigInt(paymentProof?.value);
+  const resolvedUnitPrice = explicitUnitPrice ?? quantityUnitPrice;
+
+  if (
+    quantityValue != null &&
+    resolvedUnitPrice != null &&
+    totalValue != null &&
+    quantityValue * resolvedUnitPrice !== totalValue
+  ) {
+    throw new RequestValidationError(
+      `${fieldPrefix} bridge data is inconsistent: quantity * unitPriceWei must equal totalProof.value`
+    );
+  }
+
+  if (totalValue != null && paymentValue != null && totalValue !== paymentValue) {
+    throw new RequestValidationError(
+      `${fieldPrefix} bridge data is inconsistent: totalProof.value must equal paymentProof.value`
+    );
+  }
+}
+
 function buildVcArchiveParams(cid, vc, source = 'api') {
   const normalizedCid = normalizeString(cid, 'cid', { required: true }).replace(/^ipfs:\/\//, '').trim();
   const canonicalJson = canonicalizeJson(vc);
   const credentialSubject = vc?.credentialSubject || {};
+  const metadata = buildVcArchiveMetadata(vc);
 
   return {
     cid: normalizedCid,
@@ -86,6 +281,7 @@ function buildVcArchiveParams(cid, vc, source = 'api') {
     ),
     orderId: normalizeString(credentialSubject.order?.orderId, 'vc.credentialSubject.order.orderId'),
     source: normalizeString(source, 'source') || 'api',
+    metadata,
   };
 }
 
@@ -291,11 +487,19 @@ function mapOrderRow(row) {
     chainId: row.chain_id,
     sellerAddress: row.seller_address,
     buyerAddress: row.buyer_address,
+    transporterAddress: row.transporter_address,
     status: row.status,
+    phase: row.order_phase == null ? null : Number(row.order_phase),
+    delivered: row.delivered_flag == null ? null : Boolean(row.delivered_flag),
     memoHash: row.memo_hash,
     railgunTxRef: row.railgun_tx_ref,
     unitPriceWei: row.unit_price_wei,
     unitPriceHash: row.unit_price_hash,
+    paymentToken: row.payment_token,
+    buyerDepositTxHash: row.buyer_deposit_tx_hash,
+    buyerDepositReference: row.buyer_deposit_reference,
+    sellerBondAttestation: parseMaybeJson(row.seller_bond_attestation_json),
+    transporterBondAttestation: parseMaybeJson(row.transporter_bond_attestation_json),
     quantityCommitment: row.quantity_commitment,
     quantityProof: parseMaybeJson(row.quantity_proof),
     totalCommitment: row.total_commitment,
@@ -305,6 +509,9 @@ function mapOrderRow(row) {
     contextHash: row.context_hash,
     orderVcCid: row.order_vc_cid,
     orderVcHash: row.order_vc_hash,
+    deliveryTxHash: row.delivery_tx_hash,
+    deliveryConfirmedVcHash: row.delivery_confirmed_vc_hash,
+    deliveryConfirmedTransporter: row.delivery_confirmed_transporter,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
@@ -441,11 +648,19 @@ const stmtUpsertOrder = db.prepare(`
     chain_id,
     seller_address,
     buyer_address,
+    transporter_address,
     status,
+    order_phase,
+    delivered_flag,
     memo_hash,
     railgun_tx_ref,
     unit_price_wei,
     unit_price_hash,
+    payment_token,
+    buyer_deposit_tx_hash,
+    buyer_deposit_reference,
+    seller_bond_attestation_json,
+    transporter_bond_attestation_json,
     quantity_commitment,
     quantity_proof,
     total_commitment,
@@ -455,6 +670,9 @@ const stmtUpsertOrder = db.prepare(`
     context_hash,
     order_vc_cid,
     order_vc_hash,
+    delivery_tx_hash,
+    delivery_confirmed_vc_hash,
+    delivery_confirmed_transporter,
     updated_at
   ) VALUES (
     @orderId,
@@ -464,11 +682,19 @@ const stmtUpsertOrder = db.prepare(`
     @chainId,
     @sellerAddress,
     @buyerAddress,
+    @transporterAddress,
     @status,
+    @orderPhase,
+    @deliveredFlag,
     @memoHash,
     @railgunTxRef,
     @unitPriceWei,
     @unitPriceHash,
+    @paymentToken,
+    @buyerDepositTxHash,
+    @buyerDepositReference,
+    @sellerBondAttestation,
+    @transporterBondAttestation,
     @quantityCommitment,
     @quantityProof,
     @totalCommitment,
@@ -478,6 +704,9 @@ const stmtUpsertOrder = db.prepare(`
     @contextHash,
     @orderVcCid,
     @orderVcHash,
+    @deliveryTxHash,
+    @deliveryConfirmedVcHash,
+    @deliveryConfirmedTransporter,
     datetime('now')
   )
   ON CONFLICT(order_id) DO UPDATE SET
@@ -487,11 +716,19 @@ const stmtUpsertOrder = db.prepare(`
     chain_id = excluded.chain_id,
     seller_address = excluded.seller_address,
     buyer_address = excluded.buyer_address,
+    transporter_address = excluded.transporter_address,
     status = excluded.status,
+    order_phase = excluded.order_phase,
+    delivered_flag = excluded.delivered_flag,
     memo_hash = excluded.memo_hash,
     railgun_tx_ref = excluded.railgun_tx_ref,
     unit_price_wei = excluded.unit_price_wei,
     unit_price_hash = excluded.unit_price_hash,
+    payment_token = excluded.payment_token,
+    buyer_deposit_tx_hash = excluded.buyer_deposit_tx_hash,
+    buyer_deposit_reference = excluded.buyer_deposit_reference,
+    seller_bond_attestation_json = excluded.seller_bond_attestation_json,
+    transporter_bond_attestation_json = excluded.transporter_bond_attestation_json,
     quantity_commitment = excluded.quantity_commitment,
     quantity_proof = excluded.quantity_proof,
     total_commitment = excluded.total_commitment,
@@ -501,10 +738,19 @@ const stmtUpsertOrder = db.prepare(`
     context_hash = excluded.context_hash,
     order_vc_cid = excluded.order_vc_cid,
     order_vc_hash = excluded.order_vc_hash,
+    delivery_tx_hash = excluded.delivery_tx_hash,
+    delivery_confirmed_vc_hash = excluded.delivery_confirmed_vc_hash,
+    delivery_confirmed_transporter = excluded.delivery_confirmed_transporter,
     updated_at = datetime('now')
 `);
 
 const stmtGetOrder = db.prepare('SELECT * FROM product_orders WHERE order_id = ?');
+const stmtGetOrderByVcHash = db.prepare(
+  'SELECT * FROM product_orders WHERE order_vc_hash = ? ORDER BY updated_at DESC, created_at DESC LIMIT 1'
+);
+const stmtGetOrderByVcCid = db.prepare(
+  'SELECT * FROM product_orders WHERE order_vc_cid = ? ORDER BY updated_at DESC, created_at DESC LIMIT 1'
+);
 const stmtGetLatestOrderForProductBuyer = db.prepare(`
   SELECT *
   FROM product_orders
@@ -743,6 +989,7 @@ app.post('/vc-archive', (req, res) => {
         productAddress: row.product_address,
         orderId: row.order_id,
         source: row.source,
+        metadata: params.metadata,
         createdAt: row.created_at,
         updatedAt: row.updated_at,
       },
@@ -969,11 +1216,19 @@ app.post('/orders', (req, res) => {
       chainId: normalizeString(chainId, 'chainId', { required: true }),
       sellerAddress: normalizeAddress(sellerAddress, 'sellerAddress', { required: true }),
       buyerAddress: normalizeAddress(buyerAddress, 'buyerAddress'),
+      transporterAddress: null,
       status: normalizeString(status, 'status', { required: true }),
+      orderPhase: null,
+      deliveredFlag: null,
       memoHash: normalizeBytes32(memoHash, 'memoHash'),
       railgunTxRef: normalizeBytes32(railgunTxRef, 'railgunTxRef'),
       unitPriceWei: normalizeString(unitPriceWei, 'unitPriceWei', { required: true }),
       unitPriceHash: normalizeBytes32(unitPriceHash, 'unitPriceHash', { required: true }),
+      paymentToken: null,
+      buyerDepositTxHash: null,
+      buyerDepositReference: null,
+      sellerBondAttestation: null,
+      transporterBondAttestation: null,
       quantityCommitment: normalizeBytes32(quantityCommitment, 'quantityCommitment'),
       quantityProof: stringifyMaybeJson(quantityProof),
       totalCommitment: normalizeBytes32(totalCommitment, 'totalCommitment'),
@@ -983,6 +1238,9 @@ app.post('/orders', (req, res) => {
       contextHash: resolvedContextHash,
       orderVcCid: orderVcCid || null,
       orderVcHash: normalizeBytes32(orderVcHash, 'orderVcHash'),
+      deliveryTxHash: null,
+      deliveryConfirmedVcHash: null,
+      deliveryConfirmedTransporter: null,
     });
 
     const row = stmtGetOrder.get(normalizedOrderId);
@@ -990,6 +1248,128 @@ app.post('/orders', (req, res) => {
   } catch (error) {
     console.error('Error saving order:', error);
     return handleValidationError(res, error, 'Invalid order payload');
+  }
+});
+
+app.post('/erc7984/orders/snapshot', (req, res) => {
+  try {
+    validateErc7984OrderSnapshotBody(req.body || {});
+    const normalizedOrderId = normalizeBytes32(req.body.orderId, 'orderId', { required: true });
+    const existingOrder = mapOrderRow(stmtGetOrder.get(normalizedOrderId));
+    const hasExplicitOrderVcCid = Object.prototype.hasOwnProperty.call(req.body || {}, 'orderVcCid');
+    const normalizedOrderVcCid = normalizeString(req.body.orderVcCid, 'orderVcCid');
+    const sellerBondAttestation = mergeEqualityAttestationSnapshot(
+      existingOrder?.sellerBondAttestation || null,
+      normalizeEqualityAttestationSnapshot(
+        req.body.sellerBondAttestation,
+        'body.sellerBondAttestation',
+        normalizedOrderId
+      )
+    );
+    const transporterBondAttestation = mergeEqualityAttestationSnapshot(
+      existingOrder?.transporterBondAttestation || null,
+      normalizeEqualityAttestationSnapshot(
+        req.body.transporterBondAttestation,
+        'body.transporterBondAttestation',
+        normalizedOrderId
+      )
+    );
+    const mergedUnitPriceWei =
+      req.body.unitPriceWei == null
+        ? (existingOrder?.unitPriceWei ?? '')
+        : String(req.body.unitPriceWei);
+    const mergedQuantityProof = req.body.quantityProof ?? existingOrder?.quantityProof ?? null;
+    const mergedTotalProof = req.body.totalProof ?? existingOrder?.totalProof ?? null;
+    const mergedPaymentProof = req.body.paymentProof ?? existingOrder?.paymentProof ?? null;
+    const touchesBridgeFields = [
+      'unitPriceWei',
+      'quantityProof',
+      'totalProof',
+      'paymentProof',
+    ].some((fieldName) => Object.prototype.hasOwnProperty.call(req.body || {}, fieldName));
+
+    if (touchesBridgeFields) {
+      validateBridgeCoherence(
+        {
+          unitPriceWei: mergedUnitPriceWei,
+          quantityProof: mergedQuantityProof,
+          totalProof: mergedTotalProof,
+          paymentProof: mergedPaymentProof,
+        },
+        'body'
+      );
+    }
+
+    validateOrderVcBinding(
+      hasExplicitOrderVcCid ? normalizedOrderVcCid ?? null : existingOrder?.orderVcCid ?? null,
+      req.body.orderVcHash ?? existingOrder?.orderVcHash ?? null,
+      'body.orderVc'
+    );
+
+    stmtUpsertOrder.run({
+      orderId: normalizedOrderId,
+      productAddress: normalizeAddress(req.body.productAddress, 'productAddress', { required: true }),
+      productId: req.body.productId == null ? (existingOrder?.productId ?? '') : String(req.body.productId),
+      escrowAddress: normalizeAddress(
+        req.body.escrowAddress || req.body.productAddress,
+        'escrowAddress',
+        { required: true }
+      ),
+      chainId: normalizeString(req.body.chainId, 'chainId', { required: true }),
+      sellerAddress: normalizeAddress(req.body.sellerAddress, 'sellerAddress', { required: true }),
+      buyerAddress: normalizeAddress(req.body.buyerAddress, 'buyerAddress') ?? existingOrder?.buyerAddress ?? null,
+      transporterAddress:
+        normalizeAddress(req.body.transporterAddress, 'transporterAddress') ?? existingOrder?.transporterAddress ?? null,
+      status: normalizeString(req.body.status, 'status', { required: true }),
+      orderPhase: req.body.phase == null ? existingOrder?.phase ?? null : Number(req.body.phase),
+      deliveredFlag:
+        req.body.delivered == null
+          ? (existingOrder?.delivered == null ? null : (existingOrder.delivered ? 1 : 0))
+          : (req.body.delivered ? 1 : 0),
+      memoHash: existingOrder?.memoHash ?? null,
+      railgunTxRef: existingOrder?.railgunTxRef ?? null,
+      unitPriceWei: mergedUnitPriceWei,
+      unitPriceHash: normalizeBytes32(req.body.unitPriceHash, 'unitPriceHash', { required: true }),
+      paymentToken: normalizeAddress(req.body.paymentToken, 'paymentToken') ?? existingOrder?.paymentToken ?? null,
+      buyerDepositTxHash:
+        normalizeBytes32(req.body.buyerDepositTxHash, 'buyerDepositTxHash') ?? existingOrder?.buyerDepositTxHash ?? null,
+      buyerDepositReference:
+        normalizeBytes32(req.body.buyerDepositReference, 'buyerDepositReference')
+        ?? existingOrder?.buyerDepositReference
+        ?? null,
+      sellerBondAttestation: stringifyMaybeJson(sellerBondAttestation),
+      transporterBondAttestation: stringifyMaybeJson(transporterBondAttestation),
+      quantityCommitment:
+        normalizeBytes32(req.body.quantityCommitment, 'quantityCommitment') ?? existingOrder?.quantityCommitment ?? null,
+      quantityProof: stringifyMaybeJson(mergedQuantityProof),
+      totalCommitment:
+        normalizeBytes32(req.body.totalCommitment, 'totalCommitment') ?? existingOrder?.totalCommitment ?? null,
+      totalProof: stringifyMaybeJson(mergedTotalProof),
+      paymentCommitment:
+        normalizeBytes32(req.body.paymentCommitment, 'paymentCommitment') ?? existingOrder?.paymentCommitment ?? null,
+      paymentProof: stringifyMaybeJson(mergedPaymentProof),
+      contextHash: normalizeBytes32(req.body.contextHash, 'contextHash', { required: true }),
+      orderVcCid: hasExplicitOrderVcCid ? normalizedOrderVcCid ?? null : existingOrder?.orderVcCid ?? null,
+      orderVcHash: normalizeBytes32(req.body.orderVcHash, 'orderVcHash') ?? existingOrder?.orderVcHash ?? null,
+      deliveryTxHash:
+        normalizeBytes32(req.body.deliveryTxHash, 'deliveryTxHash') ?? existingOrder?.deliveryTxHash ?? null,
+      deliveryConfirmedVcHash:
+        normalizeBytes32(req.body.deliveryConfirmedVcHash, 'deliveryConfirmedVcHash')
+        ?? existingOrder?.deliveryConfirmedVcHash
+        ?? null,
+      deliveryConfirmedTransporter:
+        normalizeAddress(req.body.deliveryConfirmedTransporter, 'deliveryConfirmedTransporter')
+        ?? existingOrder?.deliveryConfirmedTransporter
+        ?? null,
+    });
+
+    return res.status(201).json({
+      success: true,
+      order: mapOrderRow(stmtGetOrder.get(normalizedOrderId)),
+    });
+  } catch (error) {
+    console.error('Error saving ERC-7984 order snapshot:', error);
+    return handleValidationError(res, error, 'Invalid ERC-7984 order snapshot payload');
   }
 });
 
@@ -1015,11 +1395,19 @@ app.post('/orders/recovery-bundle', (req, res) => {
         chainId: normalizeString(order.chainId, 'order.chainId', { required: true }),
         sellerAddress: normalizeAddress(order.sellerAddress, 'order.sellerAddress', { required: true }),
         buyerAddress: normalizedBuyerAddress,
+        transporterAddress: null,
         status: normalizeString(order.status, 'order.status', { required: true }),
+        orderPhase: null,
+        deliveredFlag: null,
         memoHash: normalizeBytes32(order.memoHash, 'order.memoHash', { required: true }),
         railgunTxRef: normalizeBytes32(order.railgunTxRef, 'order.railgunTxRef', { required: true }),
         unitPriceWei: normalizeString(order.unitPriceWei, 'order.unitPriceWei', { required: true }),
         unitPriceHash: normalizeBytes32(order.unitPriceHash, 'order.unitPriceHash', { required: true }),
+        paymentToken: null,
+        buyerDepositTxHash: null,
+        buyerDepositReference: null,
+        sellerBondAttestation: null,
+        transporterBondAttestation: null,
         quantityCommitment: normalizeBytes32(order.quantityCommitment, 'order.quantityCommitment', { required: true }),
         quantityProof: stringifyMaybeJson(order.quantityProof),
         totalCommitment: normalizeBytes32(order.totalCommitment, 'order.totalCommitment', { required: true }),
@@ -1029,6 +1417,9 @@ app.post('/orders/recovery-bundle', (req, res) => {
         contextHash: resolvedContextHash,
         orderVcCid: order.orderVcCid || null,
         orderVcHash: normalizeBytes32(order.orderVcHash, 'order.orderVcHash'),
+        deliveryTxHash: null,
+        deliveryConfirmedVcHash: null,
+        deliveryConfirmedTransporter: null,
       },
       {
         orderId: normalizedOrderId,
@@ -1064,6 +1455,32 @@ app.get('/orders/:orderId', (req, res) => {
   } catch (error) {
     console.error('Error fetching order:', error);
     return res.status(400).json({ error: error.message || 'Invalid orderId' });
+  }
+});
+
+app.get('/orders/by-vc-hash/:vcHash', (req, res) => {
+  try {
+    const vcHash = normalizeBytes32(req.params.vcHash, 'vcHash', { required: true });
+    const row = stmtGetOrderByVcHash.get(vcHash);
+    if (!row) return res.status(404).json({ error: 'Not found' });
+    return res.json(mapOrderRow(row));
+  } catch (error) {
+    console.error('Error fetching order by VC hash:', error);
+    return res.status(400).json({ error: error.message || 'Invalid vcHash' });
+  }
+});
+
+app.get('/orders/by-vc-cid/:vcCid', (req, res) => {
+  try {
+    const normalizedVcCid = normalizeString(decodeURIComponent(req.params.vcCid), 'vcCid', { required: true })
+      .replace(/^ipfs:\/\//, '')
+      .trim();
+    const row = stmtGetOrderByVcCid.get(normalizedVcCid);
+    if (!row) return res.status(404).json({ error: 'Not found' });
+    return res.json(mapOrderRow(row));
+  } catch (error) {
+    console.error('Error fetching order by VC CID:', error);
+    return res.status(400).json({ error: error.message || 'Invalid vcCid' });
   }
 });
 
@@ -1142,11 +1559,19 @@ app.post('/orders/:orderId/reconcile', (req, res) => {
       chainId,
       sellerAddress,
       buyerAddress: onChainOrder.buyerAddress ?? existingOrder?.buyerAddress ?? null,
+      transporterAddress: existingOrder?.transporterAddress ?? null,
       status: mapOnChainOrderPhaseToStatus(onChainOrder.phase, existingOrder?.status),
+      orderPhase: onChainOrder.phase,
+      deliveredFlag: onChainOrder.phase === 4 ? 1 : 0,
       memoHash: onChainOrder.memoHash,
       railgunTxRef: onChainOrder.railgunTxRef,
       unitPriceWei,
       unitPriceHash,
+      paymentToken: existingOrder?.paymentToken ?? null,
+      buyerDepositTxHash: existingOrder?.buyerDepositTxHash ?? null,
+      buyerDepositReference: existingOrder?.buyerDepositReference ?? null,
+      sellerBondAttestation: stringifyMaybeJson(existingOrder?.sellerBondAttestation ?? null),
+      transporterBondAttestation: stringifyMaybeJson(existingOrder?.transporterBondAttestation ?? null),
       quantityCommitment: onChainOrder.quantityCommitment,
       quantityProof: stringifyMaybeJson(existingOrder?.quantityProof ?? null),
       totalCommitment: onChainOrder.totalCommitment,
@@ -1156,6 +1581,9 @@ app.post('/orders/:orderId/reconcile', (req, res) => {
       contextHash: resolvedContextHash,
       orderVcCid: existingOrder?.orderVcCid || null,
       orderVcHash: onChainOrder.vcHash ?? existingOrder?.orderVcHash ?? null,
+      deliveryTxHash: existingOrder?.deliveryTxHash ?? null,
+      deliveryConfirmedVcHash: existingOrder?.deliveryConfirmedVcHash ?? null,
+      deliveryConfirmedTransporter: existingOrder?.deliveryConfirmedTransporter ?? null,
     });
 
     const reconciledOrder = mapOrderRow(stmtGetOrder.get(orderId));
@@ -1192,6 +1620,7 @@ app.patch('/orders/:orderId/vc-cid', (req, res) => {
     const orderId = normalizeBytes32(req.params.orderId, 'orderId', { required: true });
     const vcCid = normalizeString(req.body.vcCid, 'vcCid', { required: true });
     const vcHash = normalizeBytes32(req.body.vcHash, 'vcHash');
+    validateOrderVcBinding(vcCid, vcHash, 'body.orderVc');
     const result = stmtUpdateOrderVc.run(vcCid, vcHash, orderId);
     if (result.changes === 0) return res.status(404).json({ error: 'Not found' });
     return res.json({ success: true, order: mapOrderRow(stmtGetOrder.get(orderId)) });

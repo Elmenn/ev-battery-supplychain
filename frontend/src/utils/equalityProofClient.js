@@ -2,9 +2,10 @@
  * equalityProofClient.js — Dual-mode dispatch for Schnorr sigma equality proofs.
  *
  * Mirrors the dispatchWithMode pattern from zkpClient.js.
- * Phase 1 deployment: backend mode only.
- * WASM stubs throw "not yet implemented" — when WASM bindings are added later,
- * replace the stubs with real WASM calls and enable shadow mode comparison.
+ * Current state:
+ * - marketplace proof generation and verification now have a real WASM path
+ * - backend mode and shadow comparison remain available
+ * - prefer-WASM helpers keep backend fallback in place for the live ERC-7984 flow
  *
  * Equality proof backend endpoints (port 5010):
  *   POST /zkp/generate-equality-proof
@@ -16,6 +17,7 @@
  */
 
 import { getZkpMode, ZKP_MODE_BACKEND, ZKP_MODE_WASM } from './zkp/zkpClient';
+import { callWasmZkpWorker } from './zkp/providers/wasmProvider';
 
 const DEFAULT_ZKP_BACKEND_URL = 'http://localhost:5010';
 
@@ -142,42 +144,68 @@ async function verifyTotalPaymentEqualityProofBackend({
   });
 }
 
-// --- WASM stubs (Phase 1: not yet implemented) ------------------------------
+// --- WASM provider functions ------------------------------------------------
 
 async function generateEqualityProofWasm(_params) {
-  throw new Error(
-    '[EqualityProof] WASM backend not yet implemented. Set REACT_APP_ZKP_MODE=backend.'
-  );
+  return callWasmZkpWorker('generate-equality-proof', {
+    cLeftHex: _params.cPriceHex,
+    cRightHex: _params.cPayHex,
+    rLeftHex: _params.rPriceHex,
+    rRightHex: _params.rPayHex,
+    contextHashHex: _params.contextHashHex,
+  });
 }
 
 async function verifyEqualityProofWasm(_params) {
-  throw new Error(
-    '[EqualityProof] WASM backend not yet implemented. Set REACT_APP_ZKP_MODE=backend.'
-  );
+  return callWasmZkpWorker('verify-equality-proof', {
+    cLeftHex: _params.cPriceHex,
+    cRightHex: _params.cPayHex,
+    proofRHex: _params.proofRHex,
+    proofSHex: _params.proofSHex,
+    contextHashHex: _params.contextHashHex,
+  });
 }
 
 async function generateQuantityTotalProofWasm(_params) {
-  throw new Error(
-    '[EqualityProof] WASM quantity-total backend not yet implemented. Set REACT_APP_ZKP_MODE=backend.'
-  );
+  return callWasmZkpWorker('generate-quantity-total-proof', {
+    cQuantityHex: _params.cQuantityHex,
+    cTotalHex: _params.cTotalHex,
+    unitPriceWei: _params.unitPriceWei,
+    rQuantityHex: _params.rQuantityHex,
+    rTotalHex: _params.rTotalHex,
+    contextHashHex: _params.contextHashHex,
+  });
 }
 
 async function verifyQuantityTotalProofWasm(_params) {
-  throw new Error(
-    '[EqualityProof] WASM quantity-total backend not yet implemented. Set REACT_APP_ZKP_MODE=backend.'
-  );
+  return callWasmZkpWorker('verify-quantity-total-proof', {
+    cQuantityHex: _params.cQuantityHex,
+    cTotalHex: _params.cTotalHex,
+    unitPriceWei: _params.unitPriceWei,
+    proofRHex: _params.proofRHex,
+    proofSHex: _params.proofSHex,
+    contextHashHex: _params.contextHashHex,
+  });
 }
 
 async function generateTotalPaymentEqualityProofWasm(_params) {
-  throw new Error(
-    '[EqualityProof] WASM total-payment equality backend not yet implemented. Set REACT_APP_ZKP_MODE=backend.'
-  );
+  return callWasmZkpWorker('generate-total-payment-equality-proof', {
+    cTotalHex: _params.cTotalHex,
+    cPayHex: _params.cPayHex,
+    rTotalHex: _params.rTotalHex,
+    rPayHex: _params.rPayHex,
+    contextHashHex: _params.contextHashHex,
+  });
 }
 
 async function verifyTotalPaymentEqualityProofWasm(_params) {
-  throw new Error(
-    '[EqualityProof] WASM total-payment equality backend not yet implemented. Set REACT_APP_ZKP_MODE=backend.'
-  );
+  return callWasmZkpWorker('verify-total-payment-equality-proof', {
+    cTotalHex: _params.cTotalHex,
+    cPayHex: _params.cPayHex,
+    proofRHex: _params.proofRHex,
+    proofSHex: _params.proofSHex,
+    contextHashHex: _params.contextHashHex,
+  });
 }
 
 // --- Dispatch ---------------------------------------------------------------
@@ -194,20 +222,23 @@ function compareVerifyResult(backendResult, wasmResult) {
 }
 
 async function dispatchEqualityWithMode({ operation, params, backendFn, wasmFn, comparer }) {
-  const mode = getZkpMode();
+  const mode = params?.modeOverride || getZkpMode();
+  const effectiveParams = params?.modeOverride
+    ? Object.fromEntries(Object.entries(params).filter(([key]) => key !== 'modeOverride'))
+    : params;
 
   if (mode === ZKP_MODE_BACKEND) {
-    return backendFn(params);
+    return backendFn(effectiveParams);
   }
 
   if (mode === ZKP_MODE_WASM) {
-    return wasmFn(params);
+    return wasmFn(effectiveParams);
   }
 
   // Shadow mode: run backend authoritatively, compare with WASM
-  const backendResult = await backendFn(params);
+  const backendResult = await backendFn(effectiveParams);
   try {
-    const wasmResult = await wasmFn(params);
+    const wasmResult = await wasmFn(effectiveParams);
     if (!comparer(backendResult, wasmResult)) {
       console.warn(`[EqualityProof][shadow] Mismatch in ${operation}`, { backendResult, wasmResult });
     }
@@ -299,4 +330,67 @@ export async function verifyTotalPaymentEqualityProof(params) {
     wasmFn: verifyTotalPaymentEqualityProofWasm,
     comparer: compareVerifyResult,
   });
+}
+
+export async function generateQuantityTotalProofPreferWasm(params) {
+  try {
+    const result = await generateQuantityTotalProofWasm(params);
+    return { ...result, source: 'WASM' };
+  } catch (error) {
+    const fallback = await generateQuantityTotalProofBackend(params);
+    return {
+      ...fallback,
+      source: 'Backend Fallback',
+      fallbackReason: error?.message || 'WASM quantity-total generation failed',
+    };
+  }
+}
+
+export async function verifyQuantityTotalProofPreferWasm(params) {
+  try {
+    const result = await verifyQuantityTotalProofWasm(params);
+    return { ...result, source: 'WASM' };
+  } catch (error) {
+    const fallback = await verifyQuantityTotalProofBackend(params);
+    return {
+      ...fallback,
+      source: 'Backend Fallback',
+      fallbackReason: error?.message || 'WASM quantity-total verification failed',
+    };
+  }
+}
+
+export async function generateTotalPaymentEqualityProofPreferWasm(params) {
+  try {
+    const result = await generateTotalPaymentEqualityProofWasm(params);
+    return { ...result, source: 'WASM' };
+  } catch (error) {
+    const fallback = await generateTotalPaymentEqualityProofBackend(params);
+    return {
+      ...fallback,
+      source: 'Backend Fallback',
+      fallbackReason: error?.message || 'WASM total-payment generation failed',
+    };
+  }
+}
+
+export async function verifyTotalPaymentEqualityProofPreferWasm(params) {
+  try {
+    const result = await verifyTotalPaymentEqualityProofWasm(params);
+    return { ...result, source: 'WASM' };
+  } catch (error) {
+    const fallback = await verifyTotalPaymentEqualityProofBackend(params);
+    return {
+      ...fallback,
+      source: 'Backend Fallback',
+      fallbackReason: error?.message || 'WASM total-payment verification failed',
+    };
+  }
+}
+
+export async function assertVerifiedProof(result, label) {
+  if (!result?.verified) {
+    throw new Error(`${label} failed final verification before persistence.`);
+  }
+  return result;
 }

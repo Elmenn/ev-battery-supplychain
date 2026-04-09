@@ -3,6 +3,7 @@ import { buildVcSigningAnchorPayload } from "./vcBuilder.mjs";
 
 export const VC_SIGN_PAYLOAD_FORMAT_LEGACY = "eip712-legacy-price-string";
 export const VC_SIGN_PAYLOAD_FORMAT_V2_TYPED = "eip712-v2-order-typed";
+export const VC_SIGN_PAYLOAD_FORMAT_V4_ERC7984_TYPED = "eip712-v4-erc7984-vrc-typed";
 
 const LEGACY_EIP712_TYPES = {
   Credential: [
@@ -100,6 +101,162 @@ const V2_TYPED_EIP712_TYPES = {
     { name: "version", type: "string" },
   ],
 };
+
+const V4_ERC7984_TYPED_EIP712_TYPES_V60 = {
+  Credential: [
+    { name: "id", type: "string" },
+    { name: "@context", type: "string[]" },
+    { name: "type", type: "string[]" },
+    { name: "schemaVersion", type: "string" },
+    { name: "issuer", type: "Party" },
+    { name: "holder", type: "Party" },
+    { name: "validFrom", type: "string" },
+    { name: "credentialSchema", type: "CredentialSchema" },
+    { name: "credentialStatus", type: "CredentialStatus" },
+    { name: "credentialSubject", type: "CredentialSubjectV4" },
+  ],
+  Party: [
+    { name: "id", type: "string" },
+    { name: "name", type: "string" },
+  ],
+  CredentialSchema: [
+    { name: "id", type: "string" },
+    { name: "type", type: "string" },
+  ],
+  CredentialStatus: [
+    { name: "id", type: "string" },
+    { name: "type", type: "string" },
+    { name: "statusPurpose", type: "string" },
+  ],
+  CredentialSubjectV4: [
+    { name: "id", type: "string" },
+    { name: "productName", type: "string" },
+    { name: "batch", type: "string" },
+    { name: "productContract", type: "string" },
+    { name: "productId", type: "string" },
+    { name: "chainId", type: "string" },
+    { name: "listing", type: "Listing" },
+    { name: "order", type: "OrderV4" },
+    { name: "commitments", type: "Commitments" },
+    { name: "settlementPolicy", type: "SettlementPolicy" },
+    { name: "equalityAttestations", type: "EqualityAttestations" },
+    { name: "paymentBridge", type: "PaymentBridge" },
+    { name: "privacyProofs", type: "PrivacyProofs" },
+    { name: "attestation", type: "AttestationV4" },
+  ],
+  Listing: [
+    { name: "unitPriceWei", type: "string" },
+    { name: "unitPriceHash", type: "string" },
+    { name: "listingSnapshotCid", type: "string" },
+    { name: "sellerRailgunAddress", type: "string" },
+    { name: "certificateCredential", type: "Certificate" },
+    { name: "componentCredentials", type: "string[]" },
+  ],
+  Certificate: [
+    { name: "name", type: "string" },
+    { name: "cid", type: "string" },
+  ],
+  OrderV4: [
+    { name: "orderId", type: "string" },
+    { name: "productId", type: "string" },
+    { name: "escrowAddr", type: "string" },
+    { name: "chainId", type: "string" },
+    { name: "buyerAddress", type: "string" },
+    { name: "transporterAddress", type: "string" },
+  ],
+  Commitments: [
+    { name: "quantityCommitment", type: "string" },
+    { name: "totalCommitment", type: "string" },
+    { name: "paymentCommitment", type: "string" },
+  ],
+  SettlementPolicy: [
+    { name: "paymentToken", type: "string" },
+    { name: "buyerDepositRequired", type: "bool" },
+    { name: "sellerBondPolicy", type: "string" },
+    { name: "transporterBondPolicy", type: "string" },
+    { name: "sellerDeliveryFeePolicy", type: "string" },
+  ],
+  EqualityAttestations: [
+    { name: "sellerBond", type: "EqualityAttestationRecord" },
+    { name: "transporterBond", type: "EqualityAttestationRecord" },
+  ],
+  EqualityAttestationRecord: [
+    { name: "orderId", type: "string" },
+    { name: "target", type: "string" },
+    { name: "status", type: "string" },
+    { name: "handle", type: "string" },
+    { name: "requestedAt", type: "uint256" },
+    { name: "verifiedAt", type: "uint256" },
+    { name: "verifiedTxHash", type: "string" },
+  ],
+  PaymentBridge: [
+    { name: "version", type: "string" },
+    { name: "bridgeType", type: "string" },
+    { name: "statement", type: "string" },
+    { name: "contextHash", type: "string" },
+    { name: "bridgeHash", type: "string" },
+    { name: "proofSide", type: "BridgeProofSide" },
+    { name: "depositSide", type: "BridgeDepositSide" },
+    { name: "verification", type: "BridgeVerification" },
+  ],
+  BridgeProofSide: [
+    { name: "totalCommitment", type: "string" },
+    { name: "contextHash", type: "string" },
+  ],
+  BridgeDepositSide: [
+    { name: "paymentToken", type: "string" },
+    { name: "escrowAddress", type: "string" },
+    { name: "orderId", type: "string" },
+    { name: "buyerAddress", type: "string" },
+    { name: "depositTxHash", type: "string" },
+    { name: "depositReference", type: "string" },
+  ],
+  BridgeVerification: [
+    { name: "method", type: "string" },
+    { name: "status", type: "string" },
+  ],
+  PrivacyProofs: [
+    { name: "quantityTotal", type: "PublicProofRecord" },
+    { name: "totalPaymentEquality", type: "PublicProofRecord" },
+  ],
+  PublicProofRecord: [
+    { name: "proofType", type: "string" },
+    { name: "proofRHex", type: "string" },
+    { name: "proofSHex", type: "string" },
+  ],
+  AttestationV4: [
+    { name: "attestationVersion", type: "string" },
+    { name: "contextHash", type: "string" },
+    { name: "disclosurePubKey", type: "string" },
+    { name: "proofSource", type: "ProofSource" },
+  ],
+  ProofSource: [
+    { name: "type", type: "string" },
+    { name: "orderId", type: "string" },
+    { name: "version", type: "string" },
+  ],
+};
+
+const V4_ERC7984_TYPED_EIP712_TYPES_V61 = {
+  ...V4_ERC7984_TYPED_EIP712_TYPES_V60,
+  CredentialSubjectV4: V4_ERC7984_TYPED_EIP712_TYPES_V60.CredentialSubjectV4.map((entry) =>
+    entry.name === "equalityAttestations"
+      ? { name: "equalityAttestations", type: "SellerEqualityAttestations" }
+      : entry
+  ),
+  OrderV4: [
+    { name: "orderId", type: "string" },
+    { name: "productId", type: "string" },
+    { name: "escrowAddr", type: "string" },
+    { name: "chainId", type: "string" },
+    { name: "buyerAddress", type: "string" },
+  ],
+  SellerEqualityAttestations: [
+    { name: "sellerBond", type: "EqualityAttestationRecord" },
+  ],
+};
+
+delete V4_ERC7984_TYPED_EIP712_TYPES_V61.EqualityAttestations;
 
 function normalizeId(value) {
   return typeof value === "string" ? value.toLowerCase() : value;
@@ -261,7 +418,177 @@ function buildTypedV2Payload(vc) {
   return clone;
 }
 
+function buildTypedV4Payload(vc) {
+  const clone = buildBaseClone(vc);
+  const schemaVersion = String(vc?.schemaVersion || "6.1");
+  const isCommitmentSchemaV61 = schemaVersion === "6.1";
+  const listing = clone.credentialSubject?.listing || {};
+  const order = clone.credentialSubject?.order || {};
+  const commitments = clone.credentialSubject?.commitments || {};
+  const settlementPolicy = clone.credentialSubject?.settlementPolicy || {};
+  const equalityAttestations = clone.credentialSubject?.equalityAttestations || {};
+  const sellerBond = equalityAttestations?.sellerBond || {};
+  const transporterBond = equalityAttestations?.transporterBond || {};
+  const paymentBridge = clone.credentialSubject?.paymentBridge || {};
+  const privacyProofs = clone.credentialSubject?.privacyProofs || {};
+  const attestation = clone.credentialSubject?.attestation || {};
+
+  return {
+    id: String(vc?.id || ""),
+    "@context": Array.isArray(vc?.["@context"]) ? vc["@context"].map((item) => String(item)) : [],
+    type: Array.isArray(vc?.type) ? vc.type.map((item) => String(item)) : [],
+    schemaVersion,
+    issuer: {
+      id: normalizeId(vc?.issuer?.id || ""),
+      name: String(vc?.issuer?.name || ""),
+    },
+    holder: {
+      id: normalizeId(vc?.holder?.id || ""),
+      name: String(vc?.holder?.name || ""),
+    },
+    validFrom: String(vc?.validFrom || ""),
+    credentialSchema: {
+      id: normalizeMaybeString(vc?.credentialSchema?.id),
+      type: String(vc?.credentialSchema?.type || ""),
+    },
+    credentialStatus: {
+      id: normalizeMaybeString(vc?.credentialStatus?.id),
+      type: String(vc?.credentialStatus?.type || ""),
+      statusPurpose: String(vc?.credentialStatus?.statusPurpose || ""),
+    },
+    credentialSubject: {
+      id: clone.credentialSubject.id,
+      productName: clone.credentialSubject.productName,
+      batch: clone.credentialSubject.batch,
+      productContract: normalizeMaybeString(clone.credentialSubject.productContract),
+      productId: normalizeMaybeString(clone.credentialSubject.productId),
+      chainId: normalizeMaybeString(clone.credentialSubject.chainId),
+      listing: {
+        unitPriceWei: normalizeMaybeString(listing.unitPriceWei),
+        unitPriceHash: normalizeMaybeString(listing.unitPriceHash),
+        listingSnapshotCid: normalizeMaybeString(listing.listingSnapshotCid),
+        sellerRailgunAddress: normalizeMaybeString(listing.sellerRailgunAddress),
+        certificateCredential: {
+          name: String(listing.certificateCredential?.name || ""),
+          cid: String(listing.certificateCredential?.cid || ""),
+        },
+        componentCredentials: Array.isArray(listing.componentCredentials)
+          ? listing.componentCredentials.filter((item) => item != null).map((item) => String(item))
+          : [],
+      },
+      order: {
+        orderId: normalizeMaybeString(order.orderId),
+        productId: normalizeMaybeString(order.productId),
+        escrowAddr: normalizeMaybeString(order.escrowAddr),
+        chainId: normalizeMaybeString(order.chainId),
+        buyerAddress: normalizeMaybeString(order.buyerAddress),
+        ...(!isCommitmentSchemaV61
+          ? { transporterAddress: normalizeMaybeString(order.transporterAddress) }
+          : {}),
+      },
+      commitments: {
+        quantityCommitment: normalizeMaybeString(commitments.quantityCommitment),
+        totalCommitment: normalizeMaybeString(commitments.totalCommitment),
+        paymentCommitment: normalizeMaybeString(commitments.paymentCommitment),
+      },
+      settlementPolicy: {
+        paymentToken: normalizeMaybeString(settlementPolicy.paymentToken),
+        buyerDepositRequired: settlementPolicy.buyerDepositRequired !== false,
+        sellerBondPolicy: String(settlementPolicy.sellerBondPolicy || ""),
+        transporterBondPolicy: String(settlementPolicy.transporterBondPolicy || ""),
+        sellerDeliveryFeePolicy: String(settlementPolicy.sellerDeliveryFeePolicy || ""),
+      },
+      equalityAttestations: {
+        sellerBond: {
+          orderId: normalizeMaybeString(sellerBond.orderId),
+          target: String(sellerBond.target || ""),
+          status: String(sellerBond.status || ""),
+          handle: normalizeMaybeString(sellerBond.handle),
+          requestedAt: BigInt(Number(sellerBond.requestedAt || 0)),
+          verifiedAt: BigInt(Number(sellerBond.verifiedAt || 0)),
+          verifiedTxHash: normalizeMaybeString(sellerBond.verifiedTxHash),
+        },
+        ...(!isCommitmentSchemaV61
+          ? {
+              transporterBond: {
+                orderId: normalizeMaybeString(transporterBond.orderId),
+                target: String(transporterBond.target || ""),
+                status: String(transporterBond.status || ""),
+                handle: normalizeMaybeString(transporterBond.handle),
+                requestedAt: BigInt(Number(transporterBond.requestedAt || 0)),
+                verifiedAt: BigInt(Number(transporterBond.verifiedAt || 0)),
+                verifiedTxHash: normalizeMaybeString(transporterBond.verifiedTxHash),
+              },
+            }
+          : {}),
+      },
+      paymentBridge: {
+        version: String(paymentBridge.version || ""),
+        bridgeType: String(paymentBridge.bridgeType || ""),
+        statement: String(paymentBridge.statement || ""),
+        contextHash: normalizeMaybeString(paymentBridge.contextHash),
+        bridgeHash: normalizeMaybeString(paymentBridge.bridgeHash),
+        proofSide: {
+          totalCommitment: normalizeMaybeString(paymentBridge.proofSide?.totalCommitment),
+          contextHash: normalizeMaybeString(paymentBridge.proofSide?.contextHash),
+        },
+        depositSide: {
+          paymentToken: normalizeMaybeString(paymentBridge.depositSide?.paymentToken),
+          escrowAddress: normalizeMaybeString(paymentBridge.depositSide?.escrowAddress),
+          orderId: normalizeMaybeString(paymentBridge.depositSide?.orderId),
+          buyerAddress: normalizeMaybeString(paymentBridge.depositSide?.buyerAddress),
+          depositTxHash: normalizeMaybeString(paymentBridge.depositSide?.depositTxHash),
+          depositReference: normalizeMaybeString(paymentBridge.depositSide?.depositReference),
+        },
+        verification: {
+          method: String(paymentBridge.verification?.method || ""),
+          status: String(paymentBridge.verification?.status || ""),
+        },
+      },
+      privacyProofs: {
+        quantityTotal: {
+          proofType: String(privacyProofs.quantityTotal?.proofType || ""),
+          proofRHex: normalizeMaybeString(privacyProofs.quantityTotal?.proofRHex),
+          proofSHex: normalizeMaybeString(privacyProofs.quantityTotal?.proofSHex),
+        },
+        totalPaymentEquality: {
+          proofType: String(privacyProofs.totalPaymentEquality?.proofType || ""),
+          proofRHex: normalizeMaybeString(privacyProofs.totalPaymentEquality?.proofRHex),
+          proofSHex: normalizeMaybeString(privacyProofs.totalPaymentEquality?.proofSHex),
+        },
+      },
+      attestation: {
+        attestationVersion: String(attestation.attestationVersion || schemaVersion),
+        contextHash: normalizeMaybeString(attestation.contextHash),
+        disclosurePubKey: normalizeMaybeString(attestation.disclosurePubKey),
+        proofSource: {
+          type: String(attestation.proofSource?.type || ""),
+          orderId: normalizeMaybeString(attestation.proofSource?.orderId),
+          version: String(attestation.proofSource?.version || ""),
+        },
+      },
+    },
+  };
+}
+
 function resolvePayloadForSigning(vc) {
+  if (
+    (String(vc?.schemaVersion || "") === "6.0" || String(vc?.schemaVersion || "") === "6.1") &&
+    vc?.credentialSchema &&
+    vc?.credentialStatus &&
+    vc?.credentialSubject?.paymentBridge
+  ) {
+    const schemaVersion = String(vc?.schemaVersion || "");
+    return {
+      payloadFormat: VC_SIGN_PAYLOAD_FORMAT_V4_ERC7984_TYPED,
+      types:
+        schemaVersion === "6.1"
+          ? V4_ERC7984_TYPED_EIP712_TYPES_V61
+          : V4_ERC7984_TYPED_EIP712_TYPES_V60,
+      payload: buildTypedV4Payload(vc),
+    };
+  }
+
   const hasTypedV2Anchors = Boolean(buildVcSigningAnchorPayload(vc?.credentialSubject));
   if (hasTypedV2Anchors) {
     return {
@@ -276,6 +603,38 @@ function resolvePayloadForSigning(vc) {
     types: LEGACY_EIP712_TYPES,
     payload: buildLegacyPayload(vc),
   };
+}
+
+export function getVcTypedDataSpec(vc, payloadFormatOverride = null) {
+  if (payloadFormatOverride === VC_SIGN_PAYLOAD_FORMAT_V4_ERC7984_TYPED) {
+    const schemaVersion = String(vc?.schemaVersion || "");
+    return {
+      payloadFormat: VC_SIGN_PAYLOAD_FORMAT_V4_ERC7984_TYPED,
+      types:
+        schemaVersion === "6.1"
+          ? V4_ERC7984_TYPED_EIP712_TYPES_V61
+          : V4_ERC7984_TYPED_EIP712_TYPES_V60,
+      payload: buildTypedV4Payload(vc),
+    };
+  }
+
+  if (payloadFormatOverride === VC_SIGN_PAYLOAD_FORMAT_V2_TYPED) {
+    return {
+      payloadFormat: VC_SIGN_PAYLOAD_FORMAT_V2_TYPED,
+      types: V2_TYPED_EIP712_TYPES,
+      payload: buildTypedV2Payload(vc),
+    };
+  }
+
+  if (payloadFormatOverride === VC_SIGN_PAYLOAD_FORMAT_LEGACY) {
+    return {
+      payloadFormat: VC_SIGN_PAYLOAD_FORMAT_LEGACY,
+      types: LEGACY_EIP712_TYPES,
+      payload: buildLegacyPayload(vc),
+    };
+  }
+
+  return resolvePayloadForSigning(vc);
 }
 
 export function preparePayloadForSigning(vc) {
@@ -327,6 +686,15 @@ async function signPayload(vc, signer, role = "holder", contractAddress = null) 
     payloadHash,
     payloadFormat,
     role,
+  };
+}
+
+export function getVcSigningDomain(chainId, contractAddress = null) {
+  return {
+    name: "VC",
+    version: "1.0",
+    chainId: Number(chainId),
+    ...(contractAddress ? { verifyingContract: contractAddress } : {}),
   };
 }
 

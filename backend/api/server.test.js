@@ -395,6 +395,118 @@ test('vc archive route stores canonical VC data and fetch-vc can read it without
   assert.deepEqual(fetchPayload.vc, vc);
 });
 
+test('vc archive route returns ERC-7984 metadata for schemaVersion 6.0 payloads', async () => {
+  const cid = 'QmErc7984ArchiveCid123456789012345678901234567890123';
+  const vc = {
+    '@context': ['https://www.w3.org/ns/credentials/v2'],
+    type: ['VerifiableCredential', 'ERC7984ConfidentialOrderVRC'],
+    schemaVersion: '6.0',
+    credentialSubject: {
+      productContract: '0x1234567890ABCDEF1234567890ABCDEF12345678',
+      order: {
+        orderId: '0x' + 'ab'.repeat(32),
+      },
+      paymentBridge: {
+        version: '1.0',
+        bridgeType: 'erc7984-confidential-payment-bridge',
+        statement: 'buyerDepositEqualsHiddenTotal',
+        contextHash: '0x' + '11'.repeat(32),
+        bridgeHash: '0x' + '22'.repeat(32),
+        proofSide: {
+          totalCommitment: '0x' + '33'.repeat(32),
+          contextHash: '0x' + '11'.repeat(32),
+        },
+        depositSide: {
+          paymentToken: '0x9999999999999999999999999999999999999999',
+          escrowAddress: '0x1234567890ABCDEF1234567890ABCDEF12345678',
+          orderId: '0x' + 'ab'.repeat(32),
+          buyerAddress: '0x2222222222222222222222222222222222222222',
+          depositTxHash: '0x' + '44'.repeat(32),
+          depositReference: '0x' + '55'.repeat(32),
+        },
+        verification: {
+          method: 'proof-bound-deposit-reference',
+          status: 'bound',
+        },
+      },
+      equalityAttestations: {
+        sellerBond: {
+          orderId: '0x' + 'ab'.repeat(32),
+          target: 'sellerBondMatchesBuyerDeposit',
+          status: 'verified_true',
+          handle: '0x' + '66'.repeat(32),
+          requestedAt: 1,
+          verifiedAt: 2,
+          verifiedTxHash: '0x' + '77'.repeat(32),
+        },
+        transporterBond: {
+          orderId: '0x' + 'ab'.repeat(32),
+          target: 'transporterBondMatchesBuyerDeposit',
+          status: 'pending',
+          handle: '0x' + '88'.repeat(32),
+          requestedAt: 3,
+          verifiedAt: 0,
+          verifiedTxHash: '',
+        },
+      },
+      attestation: {
+        attestationVersion: '6.0',
+        contextHash: '0x' + '11'.repeat(32),
+        proofSource: {
+          type: 'wasm-sidecar',
+          orderId: '0x' + 'ab'.repeat(32),
+          version: '1.0',
+        },
+      },
+    },
+  };
+
+  const archiveResponse = await postJson('/vc-archive', {
+    cid,
+    vc,
+    source: 'test',
+  });
+
+  assert.equal(archiveResponse.status, 201);
+  const archivePayload = await archiveResponse.json();
+  assert.equal(archivePayload.archive.metadata.schemaVersion, '6.0');
+  assert.equal(archivePayload.archive.metadata.paymentBridgeHash, '0x' + '22'.repeat(32));
+  assert.equal(archivePayload.archive.metadata.paymentBridgeStatus, 'bound');
+  assert.equal(archivePayload.archive.metadata.proofSourceType, 'wasm-sidecar');
+  assert.equal(archivePayload.archive.metadata.sellerBondAttestationStatus, 'verified_true');
+  assert.equal(archivePayload.archive.metadata.transporterBondAttestationStatus, 'pending');
+});
+
+test('vc archive route rejects malformed ERC-7984 paymentBridge payloads', async () => {
+  const cid = 'QmErc7984InvalidArchiveCid1234567890123456789012345678';
+  const vc = {
+    '@context': ['https://www.w3.org/ns/credentials/v2'],
+    type: ['VerifiableCredential', 'ERC7984ConfidentialOrderVRC'],
+    schemaVersion: '6.0',
+    credentialSubject: {
+      productContract: '0x1234567890ABCDEF1234567890ABCDEF12345678',
+      order: {
+        orderId: '0x' + 'cd'.repeat(32),
+      },
+      paymentBridge: {
+        version: '1.0',
+        bridgeType: 'wrong-bridge-type',
+        statement: 'buyerDepositEqualsHiddenTotal',
+      },
+    },
+  };
+
+  const archiveResponse = await postJson('/vc-archive', {
+    cid,
+    vc,
+    source: 'test',
+  });
+
+  assert.equal(archiveResponse.status, 400);
+  const payload = await archiveResponse.json();
+  assert.match(payload.error, /paymentBridge\.bridgeType/i);
+});
+
 test('vc status route reports active status from archive and supports token-gated updates', async () => {
   const cid = 'QmStatusTestCid1234567890123456789012345678901234567';
   const vc = {

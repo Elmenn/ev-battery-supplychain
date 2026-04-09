@@ -21,9 +21,10 @@ const ESCROW_VIEW_FRAGMENTS = [
   'function phase() view returns (uint8)',
   'function buyer() view returns (address payable)',
   'function transporter() view returns (address payable)',
+  'function unitPrice() view returns (uint64)',
   'function unitPriceHash() view returns (bytes32)',
   'function activeOrderId() view returns (bytes32)',
-  'function getOrder(bytes32 orderId) view returns ((address buyer, bytes32 memoHash, bytes32 railgunTxRef, bytes32 quantityCommitment, bytes32 totalCommitment, bytes32 paymentCommitment, bytes32 contextHash, bytes32 vcHash, uint64 purchaseTimestamp, uint64 orderConfirmedTimestamp, uint8 phase, bool exists))',
+  'function getOrder(bytes32 orderId) view returns (address orderBuyer, bytes32 vcHash, uint64 purchasedAt, uint64 confirmedAt, uint8 orderPhase, bool exists)',
   'function getVcHash() view returns (bytes32)',
 ];
 
@@ -503,17 +504,19 @@ class BackendIndexer {
     let phase;
     let buyer;
     let transporter;
+    let unitPrice;
     let unitPriceHash;
     let activeOrderId;
     let vcHash;
 
     try {
-      [productId, owner, phase, buyer, transporter, unitPriceHash, activeOrderId, vcHash] = await Promise.all([
+      [productId, owner, phase, buyer, transporter, unitPrice, unitPriceHash, activeOrderId, vcHash] = await Promise.all([
         contract.id(),
         contract.owner(),
         contract.phase(),
         contract.buyer(),
         contract.transporter(),
+        contract.unitPrice().catch(() => 0n),
         contract.unitPriceHash().catch(() => ZeroHash),
         contract.activeOrderId().catch(() => ZeroHash),
         contract.getVcHash().catch(() => ZeroHash),
@@ -543,6 +546,7 @@ class BackendIndexer {
     const unitPriceWei =
       metadataRow?.unit_price_wei ||
       existingOrderRow?.unit_price_wei ||
+      (unitPrice != null && unitPrice !== 0n ? String(unitPrice) : null) ||
       metadataRow?.product_meta && JSON.parse(metadataRow.product_meta || '{}').unitPriceWei ||
       null;
 
@@ -561,6 +565,13 @@ class BackendIndexer {
       const order = await contract.getOrder(activeOrderId);
       if (order?.exists) {
         const existing = stmtGetOrderRow.get(String(activeOrderId).toLowerCase());
+        if (!existing?.context_hash) {
+          this.setIndexerState(
+            `product:${normalizedProductAddress}:skip_reason`,
+            'erc7984-order-row-missing-proof-context'
+          );
+          return;
+        }
         stmtUpsertOrder.run({
           orderId: String(activeOrderId).toLowerCase(),
           productAddress: normalizedProductAddress,
@@ -568,19 +579,19 @@ class BackendIndexer {
           escrowAddress: normalizedProductAddress,
           chainId: String(this.chainId),
           sellerAddress: toLowerAddress(owner),
-          buyerAddress: toLowerAddress(order.buyer || buyer),
-          status: mapPhaseToStatus(order.phase ?? phase),
-          memoHash: String(order.memoHash).toLowerCase(),
-          railgunTxRef: String(order.railgunTxRef).toLowerCase(),
+          buyerAddress: toLowerAddress(order.orderBuyer || buyer),
+          status: mapPhaseToStatus(order.orderPhase ?? phase),
+          memoHash: existing?.memo_hash || null,
+          railgunTxRef: existing?.railgun_tx_ref || null,
           unitPriceWei: String(unitPriceWei),
           unitPriceHash: String(unitPriceHash || ZeroHash).toLowerCase(),
-          quantityCommitment: String(order.quantityCommitment).toLowerCase(),
+          quantityCommitment: existing?.quantity_commitment || null,
           quantityProof: existing?.quantity_proof || null,
-          totalCommitment: String(order.totalCommitment).toLowerCase(),
+          totalCommitment: existing?.total_commitment || null,
           totalProof: existing?.total_proof || null,
-          paymentCommitment: String(order.paymentCommitment).toLowerCase(),
+          paymentCommitment: existing?.payment_commitment || null,
           paymentProof: existing?.payment_proof || null,
-          contextHash: String(order.contextHash).toLowerCase(),
+          contextHash: existing.context_hash,
           orderVcCid: existing?.order_vc_cid || metadataRow?.vc_cid || null,
           orderVcHash: String(order.vcHash || vcHash || ZeroHash).toLowerCase(),
         });

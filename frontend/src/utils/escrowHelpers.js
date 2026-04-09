@@ -6,6 +6,7 @@ import { Contract, Interface, ZeroAddress, ZeroHash } from "ethers";
 import ProductEscrowABI from "../abis/ProductEscrow_Initializer.json";
 
 const V2_ESCROW_FRAGMENTS = [
+  "function unitPrice() view returns (uint64)",
   "function unitPriceHash() view returns (bytes32)",
   "function activeOrderId() view returns (bytes32)",
   "function getOrder(bytes32 orderId) view returns ((address buyer, bytes32 memoHash, bytes32 railgunTxRef, bytes32 quantityCommitment, bytes32 totalCommitment, bytes32 paymentCommitment, bytes32 contextHash, bytes32 vcHash, uint64 purchaseTimestamp, uint64 orderConfirmedTimestamp, uint8 phase, bool exists))",
@@ -145,11 +146,13 @@ export async function getProductState(address, provider) {
     contract.productRailgunTxRefs(productId),
   ]);
 
-  const [unitPriceHashValue, activeOrderIdValue] = await Promise.all([
+  const [unitPriceValue, unitPriceHashValue, activeOrderIdValue] = await Promise.all([
+    readOptionalV2Value(provider, address, "unitPrice"),
     readOptionalV2Value(provider, address, "unitPriceHash"),
     readOptionalV2Value(provider, address, "activeOrderId"),
   ]);
 
+  const unitPriceWei = unitPriceValue != null ? unitPriceValue.toString() : "";
   const unitPriceHash = unitPriceHashValue ?? ZeroHash;
   const activeOrderId = activeOrderIdValue ?? ZeroHash;
   const activeOrderRaw =
@@ -178,6 +181,7 @@ export async function getProductState(address, provider) {
     id: Number(productId),
     memoHash,
     railgunTxRef,
+    unitPriceWei,
     unitPriceHash,
     activeOrderId,
     activeOrder,

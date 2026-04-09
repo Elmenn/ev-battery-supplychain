@@ -30,6 +30,8 @@ import { fetchVCFromServer } from "../../utils/verifyVc";
 import { getProductMeta, updateVcCid } from "../../utils/productMetaApi";
 import { getOrder, reconcileOrder, updateOrderStatus, updateOrderVc } from "../../utils/orderApi";
 import { Button } from "../ui/button";
+import { readProductEscrowState } from "../../utils/erc7984/escrowState";
+import Erc7984ProductDetail from "./Erc7984ProductDetail";
 
 const phaseColors = {
   [Phase.Listed]: "bg-gray-100 text-gray-700",
@@ -59,6 +61,8 @@ const CopyButton = ({ value }) => {
 const ProductDetail = ({ provider, currentUser }) => {
   const { address } = useParams();
   const [product, setProduct] = useState(null);
+  const [productMetaRow, setProductMetaRow] = useState(null);
+  const [orderModel, setOrderModel] = useState("");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [role, setRole] = useState({ role: "visitor" });
@@ -79,9 +83,37 @@ const ProductDetail = ({ provider, currentUser }) => {
     if (!provider || !address) return;
     try {
       setLoading(true);
-      const state = await getProductState(address, provider);
+      const metaData = await getProductMeta(address);
+      const listingMeta = metaData?.productMeta || {};
+      const nextOrderModel = String(
+        listingMeta.orderModel || "erc7984-confidential-v1"
+      ).trim();
+      setProductMetaRow(metaData);
+      setOrderModel(nextOrderModel);
+      setAuditCid(metaData?.vcCid || "");
+
+      const state =
+        nextOrderModel === "erc7984-confidential-v1"
+          ? await readProductEscrowState(provider, address)
+          : await getProductState(address, provider);
+
       setProduct(state);
-      setRole(detectRole(state, currentUser));
+      if (nextOrderModel === "erc7984-confidential-v1") {
+        const user = String(currentUser || "").toLowerCase();
+        const sellerAddress = String(state?.sellerAddress || "").toLowerCase();
+        const buyerAddress = String(state?.buyerAddress || "").toLowerCase();
+        const transporterAddress = String(state?.transporterAddress || "").toLowerCase();
+
+        let nextRole = { role: "visitor" };
+        if (user && sellerAddress === user) nextRole = { role: "seller" };
+        else if (user && buyerAddress === user) nextRole = { role: "buyer" };
+        else if (user && transporterAddress === user && transporterAddress !== ethers.ZeroAddress.toLowerCase()) {
+          nextRole = { role: "transporter" };
+        }
+        setRole(nextRole);
+      } else {
+        setRole(detectRole(state, currentUser));
+      }
       try {
         const network = await provider.getNetwork();
         setChainId(Number(network.chainId));
@@ -89,7 +121,7 @@ const ProductDetail = ({ provider, currentUser }) => {
         setChainId(null);
       }
 
-      if (state.phase === Phase.OrderConfirmed) {
+      if (Number(state.phase) === Phase.OrderConfirmed) {
         try {
           const contract = getEscrowContract(address, provider);
           const [addrs, fees] = await contract.getAllTransporters();
@@ -101,10 +133,11 @@ const ProductDetail = ({ provider, currentUser }) => {
         setBids([]);
       }
 
-      if (state.transporter && state.transporter !== ethers.ZeroAddress) {
+      const selectedTransporter = state.transporter || state.transporterAddress;
+      if (selectedTransporter && selectedTransporter !== ethers.ZeroAddress) {
         try {
           const contract = getEscrowContract(address, provider);
-          const quotedFee = await contract.transporters(state.transporter);
+          const quotedFee = await contract.transporters(selectedTransporter);
           setProduct((prev) => ({ ...(prev || state), transporterQuotedFee: quotedFee }));
         } catch {
           // ignore fee lookup failure
@@ -120,14 +153,6 @@ const ProductDetail = ({ provider, currentUser }) => {
   useEffect(() => {
     loadProductData();
   }, [loadProductData]);
-
-  useEffect(() => {
-    if (!address) return;
-    (async () => {
-      const data = await getProductMeta(address);
-      setAuditCid(data?.vcCid || "");
-    })();
-  }, [address]);
 
   const handleConfirmOrder = async () => {
     setActionLoading(true);
@@ -300,6 +325,19 @@ const ProductDetail = ({ provider, currentUser }) => {
   }
   if (!product) {
     return <div className="max-w-4xl mx-auto px-4 py-8"><p className="text-gray-500">Product not found.</p></div>;
+  }
+
+  if (orderModel === "erc7984-confidential-v1") {
+    return (
+      <Erc7984ProductDetail
+        address={address}
+        product={product}
+        productMeta={productMetaRow}
+        provider={provider}
+        currentUser={currentUser}
+        onRefresh={loadProductData}
+      />
+    );
   }
 
   const phaseColor = phaseColors[product.phase] || "bg-gray-100 text-gray-700";

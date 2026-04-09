@@ -13,7 +13,6 @@ const extractAddressFromDid = (did) => {
 const ProductFormStep2 = ({ onNext, currentUser }) => {
   const [formData, setFormData] = useState({
     batch: "",
-    quantity: 1,
     certificateName: "",
     certificateCid: "",
     usesComponents: false,
@@ -63,8 +62,6 @@ const ProductFormStep2 = ({ onNext, currentUser }) => {
       }
 
       const productName = vc.credentialSubject?.productName || "Unknown Product";
-
-      // Governance check: previous VC holder must equal connected seller wallet.
       const holderDid = vc?.holder?.id || null;
       const holderAddress = extractAddressFromDid(holderDid);
       const normalizedHolder = holderAddress ? holderAddress.toLowerCase() : null;
@@ -134,7 +131,6 @@ const ProductFormStep2 = ({ onNext, currentUser }) => {
         ...prev,
         componentCredentials: [...prev.componentCredentials, cid],
       }));
-
       setComponentVCs((prev) => [...prev, result]);
 
       toast.dismiss();
@@ -189,7 +185,7 @@ const ProductFormStep2 = ({ onNext, currentUser }) => {
 
   return (
     <div className="form-step">
-      <h3>Step 2: Product Details</h3>
+      <h3>Step 2: Listing Details</h3>
 
       <div className="form-group">
         <label>Batch ID (optional)</label>
@@ -199,17 +195,6 @@ const ProductFormStep2 = ({ onNext, currentUser }) => {
           value={formData.batch}
           onChange={handleChange}
           placeholder="e.g. BX-001"
-        />
-      </div>
-
-      <div className="form-group">
-        <label>Quantity</label>
-        <input
-          type="number"
-          name="quantity"
-          value={formData.quantity}
-          onChange={handleChange}
-          min="1"
         />
       </div>
 
@@ -241,7 +226,7 @@ const ProductFormStep2 = ({ onNext, currentUser }) => {
         />
       </div>
 
-      <div className="form-group" style={{ marginTop: "2rem", paddingTop: "2rem", borderTop: "1px solid #ddd" }}>
+      <div style={{ marginTop: "2rem", paddingTop: "2rem", borderTop: "1px solid #ddd" }}>
         <label style={{ fontWeight: "bold", marginBottom: "0.5rem" }}>
           Component Products (Optional)
         </label>
@@ -318,9 +303,7 @@ const ProductFormStep2 = ({ onNext, currentUser }) => {
                         </div>
                         <div style={{ fontSize: "0.75rem", marginTop: "0.25rem" }}>
                           {comp.verified && comp.governanceVerified !== false ? (
-                            <span style={{ color: "#28a745" }}>
-                              Verified
-                            </span>
+                            <span style={{ color: "#28a745" }}>Verified</span>
                           ) : comp.verified && comp.governanceVerified === false ? (
                             <span style={{ color: "#dc3545" }}>
                               Governance mismatch: {comp.governanceError}

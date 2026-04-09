@@ -85,11 +85,80 @@ async function runOperation(method, payload, publicUrl) {
     );
   }
 
+  if (method === "generate-scalar-commitment-with-blinding") {
+    return wasm.generate_scalar_commitment_with_blinding(
+      normalizeValue(payload.value),
+      normalizeHex(payload.blindingHex),
+    );
+  }
+
+  if (method === "generate-equality-proof") {
+    return wasm.generate_equality_proof(
+      normalizeHex(payload.cLeftHex),
+      normalizeHex(payload.cRightHex),
+      normalizeHex(payload.rLeftHex),
+      normalizeHex(payload.rRightHex),
+      normalizeHex(payload.contextHashHex),
+    );
+  }
+
+  if (method === "generate-quantity-total-proof") {
+    return wasm.generate_quantity_total_proof(
+      normalizeHex(payload.cQuantityHex),
+      normalizeHex(payload.cTotalHex),
+      normalizeValue(payload.unitPriceWei),
+      normalizeHex(payload.rQuantityHex),
+      normalizeHex(payload.rTotalHex),
+      normalizeHex(payload.contextHashHex),
+    );
+  }
+
+  if (method === "generate-total-payment-equality-proof") {
+    return wasm.generate_total_payment_equality_proof(
+      normalizeHex(payload.cTotalHex),
+      normalizeHex(payload.cPayHex),
+      normalizeHex(payload.rTotalHex),
+      normalizeHex(payload.rPayHex),
+      normalizeHex(payload.contextHashHex),
+    );
+  }
+
   if (method === "verify-value-commitment") {
     return wasm.verify_value_commitment(
       normalizeHex(payload.commitment),
       normalizeHex(payload.proof),
       payload.bindingTagHex ? normalizeHex(payload.bindingTagHex) : undefined,
+    );
+  }
+
+  if (method === "verify-equality-proof") {
+    return wasm.verify_equality_proof(
+      normalizeHex(payload.cLeftHex),
+      normalizeHex(payload.cRightHex),
+      normalizeHex(payload.proofRHex),
+      normalizeHex(payload.proofSHex),
+      normalizeHex(payload.contextHashHex),
+    );
+  }
+
+  if (method === "verify-quantity-total-proof") {
+    return wasm.verify_quantity_total_proof(
+      normalizeHex(payload.cQuantityHex),
+      normalizeHex(payload.cTotalHex),
+      normalizeValue(payload.unitPriceWei),
+      normalizeHex(payload.proofRHex),
+      normalizeHex(payload.proofSHex),
+      normalizeHex(payload.contextHashHex),
+    );
+  }
+
+  if (method === "verify-total-payment-equality-proof") {
+    return wasm.verify_total_payment_equality_proof(
+      normalizeHex(payload.cTotalHex),
+      normalizeHex(payload.cPayHex),
+      normalizeHex(payload.proofRHex),
+      normalizeHex(payload.proofSHex),
+      normalizeHex(payload.contextHashHex),
     );
   }
 

@@ -68,11 +68,19 @@ db.exec(`
     chain_id              TEXT NOT NULL,
     seller_address        TEXT NOT NULL,
     buyer_address         TEXT,
+    transporter_address   TEXT,
     status                TEXT NOT NULL,
+    order_phase           INTEGER,
+    delivered_flag        INTEGER,
     memo_hash             TEXT,
     railgun_tx_ref        TEXT,
     unit_price_wei        TEXT NOT NULL,
     unit_price_hash       TEXT NOT NULL,
+    payment_token         TEXT,
+    buyer_deposit_tx_hash TEXT,
+    buyer_deposit_reference TEXT,
+    seller_bond_attestation_json TEXT,
+    transporter_bond_attestation_json TEXT,
     quantity_commitment   TEXT,
     quantity_proof        TEXT,
     total_commitment      TEXT,
@@ -103,6 +111,18 @@ db.exec(`
     updated_at                  TEXT NOT NULL DEFAULT (datetime('now'))
   )
 `);
+
+ensureColumn('product_orders', 'payment_token', 'TEXT');
+ensureColumn('product_orders', 'transporter_address', 'TEXT');
+ensureColumn('product_orders', 'buyer_deposit_tx_hash', 'TEXT');
+ensureColumn('product_orders', 'buyer_deposit_reference', 'TEXT');
+ensureColumn('product_orders', 'seller_bond_attestation_json', 'TEXT');
+ensureColumn('product_orders', 'transporter_bond_attestation_json', 'TEXT');
+ensureColumn('product_orders', 'order_phase', 'INTEGER');
+ensureColumn('product_orders', 'delivered_flag', 'INTEGER');
+ensureColumn('product_orders', 'delivery_tx_hash', 'TEXT');
+ensureColumn('product_orders', 'delivery_confirmed_vc_hash', 'TEXT');
+ensureColumn('product_orders', 'delivery_confirmed_transporter', 'TEXT');
 
 db.exec(`
   CREATE TABLE IF NOT EXISTS indexed_products (

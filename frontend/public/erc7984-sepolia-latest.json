@@ -1,0 +1,23 @@
+{
+  "generatedAt": "2026-04-08T11:30:36.889Z",
+  "network": "sepolia",
+  "chainId": 11155111,
+  "deployer": "0x90DD9aBf619f63494B3711120A309a6573d4ACeA",
+  "publicToken": "0xfFf9976782d46CC05630D1f6eBAb18b2324d6B14",
+  "publicTokenSymbol": "WETH",
+  "publicTokenIsWrappedNative": true,
+  "fundingWrapper": "0xA87435D1a6a764B555c4F941d8E2b5688Ced2c52",
+  "confidentialToken": "0x7CB22914e17CfdcfDE9F84D4df5A4A47233D46e9",
+  "implementation": "0x59c9F79b80927f705E1e102797F12A866f0611b5",
+  "factory": "0x595c596F9fde72DD41ECB4b729c05f79867fAB4C",
+  "productEscrow": "0xb1Ff7E915A3779C0D20A91850890880ee83f78b3",
+  "seller": "0x88dcDCfB5e330049597003D41eF8E744Fa613E68",
+  "buyer": "0xee3796A91063D28Ea9fE61659FCa7F8bf2b37034",
+  "transporter": "0xD60005BeA69DD099e11c98c6eea9C24a954468f6",
+  "suggestedOrderId": "0xf89e4df4ee56df26635c2b182a5be6de7a41eab0e42deb9f252a843ae48a3da5",
+  "unitPrice": 100,
+  "buyerAmount": 100,
+  "sellerBond": 100,
+  "sellerFee": 15,
+  "transporterBond": 100
+}

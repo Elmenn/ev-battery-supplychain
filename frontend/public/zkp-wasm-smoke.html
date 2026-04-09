@@ -1,0 +1,182 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>ZKP WASM Smoke Test</title>
+    <style>
+      body {
+        font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+        background: #0f172a;
+        color: #e2e8f0;
+        margin: 0;
+        padding: 24px;
+      }
+      .card {
+        max-width: 920px;
+        margin: 0 auto;
+        background: #111827;
+        border: 1px solid #334155;
+        border-radius: 16px;
+        padding: 24px;
+      }
+      h1 {
+        font-size: 24px;
+        margin: 0 0 12px;
+      }
+      p {
+        color: #cbd5e1;
+        line-height: 1.5;
+      }
+      button {
+        background: #2563eb;
+        color: white;
+        border: 0;
+        border-radius: 10px;
+        padding: 12px 18px;
+        font: inherit;
+        cursor: pointer;
+      }
+      button:disabled {
+        opacity: 0.65;
+        cursor: wait;
+      }
+      pre {
+        margin-top: 18px;
+        padding: 16px;
+        background: #020617;
+        border-radius: 12px;
+        overflow: auto;
+        white-space: pre-wrap;
+      }
+      .ok { color: #4ade80; }
+      .fail { color: #f87171; }
+    </style>
+  </head>
+  <body>
+    <div class="card">
+      <h1>ZKP WASM Smoke Test</h1>
+      <p>
+        This page exercises the browser-targeted WASM path directly: scalar commitment generation,
+        value commitment generation, quantity-total proof generation/verification, and
+        total-payment equality proof generation/verification.
+      </p>
+      <button id="run">Run Smoke Test</button>
+      <pre id="output">Ready.</pre>
+    </div>
+
+    <script type="module">
+      import init, {
+        generate_scalar_commitment_with_blinding,
+        generate_value_commitment_with_blinding,
+        verify_value_commitment,
+        generate_quantity_total_proof,
+        verify_quantity_total_proof,
+        generate_total_payment_equality_proof,
+        verify_total_payment_equality_proof,
+      } from "./wasm/zkp-wasm/zkp_wasm.js";
+
+      const output = document.getElementById("output");
+      const button = document.getElementById("run");
+
+      function log(line, cssClass = "") {
+        const prefix = cssClass ? `<span class="${cssClass}">${line}</span>` : line;
+        output.innerHTML += `${prefix}\n`;
+      }
+
+      function assert(condition, message) {
+        if (!condition) {
+          throw new Error(message);
+        }
+      }
+
+      async function runSmoke() {
+        output.textContent = "";
+        button.disabled = true;
+
+        try {
+          await init();
+          log("[init] WASM module loaded", "ok");
+
+          const quantity = "2";
+          const unitPriceWei = "50";
+          const totalValue = "100";
+          const paymentValue = "100";
+          const rQuantityHex = "0x1111111111111111111111111111111111111111111111111111111111111111";
+          const rTotalHex = "0x2222222222222222222222222222222222222222222222222222222222222222";
+          const rPayHex = "0x3333333333333333333333333333333333333333333333333333333333333333";
+          const contextHashHex = "0xaf7e4e4d7b912519c3984116a02dc18596e4ea55a878388e3cd545a0a7bf0bfd";
+
+          const quantityCommitment = generate_scalar_commitment_with_blinding(quantity, rQuantityHex);
+          const totalCommitment = generate_value_commitment_with_blinding(totalValue, rTotalHex);
+          const paymentCommitment = generate_value_commitment_with_blinding(paymentValue, rPayHex);
+
+          assert(quantityCommitment?.verified === true, "Scalar quantity commitment should verify");
+          assert(totalCommitment?.verified === true, "Total value commitment should verify");
+          assert(paymentCommitment?.verified === true, "Payment value commitment should verify");
+          log("[commitment] Scalar/value commitments generated", "ok");
+
+          const totalValueVerify = verify_value_commitment(totalCommitment.commitment, totalCommitment.proof);
+          const paymentValueVerify = verify_value_commitment(paymentCommitment.commitment, paymentCommitment.proof);
+          assert(totalValueVerify?.verified === true, "Total commitment proof should verify");
+          assert(paymentValueVerify?.verified === true, "Payment commitment proof should verify");
+          log("[commitment] Value commitment verification passed", "ok");
+
+          const quantityTotalProof = generate_quantity_total_proof(
+            quantityCommitment.commitment,
+            totalCommitment.commitment,
+            unitPriceWei,
+            rQuantityHex,
+            rTotalHex,
+            contextHashHex
+          );
+          assert(quantityTotalProof?.verified === true, "Quantity-total proof should self-verify");
+
+          const quantityTotalVerify = verify_quantity_total_proof(
+            quantityCommitment.commitment,
+            totalCommitment.commitment,
+            unitPriceWei,
+            quantityTotalProof.proof_r_hex,
+            quantityTotalProof.proof_s_hex,
+            contextHashHex
+          );
+          assert(quantityTotalVerify?.verified === true, "Quantity-total proof should verify");
+          log("[proof] Quantity-total proof verified", "ok");
+
+          const totalPaymentProof = generate_total_payment_equality_proof(
+            totalCommitment.commitment,
+            paymentCommitment.commitment,
+            rTotalHex,
+            rPayHex,
+            contextHashHex
+          );
+          assert(totalPaymentProof?.verified === true, "Total-payment equality proof should self-verify");
+
+          const totalPaymentVerify = verify_total_payment_equality_proof(
+            totalCommitment.commitment,
+            paymentCommitment.commitment,
+            totalPaymentProof.proof_r_hex,
+            totalPaymentProof.proof_s_hex,
+            contextHashHex
+          );
+          assert(totalPaymentVerify?.verified === true, "Total-payment equality proof should verify");
+          log("[proof] Total-payment equality proof verified", "ok");
+
+          log(`Scalar commitment: ${quantityCommitment.commitment}`);
+          log(`Total commitment: ${totalCommitment.commitment}`);
+          log(`Payment commitment: ${paymentCommitment.commitment}`);
+          log("[result] PASS: browser WASM commitment and proof flow is internally consistent", "ok");
+        } catch (error) {
+          log(`[result] FAIL: ${error?.message || String(error)}`, "fail");
+          console.error(error);
+        } finally {
+          button.disabled = false;
+        }
+      }
+
+      button.addEventListener("click", () => {
+        runSmoke();
+      });
+    </script>
+  </body>
+</html>

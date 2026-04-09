@@ -58,3 +58,8 @@ Thumbs.db
 
 # Solidity compiler outputs
 solc-output-*.json
+
+# Hardhat / fhEVM spike outputs
+hardhat-artifacts/
+hardhat-cache/
+fhevmTemp/
