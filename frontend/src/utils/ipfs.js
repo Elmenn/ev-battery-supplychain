@@ -1,13 +1,8 @@
 // client/src/utils/ipfs.js
 // works with create-react-app / react-scripts
 
-// your Pinata JWT must live in client/.env as REACT_APP_PINATA_JWT
+// Optional now: backend upload is the primary path, browser Pinata upload is only a fallback.
 const JWT = process.env.REACT_APP_PINATA_JWT
-if (!JWT) {
-  throw new Error(
-    "REACT_APP_PINATA_JWT is missing. Add it to client/.env and restart `npm start`."
-  )
-}
 
 const IPFS_GATEWAY = "https://ipfs.io/ipfs";
 const VC_BACKEND_URL = process.env.REACT_APP_VC_BACKEND_URL || "http://localhost:5000";
@@ -41,6 +36,35 @@ async function withRetry(fn, maxRetries = 3) {
   throw lastError;
 }
 
+async function uploadJsonViaBackend(obj) {
+  const res = await fetch(`${VC_BACKEND_URL}/vc-upload`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      vc: obj,
+      source: "frontend-backend-upload",
+    }),
+  });
+
+  if (!res.ok) {
+    let errMsg = res.statusText || "Backend VC upload failed";
+    try {
+      const body = await res.json();
+      errMsg = body.error || body.message || JSON.stringify(body);
+    } catch {}
+    const err = new Error(`Backend VC upload failed: ${errMsg}`);
+    err.status = res.status;
+    throw err;
+  }
+
+  const payload = await res.json();
+  const cid = String(payload?.cid || "").trim();
+  if (!cid) {
+    throw new Error("Backend VC upload returned no CID");
+  }
+  return cid;
+}
+
 /**
  * Upload arbitrary JSON to Pinata and return the IPFS CID.
  * Retries up to 3 times with exponential backoff on network/5xx errors.
@@ -49,6 +73,12 @@ async function withRetry(fn, maxRetries = 3) {
  */
 export async function uploadJson(obj) {
   return withRetry(async () => {
+    try {
+      return await uploadJsonViaBackend(obj);
+    } catch (backendError) {
+      console.warn(`Backend VC upload failed, falling back to browser Pinata upload: ${backendError.message}`);
+    }
+
     // Format JSON with 2-space indentation for readability
     // This is safe because:
     // - EIP-712 signatures use structured data, not the JSON string
@@ -58,6 +88,12 @@ export async function uploadJson(obj) {
     const blob = new Blob([formattedJson], { type: "application/json" })
     const form = new FormData()
     form.append("file", blob, "vc.json")
+
+    if (!JWT) {
+      throw new Error(
+        "Browser Pinata fallback is unavailable because REACT_APP_PINATA_JWT is missing."
+      );
+    }
 
     const res = await fetch(
       "https://api.pinata.cloud/pinning/pinFileToIPFS",

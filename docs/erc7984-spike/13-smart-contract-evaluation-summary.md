@@ -2,6 +2,14 @@
 
 This note is the compact smart-contract evaluation summary for the current ERC-7984 marketplace path.
 
+Scope-positioning note (`2026-04-24`):
+
+- this note is kept as the original compact runtime baseline
+- the active dual-profile runtime comparison is in:
+  - [21-dual-profile-smart-contract-evaluation.md](c:\Users\yamen\ev-battery-supplychain-erc7984\docs\erc7984-spike\21-dual-profile-smart-contract-evaluation.md)
+- active deployment addresses and contract verification links are in:
+  - [11-smart-contract-function-map-and-transaction-note.md](c:\Users\yamen\ev-battery-supplychain-erc7984\docs\erc7984-spike\11-smart-contract-function-map-and-transaction-note.md)
+
 It uses only measured Sepolia results.
 
 It covers only on-chain / transaction-level evaluation.
@@ -12,9 +20,10 @@ It does not cover off-chain proof-generation, proof-size, VRC verification, or s
 Contracts involved in the measured runtime flow:
 
 - [ProductFactoryConfidential.sol](c:\Users\yamen\ev-battery-supplychain-erc7984\contracts\erc7984\ProductFactoryConfidential.sol)
+- [ProductEscrowConfidential_Initializer.sol](c:\Users\yamen\ev-battery-supplychain-erc7984\contracts\erc7984\ProductEscrowConfidential_Initializer.sol) (public-price profile)
+- [ProductEscrowConfidential_PrivatePrice.sol](c:\Users\yamen\ev-battery-supplychain-erc7984\contracts\erc7984\ProductEscrowConfidential_PrivatePrice.sol) (private-price profile)
+- [ConfidentialOrderToken.sol](c:\Users\yamen\ev-battery-supplychain-erc7984\contracts\erc7984\ConfidentialOrderToken.sol) via `confidentialTransferAndCall(...)`
 - [ConfidentialPaymentFundingWrapper.sol](c:\Users\yamen\ev-battery-supplychain-erc7984\contracts\erc7984\ConfidentialPaymentFundingWrapper.sol)
-- ERC-7984 confidential token via `confidentialTransferAndCall(...)`
-- [ProductEscrowConfidential_Initializer.sol](c:\Users\yamen\ev-battery-supplychain-erc7984\contracts\erc7984\ProductEscrowConfidential_Initializer.sol)
 
 Measured environment:
 

@@ -1,0 +1,11 @@
+profile,step,gas_mean,fee_mean_eth,gas_ratio_vs_erc20,fee_ratio_vs_erc20,erc20_gas_baseline,erc20_fee_eth_baseline
+public,create product,361829.0,0.001,10.497,7.483,34470.0,0.000133628
+public,buyer confidential purchase,984150.0,0.002,28.551,14.967,34470.0,0.000133628
+public,seller confidential bond,917008.0,0.001,26.603,7.483,34470.0,0.000133628
+public,seller equality finalization,345032.0,0.001,10.01,7.483,34470.0,0.000133628
+public,seller confirm order,103243.0,0.0,2.995,0.0,34470.0,0.000133628
+private,create product,368610.0,0.001,10.694,7.483,34470.0,0.000133628
+private,buyer confidential purchase,984128.0,0.002,28.55,14.967,34470.0,0.000133628
+private,seller confidential bond,916994.0,0.001,26.603,7.483,34470.0,0.000133628
+private,seller equality finalization,345012.0,0.001,10.009,7.483,34470.0,0.000133628
+private,seller confirm order,103243.0,0.0,2.995,0.0,34470.0,0.000133628

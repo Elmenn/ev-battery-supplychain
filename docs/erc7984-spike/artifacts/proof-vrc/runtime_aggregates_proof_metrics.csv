@@ -1,0 +1,3 @@
+profile,sample_count,proof_size_mean_bytes,proof_size_median_bytes,proof_size_p95_bytes,proof_size_stddev_bytes,combined_verify_mean_ms,combined_verify_median_ms,combined_verify_p95_ms,combined_verify_stddev_ms,all_proof_checks_pass
+public,3,800,800,800,0,20.866,14.639,35.139,11.822,True
+private,3,834,834,834,0,153.06,139.66,179.634,21.999,True

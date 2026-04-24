@@ -10,6 +10,11 @@ export const PaymentBridgeVerificationMethod = Object.freeze({
   ProofBoundDepositReference: "proof-bound-deposit-reference",
 });
 
+function normalizeBindingString(value, { lowercase = false } = {}) {
+  const normalized = value == null ? "" : String(value).trim();
+  return lowercase ? normalized.toLowerCase() : normalized;
+}
+
 export function buildErc7984ContextHashSeed({
   orderId,
   productId,
@@ -36,6 +41,22 @@ export function buildErc7984ContextHashSeed({
 
 export function computeCanonicalBridgeHash(payload) {
   return keccak256(toUtf8Bytes(JSON.stringify(payload)));
+}
+
+export function buildCpayBindingTag({
+  chainId,
+  escrowAddress,
+  orderId,
+  depositTxHash,
+}) {
+  const payload = {
+    version: "cpay-bind-v1",
+    chainId: normalizeBindingString(chainId),
+    escrowAddress: normalizeBindingString(escrowAddress, { lowercase: true }),
+    orderId: normalizeBindingString(orderId, { lowercase: true }),
+    depositTxHash: normalizeBindingString(depositTxHash, { lowercase: true }),
+  };
+  return computeCanonicalBridgeHash(payload);
 }
 
 export function buildDepositReference({
@@ -86,10 +107,7 @@ export function buildPaymentBridgeArtifact({
       escrowAddress: escrowAddress ? String(escrowAddress) : "",
       orderId: orderId ? String(orderId) : "",
       buyerAddress: buyerAddress ? String(buyerAddress) : "",
-      // Keep only the opaque deposit reference in the public VRC. The raw
-      // transaction hash is still used locally to derive the reference but is
-      // not exposed in the signed artifact.
-      depositTxHash: "",
+      depositTxHash: depositTxHash ? String(depositTxHash) : "",
       depositReference: depositReference ? String(depositReference) : "",
     },
     verification: {

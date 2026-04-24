@@ -85,10 +85,10 @@ describe("ProductFactoryConfidential", function () {
   it("can create a confidential product for an explicit seller address", async function () {
     const [deployer, seller] = await hre.ethers.getSigners();
 
-    const tokenFactory = await hre.ethers.getContractFactory("MockConfidentialOrderToken");
+    const tokenFactory = await hre.ethers.getContractFactory("ConfidentialOrderToken");
     const token = await tokenFactory
       .connect(deployer)
-      .deploy(deployer.address, "Mock Confidential Order Token", "MCOT", "ipfs://factory-confidential");
+      .deploy(deployer.address, "Confidential Order Token", "COT", "ipfs://factory-confidential");
     await token.waitForDeployment();
 
     const implFactory = await hre.ethers.getContractFactory("ProductEscrowConfidential_Initializer");
@@ -134,10 +134,10 @@ describe("ProductFactoryConfidential", function () {
   it("deploys a confidential product clone and completes the essential lifecycle", async function () {
     const [seller, buyer, transporter] = await hre.ethers.getSigners();
 
-    const tokenFactory = await hre.ethers.getContractFactory("MockConfidentialOrderToken");
+    const tokenFactory = await hre.ethers.getContractFactory("ConfidentialOrderToken");
     const token = await tokenFactory
       .connect(seller)
-      .deploy(seller.address, "Mock Confidential Order Token", "MCOT", "ipfs://factory-confidential");
+      .deploy(seller.address, "Confidential Order Token", "COT", "ipfs://factory-confidential");
     await token.waitForDeployment();
 
     const implFactory = await hre.ethers.getContractFactory("ProductEscrowConfidential_Initializer");
@@ -148,7 +148,7 @@ describe("ProductFactoryConfidential", function () {
     const factory = await factoryFactory.connect(seller).deploy(await implementation.getAddress());
     await factory.waitForDeployment();
 
-    await hre.fhevm.assertCoprocessorInitialized(token, "MockConfidentialOrderToken");
+    await hre.fhevm.assertCoprocessorInitialized(token, "ConfidentialOrderToken");
     await hre.fhevm.assertCoprocessorInitialized(implementation, "ProductEscrowConfidential_Initializer");
 
     const unitPrice = 100;
@@ -266,10 +266,10 @@ describe("ProductFactoryConfidential", function () {
   it("rejects duplicate buyer funding and seller confirmation before buyer funding", async function () {
     const [seller, buyer, secondBuyer] = await hre.ethers.getSigners();
 
-    const tokenFactory = await hre.ethers.getContractFactory("MockConfidentialOrderToken");
+    const tokenFactory = await hre.ethers.getContractFactory("ConfidentialOrderToken");
     const token = await tokenFactory
       .connect(seller)
-      .deploy(seller.address, "Mock Confidential Order Token", "MCOT", "ipfs://factory-confidential");
+      .deploy(seller.address, "Confidential Order Token", "COT", "ipfs://factory-confidential");
     await token.waitForDeployment();
 
     const implFactory = await hre.ethers.getContractFactory("ProductEscrowConfidential_Initializer");
@@ -348,10 +348,10 @@ describe("ProductFactoryConfidential", function () {
   it("rejects unknown transporter selection and delivery before all confidential funding is present", async function () {
     const [seller, buyer, transporter, unknownTransporter] = await hre.ethers.getSigners();
 
-    const tokenFactory = await hre.ethers.getContractFactory("MockConfidentialOrderToken");
+    const tokenFactory = await hre.ethers.getContractFactory("ConfidentialOrderToken");
     const token = await tokenFactory
       .connect(seller)
-      .deploy(seller.address, "Mock Confidential Order Token", "MCOT", "ipfs://factory-confidential");
+      .deploy(seller.address, "Confidential Order Token", "COT", "ipfs://factory-confidential");
     await token.waitForDeployment();
 
     const implFactory = await hre.ethers.getContractFactory("ProductEscrowConfidential_Initializer");
@@ -441,10 +441,10 @@ describe("ProductFactoryConfidential", function () {
   it("blocks seller confirmation when seller bond equality attestation resolves false", async function () {
     const [seller, buyer] = await hre.ethers.getSigners();
 
-    const tokenFactory = await hre.ethers.getContractFactory("MockConfidentialOrderToken");
+    const tokenFactory = await hre.ethers.getContractFactory("ConfidentialOrderToken");
     const token = await tokenFactory
       .connect(seller)
-      .deploy(seller.address, "Mock Confidential Order Token", "MCOT", "ipfs://factory-confidential");
+      .deploy(seller.address, "Confidential Order Token", "COT", "ipfs://factory-confidential");
     await token.waitForDeployment();
 
     const implFactory = await hre.ethers.getContractFactory("ProductEscrowConfidential_Initializer");
@@ -506,10 +506,10 @@ describe("ProductFactoryConfidential", function () {
   it("blocks delivery confirmation when transporter bond equality attestation resolves false", async function () {
     const [seller, buyer, transporter] = await hre.ethers.getSigners();
 
-    const tokenFactory = await hre.ethers.getContractFactory("MockConfidentialOrderToken");
+    const tokenFactory = await hre.ethers.getContractFactory("ConfidentialOrderToken");
     const token = await tokenFactory
       .connect(seller)
-      .deploy(seller.address, "Mock Confidential Order Token", "MCOT", "ipfs://factory-confidential");
+      .deploy(seller.address, "Confidential Order Token", "COT", "ipfs://factory-confidential");
     await token.waitForDeployment();
 
     const implFactory = await hre.ethers.getContractFactory("ProductEscrowConfidential_Initializer");
@@ -595,10 +595,10 @@ describe("ProductFactoryConfidential", function () {
   it("refunds buyer on seller timeout without any public bond side effects", async function () {
     const [seller, buyer] = await hre.ethers.getSigners();
 
-    const tokenFactory = await hre.ethers.getContractFactory("MockConfidentialOrderToken");
+    const tokenFactory = await hre.ethers.getContractFactory("ConfidentialOrderToken");
     const token = await tokenFactory
       .connect(seller)
-      .deploy(seller.address, "Mock Confidential Order Token", "MCOT", "ipfs://factory-confidential");
+      .deploy(seller.address, "Confidential Order Token", "COT", "ipfs://factory-confidential");
     await token.waitForDeployment();
 
     const implFactory = await hre.ethers.getContractFactory("ProductEscrowConfidential_Initializer");
@@ -670,10 +670,10 @@ describe("ProductFactoryConfidential", function () {
   it("refunds buyer and lets non-selected transporters withdraw after bid timeout without public bonds", async function () {
     const [seller, buyer, transporterA, transporterB] = await hre.ethers.getSigners();
 
-    const tokenFactory = await hre.ethers.getContractFactory("MockConfidentialOrderToken");
+    const tokenFactory = await hre.ethers.getContractFactory("ConfidentialOrderToken");
     const token = await tokenFactory
       .connect(seller)
-      .deploy(seller.address, "Mock Confidential Order Token", "MCOT", "ipfs://factory-confidential");
+      .deploy(seller.address, "Confidential Order Token", "COT", "ipfs://factory-confidential");
     await token.waitForDeployment();
 
     const implFactory = await hre.ethers.getContractFactory("ProductEscrowConfidential_Initializer");
@@ -740,10 +740,10 @@ describe("ProductFactoryConfidential", function () {
   it("refunds buyer, returns seller fee, and slashes confidential transporter security on delivery timeout", async function () {
     const [seller, buyer, transporter] = await hre.ethers.getSigners();
 
-    const tokenFactory = await hre.ethers.getContractFactory("MockConfidentialOrderToken");
+    const tokenFactory = await hre.ethers.getContractFactory("ConfidentialOrderToken");
     const token = await tokenFactory
       .connect(seller)
-      .deploy(seller.address, "Mock Confidential Order Token", "MCOT", "ipfs://factory-confidential");
+      .deploy(seller.address, "Confidential Order Token", "COT", "ipfs://factory-confidential");
     await token.waitForDeployment();
 
     const implFactory = await hre.ethers.getContractFactory("ProductEscrowConfidential_Initializer");
@@ -859,3 +859,4 @@ describe("ProductFactoryConfidential", function () {
     expect(Number(attestation.status)).to.equal(0);
   });
 });
+

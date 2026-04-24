@@ -1,0 +1,11 @@
+profile,step,gas_mean,gas_median,gas_p95,gas_stddev,gas_n,fee_mean_eth,fee_median_eth,fee_p95_eth,fee_stddev_eth,fee_n
+private,buyer confidential purchase,984128.0,984128.0,984128.0,0.0,3,0.002,0.002,0.002,0.0,3
+private,create product,368610.0,368614.0,368614.0,5.657,3,0.001,0.001,0.001,0.0,3
+private,seller confidential bond,916994.0,916994.0,916994.0,0.0,3,0.001,0.001,0.002,0.0,3
+private,seller confirm order,103243.0,103243.0,103243.0,0.0,3,0.0,0.0,0.0,0.0,3
+private,seller equality finalization,345012.0,345008.0,345018.8,5.657,3,0.001,0.001,0.001,0.0,3
+public,buyer confidential purchase,984150.0,984150.0,984150.0,0.0,3,0.002,0.002,0.002,0.0,3
+public,create product,361829.0,361789.0,361897.0,56.569,3,0.001,0.001,0.001,0.0,3
+public,seller confidential bond,917008.0,917016.0,917016.0,11.314,3,0.001,0.001,0.002,0.0,3
+public,seller confirm order,103243.0,103243.0,103243.0,0.0,3,0.0,0.0,0.0,0.0,3
+public,seller equality finalization,345032.0,345020.0,345052.4,16.971,3,0.001,0.001,0.001,0.0,3

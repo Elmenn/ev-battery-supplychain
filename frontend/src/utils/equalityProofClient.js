@@ -12,6 +12,8 @@
  *   POST /zkp/verify-equality-proof
  *   POST /zkp/generate-quantity-total-proof
  *   POST /zkp/verify-quantity-total-proof
+ *   POST /zkp/generate-private-price-quantity-total-bulletproof
+ *   POST /zkp/verify-private-price-quantity-total-bulletproof
  *   POST /zkp/generate-total-payment-equality-proof
  *   POST /zkp/verify-total-payment-equality-proof
  */
@@ -144,6 +146,40 @@ async function verifyTotalPaymentEqualityProofBackend({
   });
 }
 
+async function generateTotalPaymentEqualityBulletproofBackend({
+  cTotalHex,
+  cPayHex,
+  totalValue,
+  paymentValue,
+  rTotalHex,
+  rPayHex,
+  contextHashHex,
+}) {
+  return postJson(`${resolveBackendUrl()}/zkp/generate-total-payment-equality-bulletproof`, {
+    c_total_hex: cTotalHex,
+    c_pay_hex: cPayHex,
+    total_value: totalValue,
+    payment_value: paymentValue,
+    r_total_hex: rTotalHex,
+    r_pay_hex: rPayHex,
+    context_hash_hex: contextHashHex,
+  });
+}
+
+async function verifyTotalPaymentEqualityBulletproofBackend({
+  cTotalHex,
+  cPayHex,
+  proofHex,
+  contextHashHex,
+}) {
+  return postJson(`${resolveBackendUrl()}/zkp/verify-total-payment-equality-bulletproof`, {
+    c_total_hex: cTotalHex,
+    c_pay_hex: cPayHex,
+    proof_hex: proofHex,
+    context_hash_hex: contextHashHex,
+  });
+}
+
 // --- WASM provider functions ------------------------------------------------
 
 async function generateEqualityProofWasm(_params) {
@@ -153,6 +189,48 @@ async function generateEqualityProofWasm(_params) {
     rLeftHex: _params.rPriceHex,
     rRightHex: _params.rPayHex,
     contextHashHex: _params.contextHashHex,
+  });
+}
+
+async function generatePrivatePriceQuantityTotalBulletproofBackend({
+  cPriceHex,
+  cQuantityHex,
+  cTotalHex,
+  priceValue,
+  quantityValue,
+  totalValue,
+  rPriceHex,
+  rQuantityHex,
+  rTotalHex,
+  contextHashHex,
+}) {
+  return postJson(`${resolveBackendUrl()}/zkp/generate-private-price-quantity-total-bulletproof`, {
+    c_price_hex: cPriceHex,
+    c_quantity_hex: cQuantityHex,
+    c_total_hex: cTotalHex,
+    price_value: priceValue,
+    quantity_value: quantityValue,
+    total_value: totalValue,
+    r_price_hex: rPriceHex,
+    r_quantity_hex: rQuantityHex,
+    r_total_hex: rTotalHex,
+    context_hash_hex: contextHashHex,
+  });
+}
+
+async function verifyPrivatePriceQuantityTotalBulletproofBackend({
+  cPriceHex,
+  cQuantityHex,
+  cTotalHex,
+  proofHex,
+  contextHashHex,
+}) {
+  return postJson(`${resolveBackendUrl()}/zkp/verify-private-price-quantity-total-bulletproof`, {
+    c_price_hex: cPriceHex,
+    c_quantity_hex: cQuantityHex,
+    c_total_hex: cTotalHex,
+    proof_hex: proofHex,
+    context_hash_hex: contextHashHex,
   });
 }
 
@@ -386,6 +464,26 @@ export async function verifyTotalPaymentEqualityProofPreferWasm(params) {
       fallbackReason: error?.message || 'WASM total-payment verification failed',
     };
   }
+}
+
+export async function generatePrivatePriceQuantityTotalBulletproof(params) {
+  const result = await generatePrivatePriceQuantityTotalBulletproofBackend(params);
+  return { ...result, source: 'zkp-backend' };
+}
+
+export async function verifyPrivatePriceQuantityTotalBulletproof(params) {
+  const result = await verifyPrivatePriceQuantityTotalBulletproofBackend(params);
+  return { ...result, source: 'zkp-backend' };
+}
+
+export async function generateTotalPaymentEqualityBulletproof(params) {
+  const result = await generateTotalPaymentEqualityBulletproofBackend(params);
+  return { ...result, source: 'zkp-backend' };
+}
+
+export async function verifyTotalPaymentEqualityBulletproof(params) {
+  const result = await verifyTotalPaymentEqualityBulletproofBackend(params);
+  return { ...result, source: 'zkp-backend' };
 }
 
 export async function assertVerifiedProof(result, label) {

@@ -37,11 +37,12 @@ This is the current main-path flow, not the older Railgun/V2 flow.
 
 | Contract | Main functions used in the flow |
 | --- | --- |
-| `ProductFactoryConfidential.sol` | `createProductConfidentialV1(...)` |
-| `ConfidentialPaymentFundingWrapper.sol` | `deposit(uint256 amount)` |
+| `ProductFactoryConfidential.sol` | `createProductConfidentialV1(...)` (public profile), `createProductConfidentialPrivatePrice(...)` (private profile) |
+| `ConfidentialPaymentFundingWrapper.sol` | `deposit(uint256 amount)`, optional `redeem(uint256 amount)` |
 | public funding ERC-20 | `approve(spender, amount)` |
 | ERC-7984 confidential token | `confidentialTransferAndCall(address to, bytes32 handle, bytes inputProof, bytes data)` |
-| `ProductEscrowConfidential_Initializer.sol` | `onConfidentialTransferReceived(...)`, `finalizeEqualityAttestation(...)`, `createTransporter(...)`, `setTransporter(...)`, `confirmOrderById(...)`, `confirmDelivery(...)` |
+| `ProductEscrowConfidential_Initializer.sol` (public profile) | `onConfidentialTransferReceived(...)`, `finalizeEqualityAttestation(...)`, `createTransporter(...)`, `setTransporter(...)`, `confirmOrderById(...)`, `confirmDelivery(...)` |
+| `ProductEscrowConfidential_PrivatePrice.sol` (private profile) | same operational lifecycle entrypoints as public profile escrow |
 
 ## Backend routes and primary tables
 
@@ -168,7 +169,7 @@ So the current backend-heavy flow is acceptable for the spike, but it is also a 
 
 | Triggered by | Frontend trigger | Backend trigger | Contract trigger | Result |
 | --- | --- | --- | --- | --- |
-| Seller | `ProductFormStep3.handleConfirm()` | `saveProductMeta()` -> `POST /metadata` | `createProductConfidentialV1(...)` | product escrow is deployed and metadata is stored |
+| Seller | `ProductFormStep3.handleConfirm()` | `saveProductMeta()` -> `POST /metadata` | `createProductConfidentialV1(...)` (public) or `createProductConfidentialPrivatePrice(...)` (private) | profile-specific product escrow is deployed and metadata is stored |
 
 ### 2. Any actor funds private balance
 
@@ -237,13 +238,19 @@ Important frontend helpers in this step:
 | --- | --- | --- | --- | --- |
 | Transporter | `Erc7984TransporterJobDetail.handleConfirmDelivery()` | `saveErc7984OrderSnapshot()` | `confirmDelivery(orderId, vcHash)` | phase moves to `Delivered` and settlement is released |
 
+### 11. Optional user redeem back to public ERC-20
+
+| Triggered by | Frontend trigger | Backend trigger | Contract trigger | Result |
+| --- | --- | --- | --- | --- |
+| Buyer, seller, or transporter | `Erc7984FundingCard` redeem action | none required | wrapper `redeem(amount)` | confidential balance decreases, public ERC-20 is released back to wallet |
+
 ## Stakeholder-by-stakeholder checklist
 
 ### Seller
 
 Seller directly triggers:
 
-- `createProductConfidentialV1(...)`
+- `createProductConfidentialV1(...)` (public) or `createProductConfidentialPrivatePrice(...)` (private)
 - seller-bond `confidentialTransferAndCall(...)`
 - `finalizeEqualityAttestation(...)` for seller bond
 - VRC build/sign/upload/archive flow
@@ -257,6 +264,7 @@ Buyer directly triggers:
 
 - public token `approve(...)`
 - funding wrapper `deposit(...)`
+- optional funding wrapper `redeem(...)`
 - buyer purchase `confidentialTransferAndCall(...)`
 - proof bundle generation through `generateBuyerPaymentBridgeSidecar(...)`
 - order snapshot persistence through `POST /erc7984/orders/snapshot`
@@ -269,6 +277,7 @@ Transporter directly triggers:
 - transporter-bond `confidentialTransferAndCall(...)`
 - `finalizeEqualityAttestation(...)` for transporter bond
 - `confirmDelivery(...)`
+- optional funding wrapper `redeem(...)`
 
 ## What the DB stores at each stage
 
@@ -284,12 +293,13 @@ Transporter directly triggers:
 
 If you want the shortest mental model, it is this:
 
-1. seller creates product and backend stores public metadata
+1. seller creates product (public or private profile) and backend stores metadata
 2. each actor can fund private balance through wrapper `deposit(...)`
 3. buyer makes confidential purchase deposit and frontend saves the proof-complete order snapshot
 4. seller deposits bond, finalizes equality, signs/uploads/archives VRC, and binds CID with `confirmOrderById(...)`
 5. transporter bids, seller selects transporter, seller deposits delivery fee
 6. transporter deposits bond, finalizes equality, and confirms delivery with the bound `vcHash`
+7. optionally, actors redeem remaining confidential balance back to public ERC-20
 
 ## Related docs
 

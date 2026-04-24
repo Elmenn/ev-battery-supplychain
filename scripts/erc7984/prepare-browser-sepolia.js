@@ -66,6 +66,43 @@ function getCreatedProductAddress(factory, receipt) {
   return createdEvent.args.product;
 }
 
+async function assertProfileState({
+  productAddress,
+  expectedVisibility,
+  expectedUnitPrice,
+  expectedCommitment,
+}) {
+  const contractName =
+    expectedVisibility === "private"
+      ? "ProductEscrowConfidential_PrivatePrice"
+      : "ProductEscrowConfidential_Initializer";
+  const escrow = await hre.ethers.getContractAt(contractName, productAddress);
+
+  const priceVisibility = Number(await escrow.priceVisibility());
+  const priceCommitment = await escrow.priceCommitment();
+  const unitPrice = BigInt(await escrow.unitPrice());
+
+  if (expectedVisibility === "public" && priceVisibility !== 0) {
+    throw new Error(`Public-profile smoke check failed for ${productAddress}: expected priceVisibility=0, got ${priceVisibility}`);
+  }
+  if (expectedVisibility === "private" && priceVisibility !== 1) {
+    throw new Error(`Private-profile smoke check failed for ${productAddress}: expected priceVisibility=1, got ${priceVisibility}`);
+  }
+  if (unitPrice !== BigInt(expectedUnitPrice)) {
+    throw new Error(
+      `Smoke check failed for ${productAddress}: expected unitPrice=${expectedUnitPrice}, got ${unitPrice.toString()}`
+    );
+  }
+  if (hre.ethers.getBytes(priceCommitment).length !== 32) {
+    throw new Error(`Smoke check failed for ${productAddress}: invalid bytes32 priceCommitment returned`);
+  }
+  if (priceCommitment.toLowerCase() !== expectedCommitment.toLowerCase()) {
+    throw new Error(
+      `Smoke check failed for ${productAddress}: expected priceCommitment=${expectedCommitment}, got ${priceCommitment}`
+    );
+  }
+}
+
 function writeLatestPrepConfig(payload) {
   const outputPath = path.resolve(
     __dirname,
@@ -117,20 +154,29 @@ async function main() {
   );
   const productName = getEnvString("ERC7984_BROWSER_PREP_PRODUCT_NAME", "Browser ERC-7984 Product");
   const unitPrice = getEnvNumber("ERC7984_BROWSER_PREP_UNIT_PRICE", buyerPurchaseAmount);
+  const privateProductName = getEnvString(
+    "ERC7984_BROWSER_PREP_PRIVATE_PRODUCT_NAME",
+    `${productName} (Private Price)`
+  );
+  const privateUnitPrice = getEnvNumber("ERC7984_BROWSER_PREP_PRIVATE_UNIT_PRICE", unitPrice);
+  const privatePriceBlinding = hre.ethers.hexlify(hre.ethers.randomBytes(32));
   const publicTokenAddress = getEnvAddress("ERC7984_BROWSER_PREP_PUBLIC_TOKEN", SEPOLIA_WETH_ADDRESS);
   const publicTokenSymbol = getEnvString("ERC7984_BROWSER_PREP_PUBLIC_TOKEN_SYMBOL", "WETH");
 
   const unitPriceHash = hre.ethers.keccak256(
     hre.ethers.toUtf8Bytes(String(unitPrice))
   );
+  const privatePriceCommitment = hre.ethers.keccak256(
+    hre.ethers.solidityPacked(["uint64", "bytes32"], [privateUnitPrice, privatePriceBlinding])
+  );
   const suggestedOrderId = hre.ethers.keccak256(
     hre.ethers.toUtf8Bytes(`browser-order-${Date.now()}`)
   );
 
-  const confidentialTokenFactory = await hre.ethers.getContractFactory("MockConfidentialOrderToken");
+  const confidentialTokenFactory = await hre.ethers.getContractFactory("ConfidentialOrderToken");
   const token = await confidentialTokenFactory
     .connect(deployer)
-    .deploy(deployer.address, "Mock Confidential Order Token", "MCOT", "ipfs://browser-confidential");
+    .deploy(deployer.address, "Confidential Order Token", "COT", "ipfs://browser-confidential");
   await token.waitForDeployment();
 
   const wrapperFactory = await hre.ethers.getContractFactory("ConfidentialPaymentFundingWrapper");
@@ -145,11 +191,20 @@ async function main() {
   const implementation = await implementationFactory.connect(deployer).deploy();
   await implementation.waitForDeployment();
 
+  const privateImplementationFactory = await hre.ethers.getContractFactory(
+    "ProductEscrowConfidential_PrivatePrice"
+  );
+  const privateImplementation = await privateImplementationFactory.connect(deployer).deploy();
+  await privateImplementation.waitForDeployment();
+
   const factoryFactory = await hre.ethers.getContractFactory("ProductFactoryConfidential");
   const factory = await factoryFactory.connect(deployer).deploy(await implementation.getAddress());
   await factory.waitForDeployment();
+  await (
+    await factory.connect(deployer).setPrivateImplementation(await privateImplementation.getAddress())
+  ).wait();
 
-  const createTx = await factory
+  const publicCreateTx = await factory
     .connect(deployer)
     .createProductConfidentialV1ForSeller(
       productName,
@@ -158,11 +213,36 @@ async function main() {
       await token.getAddress(),
       sellerAddress
     );
-  const createReceipt = await createTx.wait();
-  const escrowAddress = getCreatedProductAddress(factory, createReceipt);
+  const publicCreateReceipt = await publicCreateTx.wait();
+  const publicEscrowAddress = getCreatedProductAddress(factory, publicCreateReceipt);
+
+  const privateCreateTx = await factory
+    .connect(deployer)
+    .createProductConfidentialPrivatePriceForSeller(
+      privateProductName,
+      privatePriceCommitment,
+      await token.getAddress(),
+      sellerAddress
+    );
+  const privateCreateReceipt = await privateCreateTx.wait();
+  const privateEscrowAddress = getCreatedProductAddress(factory, privateCreateReceipt);
+
+  await assertProfileState({
+    productAddress: publicEscrowAddress,
+    expectedVisibility: "public",
+    expectedUnitPrice: unitPrice,
+    expectedCommitment: unitPriceHash,
+  });
+  await assertProfileState({
+    productAddress: privateEscrowAddress,
+    expectedVisibility: "private",
+    expectedUnitPrice: 0,
+    expectedCommitment: privatePriceCommitment,
+  });
 
   const latestPrepConfig = {
     generatedAt: new Date().toISOString(),
+    deploymentVersion: "dual-profile-v1",
     network: network.name,
     chainId: Number(network.chainId),
     deployer: deployer.address,
@@ -172,8 +252,13 @@ async function main() {
     fundingWrapper: await fundingWrapper.getAddress(),
     confidentialToken: await token.getAddress(),
     implementation: await implementation.getAddress(),
+    privateImplementation: await privateImplementation.getAddress(),
     factory: await factory.getAddress(),
-    productEscrow: escrowAddress,
+    supportedPriceProfiles: ["public", "private"],
+    supportsPrivatePrice: true,
+    productEscrow: publicEscrowAddress,
+    publicProductEscrow: publicEscrowAddress,
+    privateProductEscrow: privateEscrowAddress,
     seller: sellerAddress,
     buyer: buyerAddress,
     transporter: transporterAddress,
@@ -183,6 +268,9 @@ async function main() {
     sellerBond: sellerBondAmount,
     sellerFee: sellerDeliveryFeeAmount,
     transporterBond: transporterSecurityAmount,
+    publicUnitPriceHash: unitPriceHash,
+    privateUnitPrice: privateUnitPrice,
+    privatePriceCommitment,
   };
   const latestPrepConfigPath = writeLatestPrepConfig(latestPrepConfig);
 
@@ -194,8 +282,10 @@ async function main() {
   console.log(`Funding wrapper    : ${await fundingWrapper.getAddress()}`);
   console.log(`Confidential token : ${await token.getAddress()}`);
   console.log(`Implementation     : ${await implementation.getAddress()}`);
+  console.log(`Private impl       : ${await privateImplementation.getAddress()}`);
   console.log(`Factory            : ${await factory.getAddress()}`);
-  console.log(`Product escrow     : ${escrowAddress}`);
+  console.log(`Public escrow      : ${publicEscrowAddress}`);
+  console.log(`Private escrow     : ${privateEscrowAddress}`);
   console.log(`Seller             : ${sellerAddress}`);
   console.log(`Buyer              : ${buyerAddress}`);
   console.log(`Transporter        : ${transporterAddress}`);
@@ -215,7 +305,8 @@ async function main() {
   console.log(`- Public token address: ${publicTokenAddress}`);
   console.log(`- Funding wrapper address: ${await fundingWrapper.getAddress()}`);
   console.log(`- Confidential payment token: ${await token.getAddress()}`);
-  console.log(`- Product escrow address: ${escrowAddress}`);
+  console.log(`- Public product escrow address: ${publicEscrowAddress}`);
+  console.log(`- Private product escrow address: ${privateEscrowAddress}`);
   console.log(`- Suggested working order ID: ${suggestedOrderId}`);
   console.log(`- Latest prep config file: ${latestPrepConfigPath}`);
   console.log("");

@@ -1,0 +1,17 @@
+profile,metric,min,mean,median,p95,max,stddev,n
+public,buyer_side_fee_eth,0.001,0.002,0.002,0.002,0.002,0.0,3
+public,seller_side_fee_eth,0.002,0.003,0.003,0.003,0.003,0.0,3
+public,total_fee_eth_reported,0.004,0.005,0.005,0.005,0.005,0.0,3
+public,core_fee_eth,0.004,0.004,0.004,0.005,0.005,0.0,3
+public,full_measured_fee_eth,0.004,0.005,0.005,0.005,0.005,0.0,3
+public,seller_elapsed_s,72.0,80.0,84.0,84.0,84.0,5.657,3
+public,core_elapsed_s,144.0,200.0,216.0,237.6,240.0,40.792,3
+public,full_elapsed_s,276.0,304.0,300.0,332.4,336.0,24.658,3
+private,buyer_side_fee_eth,0.001,0.002,0.002,0.002,0.002,0.0,3
+private,seller_side_fee_eth,0.002,0.002,0.003,0.003,0.003,0.0,3
+private,total_fee_eth_reported,0.004,0.005,0.005,0.005,0.005,0.0,3
+private,core_fee_eth,0.004,0.004,0.004,0.004,0.004,0.0,3
+private,full_measured_fee_eth,0.004,0.005,0.005,0.005,0.005,0.0,3
+private,seller_elapsed_s,60.0,68.0,72.0,72.0,72.0,5.657,3
+private,core_elapsed_s,144.0,244.0,204.0,366.0,384.0,101.98,3
+private,full_elapsed_s,252.0,372.0,312.0,528.0,552.0,129.615,3

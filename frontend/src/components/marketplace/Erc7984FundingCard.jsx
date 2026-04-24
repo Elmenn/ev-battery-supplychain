@@ -15,6 +15,7 @@ const PUBLIC_ERC20_ABI = [
 
 const FUNDING_WRAPPER_ABI = [
   "function deposit(uint256 amount) returns (uint64 mintedAmount)",
+  "function redeem(uint256 amount) returns (uint64 burnedAmount)",
 ];
 
 const CONFIDENTIAL_TOKEN_ABI = [
@@ -42,6 +43,7 @@ export default function Erc7984FundingCard({
   const [publicBalance, setPublicBalance] = useState(null);
   const [privateBalance, setPrivateBalance] = useState(null);
   const [privateBalanceLoaded, setPrivateBalanceLoaded] = useState(false);
+  const [wrapperLiquidity, setWrapperLiquidity] = useState(null);
   const [actionLoading, setActionLoading] = useState("");
 
   const publicTokenLabel = deploymentConfig?.publicTokenSymbol || "ERC20";
@@ -71,9 +73,12 @@ export default function Erc7984FundingCard({
 
     const publicToken = new Contract(deploymentConfig.publicToken, PUBLIC_ERC20_ABI, provider);
     const nextPublicBalance = await publicToken.balanceOf(currentUser);
+    const nextWrapperLiquidity = await publicToken.balanceOf(deploymentConfig.fundingWrapper);
 
     const nextPublic = nextPublicBalance.toString();
+    const nextLiquidity = nextWrapperLiquidity.toString();
     setPublicBalance(nextPublic);
+    setWrapperLiquidity(nextLiquidity);
 
     let nextPrivate = privateBalance;
     if (includePrivate) {
@@ -97,6 +102,7 @@ export default function Erc7984FundingCard({
     await onBalancesChange?.({
       publicBalance: nextPublic,
       privateBalance: nextPrivate,
+      wrapperLiquidity: nextLiquidity,
       fundingWrapper: deploymentConfig.fundingWrapper,
       publicToken: deploymentConfig.publicToken,
       confidentialToken: deploymentConfig.confidentialToken,
@@ -127,11 +133,12 @@ export default function Erc7984FundingCard({
     await onBalancesChange?.({
       publicBalance,
       privateBalance: nextPrivate,
+      wrapperLiquidity,
       fundingWrapper: deploymentConfig.fundingWrapper,
       publicToken: deploymentConfig.publicToken,
       confidentialToken: deploymentConfig.confidentialToken,
     });
-  }, [currentUser, deploymentConfig, onBalancesChange, provider, publicBalance]);
+  }, [currentUser, deploymentConfig, onBalancesChange, provider, publicBalance, wrapperLiquidity]);
 
   useEffect(() => {
     refreshBalances({ includePrivate: false }).catch((error) => {
@@ -194,6 +201,30 @@ export default function Erc7984FundingCard({
     }
   }
 
+  async function handleRedeemToPublic() {
+    if (!provider || !deploymentConfig?.fundingWrapper) return;
+
+    setActionLoading("redeem-public");
+    try {
+      const signer = await provider.getSigner();
+      const amount = parseTokenAmountInput(amountInput, {
+        label: `${publicTokenLabel} redeem amount`,
+      });
+      const wrapper = new Contract(deploymentConfig.fundingWrapper, FUNDING_WRAPPER_ABI, signer);
+
+      const tx = await wrapper.redeem(amount);
+      await tx.wait();
+      toast.success(
+        `Redeemed ${formatTokenAmount(amount, { symbol: publicTokenLabel })} back to public balance.`
+      );
+      await refreshBalances({ includePrivate: true });
+    } catch (error) {
+      toast.error(error.message || "Failed to redeem to public balance.");
+    } finally {
+      setActionLoading("");
+    }
+  }
+
   async function handleRefreshPrivateBalance() {
     setActionLoading("refresh-private");
     try {
@@ -232,6 +263,12 @@ export default function Erc7984FundingCard({
         <div>
           <strong>Funding wrapper:</strong> {truncateAddress(deploymentConfig?.fundingWrapper || "")}
         </div>
+        <div>
+          <strong>Wrapper public liquidity:</strong>{" "}
+          {wrapperLiquidity == null
+            ? "loading..."
+            : formatTokenAmount(wrapperLiquidity, { symbol: publicTokenLabel, fallback: "0" })}
+        </div>
       </div>
 
       <div className="mt-5 grid gap-4">
@@ -247,8 +284,8 @@ export default function Erc7984FundingCard({
           />
           <div className="mt-2 text-xs text-slate-500">
             {publicTokenIsWrappedNative
-              ? `Wrap native ETH into ${publicTokenLabel} first if needed, then deposit ${publicTokenLabel} into the confidential wrapper 1:1.`
-              : `Public ${publicTokenLabel} converts into private balance 1:1 in the current marketplace MVP.`}
+              ? `Wrap native ETH into ${publicTokenLabel} first if needed, then deposit ${publicTokenLabel} into the confidential wrapper 1:1. Redeem performs the reverse direction.`
+              : `Public ${publicTokenLabel} converts into private balance 1:1 in the current marketplace MVP, and can be redeemed back to public balance.`}
           </div>
         </div>
 
@@ -269,6 +306,13 @@ export default function Erc7984FundingCard({
             isLoading={actionLoading === "fund-private"}
           >
             Deposit {publicTokenLabel} To Private
+          </Button>
+          <Button
+            onClick={handleRedeemToPublic}
+            disabled={!hasDeploymentConfig || actionLoading !== ""}
+            isLoading={actionLoading === "redeem-public"}
+          >
+            Redeem Private To {publicTokenLabel}
           </Button>
           <Button
             variant="ghost"

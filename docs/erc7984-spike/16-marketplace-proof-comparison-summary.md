@@ -18,6 +18,11 @@ The comparison metrics are:
 - proof size
 - proof verification time
 
+Role in the dual-profile evaluation set:
+
+- this note is the canonical **Layer A raw baseline** for proof-family efficiency
+- runtime proof verification cross-checks are tracked separately in [22-dual-profile-proof-and-vrc-evaluation.md](c:\Users\yamen\ev-battery-supplychain-erc7984\docs\erc7984-spike\22-dual-profile-proof-and-vrc-evaluation.md)
+
 All values below come from real executed repository benchmarks.
 
 Final timing claims in this note use only the dedicated release-mode benchmark binary:

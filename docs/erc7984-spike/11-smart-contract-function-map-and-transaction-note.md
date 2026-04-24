@@ -14,17 +14,78 @@ It is the detailed smart-contract companion note. The frozen compact smart-contr
 
 ## Primary smart-contract files
 
-The current main path is built around these files:
+Current dual-profile marketplace contracts:
 
 - [ProductFactoryConfidential.sol](c:\Users\yamen\ev-battery-supplychain-erc7984\contracts\erc7984\ProductFactoryConfidential.sol)
-- [ProductEscrowConfidential_Initializer.sol](c:\Users\yamen\ev-battery-supplychain-erc7984\contracts\erc7984\ProductEscrowConfidential_Initializer.sol)
+- [ProductEscrowConfidential_Initializer.sol](c:\Users\yamen\ev-battery-supplychain-erc7984\contracts\erc7984\ProductEscrowConfidential_Initializer.sol) (public-price escrow implementation)
+- [ProductEscrowConfidential_PrivatePrice.sol](c:\Users\yamen\ev-battery-supplychain-erc7984\contracts\erc7984\ProductEscrowConfidential_PrivatePrice.sol) (private-price escrow implementation)
+- [ConfidentialOrderToken.sol](c:\Users\yamen\ev-battery-supplychain-erc7984\contracts\erc7984\ConfidentialOrderToken.sol)
 - [ConfidentialPaymentFundingWrapper.sol](c:\Users\yamen\ev-battery-supplychain-erc7984\contracts\erc7984\ConfidentialPaymentFundingWrapper.sol)
 
-There is also one important token-level entrypoint used operationally:
+External funding asset used in runtime flow:
 
-- ERC-7984 token `confidentialTransferAndCall(...)`
+- Sepolia WETH (or configured ERC-20 public payment token)
 
-That token call is what delivers confidential deposits into the escrow receiver.
+Legacy contracts removed from the active flow:
+
+- `ConfidentialOrderEscrow.sol`
+- `ProductEscrowConfidentialV1.sol`
+
+## Active Sepolia deployment (frozen)
+
+Deployment source:
+
+- [erc7984-sepolia-latest.json](c:\Users\yamen\ev-battery-supplychain-erc7984\frontend\public\erc7984-sepolia-latest.json)
+
+Frozen deployment snapshot date:
+
+- `2026-04-24`
+- source verification completed on Sepolia Etherscan: `2026-04-24`
+
+| Contract / address role | Address |
+| --- | --- |
+| Factory | `0x3651a8D91cc797c5dFCb2fBc50CA50b6c9cfa572` |
+| Public escrow implementation | `0x58a971f033D19c53893074287c31329d43fAc076` |
+| Private escrow implementation | `0x6C26F71Ec9C6b8c830A17291C3Bf7f90292d28E7` |
+| Funding wrapper | `0x8bdb7B543B9137A47348D9915D6557bC46E4F873` |
+| Confidential payment token (ERC-7984) | `0xe04F94DCfC2B6f64352AcAdAD64FF4cA8505BF04` |
+| Public funding token (WETH Sepolia) | `0xfFf9976782d46CC05630D1f6eBAb18b2324d6B14` |
+| Public profile escrow clone (example) | `0x943Df970A24f1ba8D964230871a6F6E5F9D0797a` |
+| Private profile escrow clone (example) | `0xA8d459B71E3CF434aC8186B249362BA47863c8dA` |
+
+Verified source links:
+
+- Confidential token: <https://sepolia.etherscan.io/address/0xe04F94DCfC2B6f64352AcAdAD64FF4cA8505BF04#code>
+- Funding wrapper: <https://sepolia.etherscan.io/address/0x8bdb7B543B9137A47348D9915D6557bC46E4F873#code>
+- Public escrow implementation: <https://sepolia.etherscan.io/address/0x58a971f033D19c53893074287c31329d43fAc076#code>
+- Private escrow implementation: <https://sepolia.etherscan.io/address/0x6C26F71Ec9C6b8c830A17291C3Bf7f90292d28E7#code>
+- Factory: <https://sepolia.etherscan.io/address/0x3651a8D91cc797c5dFCb2fBc50CA50b6c9cfa572#code>
+
+Runtime usage clarification:
+
+- always-used deployed contracts in the flow: `Factory + Public impl + Private impl + Wrapper + Confidential token`
+- external token dependency: Sepolia WETH
+- per-product live escrow address: created as a clone by factory (public or private implementation)
+
+## Contract publication / source verification
+
+Preparation script (deploy + browser config):
+
+```powershell
+npm run prepare:erc7984:browser:sepolia
+```
+
+Verification/publication script:
+
+```powershell
+npm run verify:erc7984:sepolia
+```
+
+Notes:
+
+- requires `ETHERSCAN_API_KEY` in environment or `.env.truffle`
+- verifies: confidential token, wrapper, public/private implementations, and factory
+- clone escrows are not directly verified (minimal proxy clones); their verified implementation addresses are listed above
 
 ## What each contract is responsible for
 
@@ -32,39 +93,67 @@ That token call is what delivers confidential deposits into the escrow receiver.
 
 Responsibility:
 
-- deploy a new escrow clone for each product
-- initialize the escrow with:
-  - product id
-  - product name
-  - public `unitPrice`
-  - `unitPriceHash`
-  - seller
-  - payment token
+- deploy and initialize escrow clones
+- select implementation based on listing profile (`public` vs `private`)
+- maintain product registry (`products`, `productsById`)
+- support owner-managed implementation upgrades (`setImplementation`, `setPrivateImplementation`)
 
 Main public entrypoint:
 
-- `createProductConfidentialV1(string name, uint64 unitPrice, bytes32 unitPriceHash, IERC7984 paymentToken)`
+- public-price:
+  - `createProductConfidentialV1(...)`
+  - `createProductConfidentialV1ForSeller(...)`
+  - `createProductConfidentialPublicPrice(...)`
+- private-price:
+  - `createProductConfidentialPrivatePrice(...)`
+  - `createProductConfidentialPrivatePriceForSeller(...)`
 
 Operational meaning:
 
-- one product listing transaction
-- one new escrow instance
+- seller creates listing
+- factory deploys the correct escrow implementation for the chosen profile
 
 ### `ConfidentialPaymentFundingWrapper`
 
 Responsibility:
 
-- convert a public ERC-20 funding asset into confidential ERC-7984 balance
+- bridge public ERC-20 <-> confidential ERC-7984 balance
+- mint confidential balance on deposit
+- burn confidential balance and release public ERC-20 on redeem
 
 Main public entrypoint:
 
 - `deposit(uint256 amount)`
+- `redeem(uint256 amount)`
+- `availablePublicLiquidity()`
 
 Operational meaning:
 
-- user funds private balance before participating in the marketplace flow
+- user funds confidential balance before marketplace actions
+- user exits confidential balance back to public token when needed
 
-### `ProductEscrowConfidential_Initializer`
+### `ConfidentialOrderToken`
+
+Responsibility:
+
+- ERC-7984 confidential token ledger used by escrow and wrapper
+- supports confidential transfer callback flow into escrow
+- owner-only mint/burn hooks used by wrapper bridge
+
+Main public entrypoint:
+
+- user-facing confidential deposit path:
+  - `confidentialTransferAndCall(...)`
+- wrapper-controlled bridge paths:
+  - `mintFromPublicAmount(...)`
+  - `burnFromPublicAmount(...)`
+
+Operational meaning:
+
+- all confidential deposits (buyer/seller/transporter) pass through this token
+- escrow receives deposits through token callback dispatch
+
+### `ProductEscrowConfidential_Initializer` (public-price)
 
 Responsibility:
 
@@ -77,26 +166,44 @@ Responsibility:
 
 This is the main protocol contract in the current spike.
 
+### `ProductEscrowConfidential_PrivatePrice` (private-price)
+
+Responsibility:
+
+- same lifecycle as public-price escrow
+- stores price commitment instead of exposing on-chain unit price
+- sets profile discriminator for runtime/UI/verifier (`priceVisibility() == 1`)
+
+Main profile-specific entrypoint:
+
+- `initializeConfidentialPrivatePrice(...)`
+
 ## Smart-contract function map
 
 ### Factory layer
 
 | Function | Triggered by | Purpose | Main writes / effects |
 | --- | --- | --- | --- |
-| `createProductConfidentialV1(...)` | seller | create product escrow | deploy clone, increment product count, call `initializeConfidential(...)` |
+| `createProductConfidentialV1(...)` | seller | create public-price product escrow | deploy clone, increment product count, call `initializeConfidential(...)` |
 | `createProductConfidentialV1ForSeller(...)` | admin/factory helper path | create product for another seller | same as above, but seller supplied explicitly |
+| `createProductConfidentialPrivatePrice(...)` | seller | create private-price product escrow | deploy private-profile clone, increment product count, call `initializeConfidentialPrivatePrice(...)` |
+| `createProductConfidentialPrivatePriceForSeller(...)` | admin/factory helper path | create private-price product for another seller | same as above, but seller supplied explicitly |
+| `setImplementation(...)` / `setPrivateImplementation(...)` | owner | set active implementation addresses | updates implementation pointers for next product creations |
 
 ### Funding wrapper layer
 
 | Function | Triggered by | Purpose | Main writes / effects |
 | --- | --- | --- | --- |
 | `deposit(uint256 amount)` | buyer / seller / transporter | mint confidential balance from public ERC-20 | transfer public token in, mint confidential ERC-7984 balance out |
+| `redeem(uint256 amount)` | buyer / seller / transporter | convert confidential balance back to public ERC-20 | burn confidential balance, transfer public token out |
+| `availablePublicLiquidity()` | frontend / user | read wrapper solvency for redeem path | returns current public token reserve |
 
-### Escrow lifecycle layer
+### Escrow lifecycle layer (both profile implementations)
 
 | Function | Triggered by | Purpose | Main writes / effects |
 | --- | --- | --- | --- |
-| `initializeConfidential(...)` | factory only | initialize new escrow clone | sets seller, token, product id, public `unitPrice`, `unitPriceHash`, phase `Listed` |
+| `initializeConfidential(...)` | factory only | initialize public-price clone | sets seller, token, product id, public `unitPrice`, `unitPriceHash`, phase `Listed` |
+| `initializeConfidentialPrivatePrice(...)` | factory only | initialize private-price clone | sets seller, token, product id, private `priceCommitment`, phase `Listed` |
 | `onConfidentialTransferReceived(...)` | ERC-7984 token callback | accept confidential deposit into escrow | dispatches to buyer purchase / seller bond / delivery fee / transporter security handlers |
 | `confirmOrderById(bytes32 orderId, string vcCID)` | seller | bind signed VRC after buyer deposit and seller bond/equality | stores `vcHash`, moves `Purchased -> OrderConfirmed` |
 | `createTransporter(uint256 quotedFee)` | transporter | register delivery bid | records quoted fee and transporter status |
@@ -130,7 +237,7 @@ The table below lists the main user-visible transactions in the current ERC-7984
 
 | Step | Actor | Transaction | Main contract/function | Purpose |
 | --- | --- | --- | --- | --- |
-| 1 | Seller | create listing | factory `createProductConfidentialV1(...)` | deploy new confidential escrow |
+| 1 | Seller | create listing | factory `createProductConfidentialV1(...)` (public) or `createProductConfidentialPrivatePrice(...)` (private) | deploy new profile-specific escrow |
 | 2 | Any actor | approve funding token | public ERC-20 `approve(...)` | allow wrapper to pull public funding asset |
 | 3 | Any actor | fund private balance | wrapper `deposit(...)` | convert public balance into confidential ERC-7984 balance |
 | 4 | Buyer | confidential order deposit | token `confidentialTransferAndCall(...)` -> escrow `onConfidentialTransferReceived(...)` | record buyer confidential purchase funding |
@@ -143,6 +250,7 @@ The table below lists the main user-visible transactions in the current ERC-7984
 | 11 | Transporter | transporter bond deposit | token `confidentialTransferAndCall(...)` -> escrow `onConfidentialTransferReceived(...)` | record transporter confidential security deposit |
 | 12 | Transporter helper flow | finalize transporter equality | escrow `finalizeEqualityAttestation(...)` | mark transporter bond equality result on-chain |
 | 13 | Transporter | confirm delivery | escrow `confirmDelivery(...)` | release confidential payouts and move to `Delivered` |
+| 14 (optional) | Any actor | convert confidential back to public | wrapper `redeem(...)` | burn confidential balance and withdraw public ERC-20 |
 
 ## Simple reading of the transaction pattern
 

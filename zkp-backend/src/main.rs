@@ -16,6 +16,10 @@ use zk::txid_pedersen_proof::{prove_txid_commitment, prove_txid_commitment_from_
 use bulletproofs::r1cs::ConstraintSystem;
 use zk::pedersen::{commit_scalar_with_blinding, prove_value_commitment, prove_value_commitment_with_blinding, prove_value_commitment_with_binding, verify_value_commitment, verify_value_commitment_with_binding};
 use zk::bp_payment_total_proof::{prove_payment_total_equality, verify_payment_total_equality};
+use zk::bp_private_price_quantity_total_proof::{
+    prove_private_price_quantity_total_bulletproof,
+    verify_private_price_quantity_total_bulletproof,
+};
 use zk::bp_quantity_total_proof::{prove_quantity_total_bulletproof, verify_quantity_total_bulletproof};
 use zk::equality_proof::{prove_equality, verify_equality, EqualityProof};
 use zk::quantity_total_proof::{prove_quantity_total, verify_quantity_total, QuantityTotalProof};
@@ -146,7 +150,7 @@ struct ZkpVerifyInput {
 async fn verify_zkp(input: web::Json<ZkpVerifyInput>) -> impl Responder {
     println!("[API] /zkp/verify - Received verification request");
     
-    let com_bytes: [u8; 32] = match <[u8;32]>::from_hex(&input.commitment) {
+    let com_bytes: [u8; 32] = match <[u8;32]>::from_hex(input.commitment.trim_start_matches("0x")) {
         Ok(b) => {
             println!("[API] ✅ Commitment parsed: {} bytes", b.len());
             b
@@ -157,7 +161,7 @@ async fn verify_zkp(input: web::Json<ZkpVerifyInput>) -> impl Responder {
         },
     };
     
-    let proof_bytes = match Vec::from_hex(&input.proof) {
+    let proof_bytes = match Vec::from_hex(input.proof.trim_start_matches("0x")) {
         Ok(p) => {
             println!("[API] ✅ Proof parsed: {} bytes", p.len());
             p
@@ -505,14 +509,14 @@ struct ValueVerifyResponse { verified: bool }
 #[post("/zkp/verify-value")]
 async fn verify_value(req: web::Json<ValueVerifyRequest>) -> impl Responder {
     println!("[API] /zkp/verify-value - Value commitment verification");
-    let com_bytes = match <[u8;32]>::from_hex(&req.commitment) {
+    let com_bytes = match <[u8;32]>::from_hex(req.commitment.trim_start_matches("0x")) {
         Ok(b) => b,
         Err(_) => {
             println!("[API] ❌ Failed to parse commitment");
             return HttpResponse::BadRequest().json(json!({"error":"bad commitment"}));
         },
     };
-    let proof_bytes = match Vec::from_hex(&req.proof) {
+    let proof_bytes = match Vec::from_hex(req.proof.trim_start_matches("0x")) {
         Ok(p) => p,
         Err(_) => {
             println!("[API] ❌ Failed to parse proof");
@@ -711,7 +715,7 @@ struct ValueVerifyResult {
 #[post("/zkp/verify-value-commitment")]
 async fn verify_value_commitment_ep(input: web::Json<ValueVerifyInput>) -> impl Responder {
     println!("[API] /zkp/verify-value-commitment - Value commitment verification");
-    let com_bytes = match <[u8;32]>::from_hex(&input.commitment) {
+    let com_bytes = match <[u8;32]>::from_hex(input.commitment.trim_start_matches("0x")) {
         Ok(b) => {
             println!("[API] ✅ Commitment parsed: {} bytes", b.len());
             b
@@ -721,7 +725,7 @@ async fn verify_value_commitment_ep(input: web::Json<ValueVerifyInput>) -> impl 
             return HttpResponse::BadRequest().json(json!({ "error": "bad commitment" }));
         },
     };
-    let proof_bytes = match Vec::from_hex(&input.proof) {
+    let proof_bytes = match Vec::from_hex(input.proof.trim_start_matches("0x")) {
         Ok(p) => {
             println!("[API] ✅ Proof parsed: {} bytes", p.len());
             p
@@ -862,6 +866,41 @@ struct QuantityTotalBulletproofResponse {
 
 #[derive(Serialize)]
 struct QuantityTotalBulletproofVerifyResponse {
+    verified: bool,
+}
+
+#[derive(Deserialize)]
+struct PrivatePriceQuantityTotalBulletproofRequest {
+    c_price_hex: String,
+    c_quantity_hex: String,
+    c_total_hex: String,
+    price_value: IntegerLike,
+    quantity_value: IntegerLike,
+    total_value: IntegerLike,
+    r_price_hex: String,
+    r_quantity_hex: String,
+    r_total_hex: String,
+    context_hash_hex: String,
+}
+
+#[derive(Deserialize)]
+struct PrivatePriceQuantityTotalBulletproofVerifyRequest {
+    c_price_hex: String,
+    c_quantity_hex: String,
+    c_total_hex: String,
+    proof_hex: String,
+    context_hash_hex: String,
+}
+
+#[derive(Serialize)]
+struct PrivatePriceQuantityTotalBulletproofResponse {
+    proof_hex: String,
+    verified: bool,
+    proof_size_bytes: usize,
+}
+
+#[derive(Serialize)]
+struct PrivatePriceQuantityTotalBulletproofVerifyResponse {
     verified: bool,
 }
 
@@ -1181,6 +1220,121 @@ async fn verify_quantity_total_bulletproof_ep(
     HttpResponse::Ok().json(QuantityTotalBulletproofVerifyResponse { verified })
 }
 
+#[post("/zkp/generate-private-price-quantity-total-bulletproof")]
+async fn generate_private_price_quantity_total_bulletproof_ep(
+    req: web::Json<PrivatePriceQuantityTotalBulletproofRequest>
+) -> impl Responder {
+    println!("[API] /zkp/generate-private-price-quantity-total-bulletproof");
+
+    let c_price = match parse_compressed_ristretto(&req.c_price_hex) {
+        Some(value) => value,
+        None => return bad_req("invalid c_price_hex"),
+    };
+    let c_quantity = match parse_compressed_ristretto(&req.c_quantity_hex) {
+        Some(value) => value,
+        None => return bad_req("invalid c_quantity_hex"),
+    };
+    let c_total = match parse_compressed_ristretto(&req.c_total_hex) {
+        Some(value) => value,
+        None => return bad_req("invalid c_total_hex"),
+    };
+    let price_value = match req.price_value.parse_scalar("price_value") {
+        Ok(value) => value,
+        Err(response) => return response,
+    };
+    let quantity_value = match req.quantity_value.parse_scalar("quantity_value") {
+        Ok(value) => value,
+        Err(response) => return response,
+    };
+    let total_value = match req.total_value.parse_scalar("total_value") {
+        Ok(value) => value,
+        Err(response) => return response,
+    };
+    let r_price = match parse_scalar_hex(&req.r_price_hex) {
+        Some(value) => value,
+        None => return bad_req("invalid r_price_hex"),
+    };
+    let r_quantity = match parse_scalar_hex(&req.r_quantity_hex) {
+        Some(value) => value,
+        None => return bad_req("invalid r_quantity_hex"),
+    };
+    let r_total = match parse_scalar_hex(&req.r_total_hex) {
+        Some(value) => value,
+        None => return bad_req("invalid r_total_hex"),
+    };
+    let context_hash = match parse_context_hash_hex(&req.context_hash_hex) {
+        Some(bytes) => bytes,
+        None => return bad_req("invalid context_hash_hex"),
+    };
+
+    match prove_private_price_quantity_total_bulletproof(
+        c_price,
+        c_quantity,
+        c_total,
+        price_value,
+        quantity_value,
+        total_value,
+        r_price,
+        r_quantity,
+        r_total,
+        &context_hash,
+    ) {
+        Ok(proof_bytes) => {
+            let verified = verify_private_price_quantity_total_bulletproof(
+                c_price,
+                c_quantity,
+                c_total,
+                &proof_bytes,
+                &context_hash,
+            );
+            HttpResponse::Ok().json(PrivatePriceQuantityTotalBulletproofResponse {
+                proof_hex: hex::encode(&proof_bytes),
+                verified,
+                proof_size_bytes: proof_bytes.len(),
+            })
+        }
+        Err(error) => HttpResponse::BadRequest().json(json!({ "error": error })),
+    }
+}
+
+#[post("/zkp/verify-private-price-quantity-total-bulletproof")]
+async fn verify_private_price_quantity_total_bulletproof_ep(
+    req: web::Json<PrivatePriceQuantityTotalBulletproofVerifyRequest>
+) -> impl Responder {
+    println!("[API] /zkp/verify-private-price-quantity-total-bulletproof");
+
+    let c_price = match parse_compressed_ristretto(&req.c_price_hex) {
+        Some(value) => value,
+        None => return bad_req("invalid c_price_hex"),
+    };
+    let c_quantity = match parse_compressed_ristretto(&req.c_quantity_hex) {
+        Some(value) => value,
+        None => return bad_req("invalid c_quantity_hex"),
+    };
+    let c_total = match parse_compressed_ristretto(&req.c_total_hex) {
+        Some(value) => value,
+        None => return bad_req("invalid c_total_hex"),
+    };
+    let proof_bytes = match Vec::from_hex(&req.proof_hex) {
+        Ok(bytes) => bytes,
+        Err(_) => return bad_req("invalid proof_hex"),
+    };
+    let context_hash = match parse_context_hash_hex(&req.context_hash_hex) {
+        Some(bytes) => bytes,
+        None => return bad_req("invalid context_hash_hex"),
+    };
+
+    let verified = verify_private_price_quantity_total_bulletproof(
+        c_price,
+        c_quantity,
+        c_total,
+        &proof_bytes,
+        &context_hash,
+    );
+    println!("[API] Private-price quantity-total Bulletproof verification: {}", verified);
+    HttpResponse::Ok().json(PrivatePriceQuantityTotalBulletproofVerifyResponse { verified })
+}
+
 #[post("/zkp/generate-total-payment-equality-proof")]
 async fn generate_total_payment_equality_proof_ep(req: web::Json<TotalPaymentEqualityProofRequest>) -> impl Responder {
     println!("[API] /zkp/generate-total-payment-equality-proof");
@@ -1371,6 +1525,8 @@ async fn main() -> std::io::Result<()> {
             .service(verify_quantity_total_proof_ep)
             .service(generate_quantity_total_bulletproof_ep)
             .service(verify_quantity_total_bulletproof_ep)
+            .service(generate_private_price_quantity_total_bulletproof_ep)
+            .service(verify_private_price_quantity_total_bulletproof_ep)
             .service(generate_total_payment_equality_proof_ep)
             .service(verify_total_payment_equality_proof_ep)
             .service(generate_total_payment_equality_bulletproof_ep)

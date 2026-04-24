@@ -24,9 +24,12 @@ function readLocalProductMeta(address) {
     const unitPriceHash =
       localStorage.getItem(`unitPriceHash_${normalizedAddress}`) ||
       localStorage.getItem(`unitPriceHash_${address}`);
+    const priceCommitment =
+      localStorage.getItem(`priceCommitment_${normalizedAddress}`) ||
+      localStorage.getItem(`priceCommitment_${address}`);
     const productMeta = productMetaRaw ? JSON.parse(productMetaRaw) : null;
 
-    if (!productMeta && !unitPriceWei && !unitPriceHash) {
+    if (!productMeta && !unitPriceWei && !unitPriceHash && !priceCommitment) {
       return null;
     }
 
@@ -34,7 +37,8 @@ function readLocalProductMeta(address) {
       productAddress: normalizedAddress,
       productMeta,
       priceWei: unitPriceWei || productMeta?.unitPriceWei || null,
-      priceCommitment: unitPriceHash || productMeta?.unitPriceHash || null,
+      priceCommitment:
+        priceCommitment || productMeta?.priceCommitment || unitPriceHash || productMeta?.unitPriceHash || null,
       sellerRailgunAddress: productMeta?.sellerRailgunAddress || null,
       unitPriceWei: unitPriceWei || productMeta?.unitPriceWei || null,
       unitPriceHash: unitPriceHash || productMeta?.unitPriceHash || null,

@@ -26,6 +26,7 @@ export function getDefaultErc7984DeploymentConfig() {
 
   return {
     chainId,
+    deploymentVersion: "legacy-public-only",
     factory:
       process.env.REACT_APP_ERC7984_FACTORY_ADDRESS ||
       process.env.REACT_APP_FACTORY_ADDRESS ||
@@ -34,10 +35,14 @@ export function getDefaultErc7984DeploymentConfig() {
     publicTokenSymbol,
     publicTokenIsWrappedNative,
     fundingWrapper: process.env.REACT_APP_ERC7984_FUNDING_WRAPPER || "",
+    implementation: process.env.REACT_APP_ERC7984_IMPLEMENTATION || "",
+    privateImplementation: process.env.REACT_APP_ERC7984_PRIVATE_IMPLEMENTATION || "",
     confidentialToken:
       process.env.REACT_APP_ERC7984_CONFIDENTIAL_TOKEN ||
       process.env.REACT_APP_ERC7984_PAYMENT_TOKEN ||
       "",
+    supportedPriceProfiles: ["public"],
+    supportsPrivatePrice: false,
   };
 }
 
@@ -54,10 +59,19 @@ export async function loadErc7984DeploymentConfig() {
     }
 
     const payload = await response.json();
+    const privateImplementation =
+      payload?.privateImplementation || fallback.privateImplementation || "";
+    const supportedPriceProfiles = Array.isArray(payload?.supportedPriceProfiles)
+      ? payload.supportedPriceProfiles
+      : privateImplementation
+      ? ["public", "private"]
+      : fallback.supportedPriceProfiles;
     return {
       ...fallback,
       ...payload,
       chainId: Number(payload?.chainId || fallback.chainId || DEFAULT_CHAIN_ID),
+      deploymentVersion:
+        payload?.deploymentVersion || fallback.deploymentVersion || "legacy-public-only",
       factory: payload?.factory || fallback.factory || "",
       publicToken: payload?.publicToken || fallback.publicToken || "",
       publicTokenSymbol: payload?.publicTokenSymbol || fallback.publicTokenSymbol || "ERC20",
@@ -66,8 +80,15 @@ export async function loadErc7984DeploymentConfig() {
           ? payload.publicTokenIsWrappedNative
           : fallback.publicTokenIsWrappedNative,
       fundingWrapper: payload?.fundingWrapper || fallback.fundingWrapper || "",
+      implementation: payload?.implementation || fallback.implementation || "",
+      privateImplementation,
       confidentialToken:
         payload?.confidentialToken || fallback.confidentialToken || "",
+      supportedPriceProfiles,
+      supportsPrivatePrice:
+        typeof payload?.supportsPrivatePrice === "boolean"
+          ? payload.supportsPrivatePrice
+          : supportedPriceProfiles.includes("private"),
     };
   } catch {
     return fallback;

@@ -38,8 +38,13 @@ const inferChainId = () => {
   return "1337";
 };
 
-const normalizeCommitmentHex = (value) =>
-  typeof value === "string" && value.trim().length > 0 ? value.trim() : null;
+const normalizeCommitmentHex = (value) => {
+  if (typeof value !== "string" || value.trim().length === 0) {
+    return null;
+  }
+  const trimmed = value.trim();
+  return trimmed.startsWith("0x") ? trimmed : `0x${trimmed}`;
+};
 
 const normalizeMaybeString = (value) =>
   value == null ? null : String(value);
@@ -395,6 +400,7 @@ export function createErc7984OrderVRCV6({
   productContract,
   productId,
   chainId,
+  priceVisibility = "public",
   unitPriceWei,
   unitPriceHash,
   listingSnapshotCid,
@@ -404,6 +410,7 @@ export function createErc7984OrderVRCV6({
   escrowAddress,
   paymentToken,
   quantityCommitment,
+  priceCommitment = "",
   totalCommitment,
   paymentCommitment,
   contextHash,
@@ -459,35 +466,118 @@ export function createErc7984OrderVRCV6({
         paymentToken: normalizedPaymentToken,
       });
 
-  const normalizedPaymentBridge =
-    paymentBridge ||
-    buildPaymentBridgeArtifact({
-      contextHash: normalizedContextHash,
-      totalCommitment: String(totalCommitment || ""),
-      paymentToken: normalizedPaymentToken,
-      escrowAddress: normalizedEscrowAddress,
-      orderId: normalizedOrderId,
-      buyerAddress: normalizedBuyerAddress,
-      depositTxHash: String(buyerDepositTxHash || ""),
-      depositReference:
-        buyerDepositReference ||
-        buildDepositReference({
-          depositTxHash: buyerDepositTxHash,
-          orderId: normalizedOrderId,
-          depositKind: "buyerPurchaseDeposit",
-          paymentToken: normalizedPaymentToken,
-          escrowAddress: normalizedEscrowAddress,
-          buyerAddress: normalizedBuyerAddress,
-        }),
-      verificationStatus: paymentBridgeStatus,
-      verificationMethod: paymentBridgeMethod,
-    });
+  const providedPaymentBridge =
+    paymentBridge && typeof paymentBridge === "object" ? paymentBridge : null;
+  const normalizedBridgeContextHash = String(
+    providedPaymentBridge?.contextHash || normalizedContextHash
+  );
+  const normalizedBridgeTotalCommitment = String(
+    providedPaymentBridge?.proofSide?.totalCommitment || totalCommitment || ""
+  );
+  const normalizedBridgePaymentToken = String(
+    providedPaymentBridge?.depositSide?.paymentToken || normalizedPaymentToken
+  );
+  const normalizedBridgeEscrowAddress = String(
+    providedPaymentBridge?.depositSide?.escrowAddress || normalizedEscrowAddress
+  );
+  const normalizedBridgeOrderId = String(
+    providedPaymentBridge?.depositSide?.orderId || normalizedOrderId
+  );
+  const normalizedBridgeBuyerAddress = String(
+    providedPaymentBridge?.depositSide?.buyerAddress || normalizedBuyerAddress
+  );
+  const normalizedBridgeDepositTxHash = String(
+    providedPaymentBridge?.depositSide?.depositTxHash || buyerDepositTxHash || ""
+  );
+  const normalizedBridgeDepositReference = String(
+    providedPaymentBridge?.depositSide?.depositReference ||
+      buyerDepositReference ||
+      buildDepositReference({
+        depositTxHash: normalizedBridgeDepositTxHash,
+        orderId: normalizedBridgeOrderId,
+        depositKind: "buyerPurchaseDeposit",
+        paymentToken: normalizedBridgePaymentToken,
+        escrowAddress: normalizedBridgeEscrowAddress,
+        buyerAddress: normalizedBridgeBuyerAddress,
+      })
+  );
+  const normalizedBridgeVerificationStatus = String(
+    providedPaymentBridge?.verification?.status ||
+      paymentBridgeStatus ||
+      PaymentBridgeVerificationStatus.Pending
+  );
+  const normalizedBridgeVerificationMethod = String(
+    providedPaymentBridge?.verification?.method ||
+      paymentBridgeMethod ||
+      PaymentBridgeVerificationMethod.ProofBoundDepositReference
+  );
 
-  const normalizePublicProofRecord = (proof, defaultType) => ({
-    proofType: String(proof?.type || defaultType || ""),
-    proofRHex: String(proof?.proof_r_hex || ""),
-    proofSHex: String(proof?.proof_s_hex || ""),
+  if (
+    normalizedBridgeVerificationStatus === PaymentBridgeVerificationStatus.Bound &&
+    normalizedBridgeDepositTxHash.trim().length === 0
+  ) {
+    throw new Error(
+      "paymentBridge.depositSide.depositTxHash is required when paymentBridge verification status is bound."
+    );
+  }
+
+  if (
+    normalizedBridgeVerificationStatus === PaymentBridgeVerificationStatus.Bound &&
+    normalizedBridgeDepositReference.trim().length === 0
+  ) {
+    throw new Error(
+      "paymentBridge.depositSide.depositReference is required when paymentBridge verification status is bound."
+    );
+  }
+
+  const normalizedPaymentBridge = buildPaymentBridgeArtifact({
+    contextHash: normalizedBridgeContextHash,
+    totalCommitment: normalizedBridgeTotalCommitment,
+    paymentToken: normalizedBridgePaymentToken,
+    escrowAddress: normalizedBridgeEscrowAddress,
+    orderId: normalizedBridgeOrderId,
+    buyerAddress: normalizedBridgeBuyerAddress,
+    depositTxHash: normalizedBridgeDepositTxHash,
+    depositReference: normalizedBridgeDepositReference,
+    verificationStatus: normalizedBridgeVerificationStatus,
+    verificationMethod: normalizedBridgeVerificationMethod,
   });
+
+  const normalizePublicProofRecord = (proof, defaultType) => {
+    const proofType = String(proof?.type || defaultType || "");
+    const inferredFamily =
+      proofType.toLowerCase().includes("bulletproof")
+        ? "bulletproof"
+        : proofType
+            .toLowerCase()
+            .includes("sigma")
+          ? "fiat-shamir"
+          : "";
+    return {
+      proofType,
+      proofFamily: String(proof?.proofFamily || proof?.proof_family || inferredFamily),
+      proofEngine: String(proof?.proofEngine || proof?.proof_engine || proof?.source || ""),
+      commitmentEngine: String(proof?.commitmentEngine || proof?.commitment_engine || ""),
+      commitmentProofType: String(
+        proof?.commitmentProofType || proof?.commitment_proof_type || ""
+      ),
+      commitmentProof:
+        proof?.commitmentProof == null
+          ? null
+          : JSON.parse(canonicalize(proof.commitmentProof)),
+      proofRHex: String(proof?.proofRHex || proof?.proof_r_hex || ""),
+      proofSHex: String(proof?.proofSHex || proof?.proof_s_hex || ""),
+      proofHex: String(proof?.proofHex || proof?.proof_hex || ""),
+      proofSizeBytes: String(
+        proof?.proofSizeBytes ?? proof?.proof_size_bytes ?? ""
+      ),
+      verified: Boolean(proof?.verified),
+      quantity: "",
+      value: "",
+      unitPriceWei: String(proof?.unitPriceWei || ""),
+      priceCommitment: String(proof?.priceCommitment || ""),
+    };
+  };
 
   return {
     "@context": ["https://www.w3.org/ns/credentials/v2"],
@@ -529,6 +619,7 @@ export function createErc7984OrderVRCV6({
 
       listing: {
         timestamp: now,
+        priceVisibility: String(priceVisibility || "public"),
         unitPriceWei: String(unitPriceWei || ""),
         unitPriceHash: String(unitPriceHash || ""),
         listingSnapshotCid: String(listingSnapshotCid || ""),
@@ -545,6 +636,7 @@ export function createErc7984OrderVRCV6({
       },
 
       commitments: {
+        priceCommitment: String(priceCommitment || ""),
         quantityCommitment: String(quantityCommitment || ""),
         totalCommitment: String(totalCommitment || ""),
         paymentCommitment: String(paymentCommitment || ""),
@@ -626,6 +718,7 @@ export function buildVcSigningAnchorPayload(credentialSubject = {}) {
 
   const v2Anchors = {
     listing: {
+      priceVisibility: normalizeMaybeString(listing.priceVisibility),
       unitPriceWei: normalizeMaybeString(listing.unitPriceWei),
       unitPriceHash: normalizeCommitmentHex(listing.unitPriceHash),
       listingSnapshotCid: normalizeMaybeString(listing.listingSnapshotCid),
@@ -648,6 +741,7 @@ export function buildVcSigningAnchorPayload(credentialSubject = {}) {
       railgunTxRef: normalizeCommitmentHex(order.railgunTxRef),
     },
     commitments: {
+      priceCommitment: normalizeCommitmentHex(commitments.priceCommitment),
       quantityCommitment: normalizeCommitmentHex(commitments.quantityCommitment),
       totalCommitment: normalizeCommitmentHex(commitments.totalCommitment),
       paymentCommitment: normalizeCommitmentHex(commitments.paymentCommitment),

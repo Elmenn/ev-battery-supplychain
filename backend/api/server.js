@@ -78,6 +78,63 @@ function canonicalizeJson(value) {
   return stableStringify(value);
 }
 
+function getPinataJwt() {
+  return (
+    process.env.PINATA_JWT ||
+    process.env.REACT_APP_PINATA_JWT ||
+    process.env.PINATA_API_JWT ||
+    null
+  );
+}
+
+async function uploadVcToPinataJson(vc) {
+  const jwt = getPinataJwt();
+  if (!jwt) {
+    const error = new Error('Pinata JWT is not configured on the backend');
+    error.httpStatus = 500;
+    throw error;
+  }
+
+  const formattedJson = JSON.stringify(vc, null, 2);
+  const form = new FormData();
+  form.append(
+    'file',
+    new Blob([formattedJson], { type: 'application/json' }),
+    'vc.json'
+  );
+
+  const response = await fetch('https://api.pinata.cloud/pinning/pinFileToIPFS', {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${jwt}`,
+    },
+    body: form,
+  });
+
+  if (!response.ok) {
+    let message = response.statusText || 'Pinata upload failed';
+    try {
+      const body = await response.json();
+      message = body?.error?.details || body?.message || JSON.stringify(body);
+    } catch {
+      // keep default message
+    }
+    const error = new Error(`Pinata upload failed: ${message}`);
+    error.httpStatus = response.status >= 400 && response.status < 600 ? response.status : 502;
+    throw error;
+  }
+
+  const payload = await response.json();
+  const cid = String(payload?.IpfsHash || '').trim();
+  if (!cid) {
+    const error = new Error('Pinata upload succeeded without returning a CID');
+    error.httpStatus = 502;
+    throw error;
+  }
+
+  return cid;
+}
+
 function normalizeEqualityAttestationForValidation(record) {
   if (!record || typeof record !== 'object' || Array.isArray(record)) {
     return record;
@@ -146,6 +203,25 @@ function mergeEqualityAttestationSnapshot(existing, incoming) {
   };
 }
 
+function assertNoPlaintextPrivacyProofValues(credentialSubject, fieldName = 'vc.credentialSubject') {
+  const quantityTotal = credentialSubject?.privacyProofs?.quantityTotal || {};
+  const totalPaymentEquality = credentialSubject?.privacyProofs?.totalPaymentEquality || {};
+
+  const forbiddenFields = [
+    { value: quantityTotal.quantity, name: `${fieldName}.privacyProofs.quantityTotal.quantity` },
+    { value: quantityTotal.value, name: `${fieldName}.privacyProofs.quantityTotal.value` },
+    { value: totalPaymentEquality.quantity, name: `${fieldName}.privacyProofs.totalPaymentEquality.quantity` },
+    { value: totalPaymentEquality.value, name: `${fieldName}.privacyProofs.totalPaymentEquality.value` },
+  ];
+
+  for (const field of forbiddenFields) {
+    if (field.value == null) continue;
+    if (String(field.value).trim().length > 0) {
+      throw new Error(`${field.name} must be empty for schemaVersion 6.1 commitment VRCs`);
+    }
+  }
+}
+
 function buildVcArchiveMetadata(vc) {
   const schemaVersion = normalizeString(vc?.schemaVersion, 'vc.schemaVersion') || null;
   const credentialSubject = vc?.credentialSubject || {};
@@ -170,6 +246,10 @@ function buildVcArchiveMetadata(vc) {
         normalizeEqualityAttestationForValidation(transporterBondAttestation),
         'vc.credentialSubject.equalityAttestations.transporterBond'
       );
+    }
+
+    if (schemaVersion === '6.1') {
+      assertNoPlaintextPrivacyProofValues(credentialSubject, 'vc.credentialSubject');
     }
   }
 
@@ -283,6 +363,12 @@ function buildVcArchiveParams(cid, vc, source = 'api') {
     source: normalizeString(source, 'source') || 'api',
     metadata,
   };
+}
+
+function buildLocalArchiveCid(vc) {
+  const canonicalJson = canonicalizeJson(vc);
+  const payloadHash = keccak256(toUtf8Bytes(canonicalJson)).slice(2).toLowerCase();
+  return `local-${payloadHash}`;
 }
 
 function buildVcStatusParams(archiveParams, overrides = {}) {
@@ -921,19 +1007,31 @@ app.post('/verify-vc', async (req, res) => {
       verificationResult?.holder == null ||
       verificationResult?.holder?.skipped === true ||
       verificationResult?.holder?.signature_verified === true;
+    const proofsOk =
+      verificationResult?.privacyProofs == null ||
+      verificationResult?.privacyProofs?.skipped === true ||
+      (
+        verificationResult?.privacyProofs?.quantityTotal === true &&
+        verificationResult?.privacyProofs?.totalPayment === true
+      );
 
     return res.json({
-      success: issuerOk && holderOk,
+      success: issuerOk && holderOk && proofsOk,
       message: 'VC verification complete.',
       issuer: verificationResult.issuer,
       holder: verificationResult.holder,
+      privacyProofs: verificationResult.privacyProofs,
     });
   } catch (error) {
     console.error('Error verifying VC:', error);
     if (error instanceof RequestValidationError) {
       return res.status(400).json({ error: error.message });
     }
-    return res.status(500).json({ error: 'Internal server error' });
+    const details = error instanceof Error ? error.message : String(error);
+    return res.status(500).json({
+      error: 'Internal server error',
+      ...(process.env.NODE_ENV === 'production' ? {} : { details }),
+    });
   }
 });
 
@@ -942,19 +1040,30 @@ app.post('/fetch-vc', async (req, res) => {
     validateFetchVcBody(req.body || {});
     const { cid } = req.body;
     const vcJsonData = await fetchVC(cid);
-    const archiveParams = buildVcArchiveParams(cid, vcJsonData, 'fetch-cache');
-    stmtUpsertVcArchive.run(archiveParams);
-    stmtInsertVcStatusIfMissing.run(buildVcStatusParams(archiveParams));
+    let archiveWarning = null;
+    try {
+      const archiveParams = buildVcArchiveParams(cid, vcJsonData, 'fetch-cache');
+      stmtUpsertVcArchive.run(archiveParams);
+      stmtInsertVcStatusIfMissing.run(buildVcStatusParams(archiveParams));
+    } catch (archiveError) {
+      archiveWarning = archiveError instanceof Error ? archiveError.message : String(archiveError);
+      console.warn('Skipping VC archive upsert for fetch-vc due to validation warning:', archiveWarning);
+    }
     return res.json({
       message: 'VC fetching complete.',
       vc: vcJsonData,
+      ...(archiveWarning ? { archiveWarning } : {}),
     });
   } catch (error) {
     console.error('Error fetching VC:', error);
     if (error instanceof RequestValidationError) {
       return res.status(400).json({ error: error.message });
     }
-    return res.status(500).json({ error: 'Internal server error' });
+    const details = error instanceof Error ? error.message : String(error);
+    return res.status(500).json({
+      error: 'Internal server error',
+      ...(process.env.NODE_ENV === 'production' ? {} : { details }),
+    });
   }
 });
 
@@ -1248,6 +1357,49 @@ app.post('/orders', (req, res) => {
   } catch (error) {
     console.error('Error saving order:', error);
     return handleValidationError(res, error, 'Invalid order payload');
+  }
+});
+
+app.post('/vc-upload', async (req, res) => {
+  try {
+    const body = req.body || {};
+    if (!body.vc || typeof body.vc !== 'object' || Array.isArray(body.vc)) {
+      throw new RequestValidationError('vc must be a JSON object');
+    }
+
+    let cid;
+    let storage = 'pinata';
+    try {
+      cid = await uploadVcToPinataJson(body.vc);
+    } catch (error) {
+      console.warn('Pinata upload unavailable, using local VC archive fallback:', error?.message || error);
+      cid = buildLocalArchiveCid(body.vc);
+      storage = 'local-archive';
+    }
+
+    const params = buildVcArchiveParams(cid, body.vc, body.source || 'backend-upload');
+    stmtUpsertVcArchive.run(params);
+    stmtInsertVcStatusIfMissing.run(buildVcStatusParams(params));
+    const row = stmtGetVcArchive.get(params.cid);
+
+    return res.status(201).json({
+      success: true,
+      cid,
+      storage,
+      archive: {
+        cid: row.cid,
+        vcPayloadHash: row.vc_payload_hash,
+        productAddress: row.product_address,
+        orderId: row.order_id,
+        source: row.source,
+        metadata: params.metadata,
+        createdAt: row.created_at,
+        updatedAt: row.updated_at,
+      },
+    });
+  } catch (error) {
+    console.error('Error uploading VC to Pinata:', error);
+    return handleValidationError(res, error, 'Failed to upload VC');
   }
 });
 

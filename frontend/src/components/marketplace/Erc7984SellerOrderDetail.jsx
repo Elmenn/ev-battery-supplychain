@@ -9,6 +9,7 @@ import { getOrder, updateOrderVc } from "../../utils/orderApi";
 import { encryptUint64ForContract, getBrowserFhevmInstance, publicDecryptHandle } from "../../utils/erc7984/fhevmClient";
 import { saveErc7984OrderSnapshot } from "../../utils/erc7984/orderSnapshotApi";
 import { buildErc7984OrderVrcFromRecovery, signUploadArchiveErc7984OrderVrc } from "../../utils/erc7984/vrcFlow";
+import { getLocalPrivatePricePackage, serializePrivatePricePackage } from "../../utils/erc7984/privatePricePackage";
 import { formatTokenAmount, formatTokenInputValue, parseTokenAmountInput } from "../../utils/tokenDisplay";
 import Erc7984FundingCard from "./Erc7984FundingCard";
 
@@ -106,6 +107,9 @@ export default function Erc7984SellerOrderDetail({ provider, currentUser }) {
 
   const requiredBondAmount = useMemo(() => deriveRequiredBondAmount(orderRow), [orderRow]);
   const isSeller = normalizeAddress(currentUser) === normalizeAddress(escrowState?.sellerAddress);
+  const priceVisibility = productMetaRow?.productMeta?.priceVisibility || escrowState?.priceVisibility || "public";
+  const privatePricePackage =
+    priceVisibility === "private" ? getLocalPrivatePricePackage(address) : null;
   const activeOrderId =
     escrowState?.activeOrderId && escrowState.activeOrderId !== ethers.ZeroHash
       ? escrowState.activeOrderId
@@ -163,6 +167,21 @@ export default function Erc7984SellerOrderDetail({ provider, currentUser }) {
   useEffect(() => {
     loadDetail();
   }, [loadDetail]);
+
+  async function handleCopyPrivatePricePackage() {
+    const payload = serializePrivatePricePackage(address);
+    if (!payload) {
+      toast.error("Private-price package is not available in this browser for this listing.");
+      return;
+    }
+
+    try {
+      await navigator.clipboard.writeText(payload);
+      toast.success("Private-price package copied.");
+    } catch (error) {
+      toast.error(error?.message || "Failed to copy the private-price package.");
+    }
+  }
 
   async function persistSnapshot(state, overrides = {}) {
     if (!state || !orderRow) return;
@@ -509,6 +528,34 @@ export default function Erc7984SellerOrderDetail({ provider, currentUser }) {
               </div>
             </div>
           </div>
+
+          {priceVisibility === "private" && (
+            <div className="rounded-2xl border border-amber-200 bg-amber-50 p-6 shadow-sm">
+              <h2 className="text-lg font-semibold text-amber-950">Private-Price Package</h2>
+              <p className="mt-2 text-sm text-amber-900">
+                Hidden-price buyers need the seller-shared opening package for the on-chain price
+                commitment before they can complete the confidential purchase flow.
+              </p>
+              <div className="mt-4 space-y-2 text-sm text-amber-900">
+                <div className="break-all">
+                  <strong>On-chain commitment:</strong>{" "}
+                  {privatePricePackage?.priceCommitment ||
+                    productMetaRow?.productMeta?.priceCommitment ||
+                    escrowState?.priceCommitment ||
+                    "missing"}
+                </div>
+                <div>
+                  <strong>Local package status:</strong>{" "}
+                  {privatePricePackage ? "available in this browser" : "not available in this browser"}
+                </div>
+              </div>
+              <div className="mt-4">
+                <Button onClick={handleCopyPrivatePricePackage} disabled={!privatePricePackage}>
+                  Copy Private Price Package
+                </Button>
+              </div>
+            </div>
+          )}
 
           <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
             <h2 className="text-lg font-semibold text-slate-900">Seller Bond</h2>

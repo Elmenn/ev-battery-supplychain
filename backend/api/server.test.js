@@ -507,6 +507,132 @@ test('vc archive route rejects malformed ERC-7984 paymentBridge payloads', async
   assert.match(payload.error, /paymentBridge\.bridgeType/i);
 });
 
+test('vc archive route rejects schemaVersion 6.1 privacy proofs that expose plaintext quantity/value', async () => {
+  const cid = 'QmErc7984V61PlaintextLeak1234567890123456789012345678901234';
+  const vc = {
+    '@context': ['https://www.w3.org/ns/credentials/v2'],
+    type: ['VerifiableCredential', 'ERC7984ConfidentialOrderVRC'],
+    schemaVersion: '6.1',
+    credentialSubject: {
+      productContract: '0x1234567890ABCDEF1234567890ABCDEF12345678',
+      order: {
+        orderId: '0x' + 'ce'.repeat(32),
+      },
+      paymentBridge: {
+        version: '1.0',
+        bridgeType: 'erc7984-confidential-payment-bridge',
+        statement: 'buyerDepositEqualsHiddenTotal',
+        contextHash: '0x' + '11'.repeat(32),
+        bridgeHash: '0x' + '22'.repeat(32),
+        proofSide: {
+          totalCommitment: '0x' + '33'.repeat(32),
+          contextHash: '0x' + '11'.repeat(32),
+        },
+        depositSide: {
+          paymentToken: '0x9999999999999999999999999999999999999999',
+          escrowAddress: '0x1234567890ABCDEF1234567890ABCDEF12345678',
+          orderId: '0x' + 'ce'.repeat(32),
+          buyerAddress: '0x2222222222222222222222222222222222222222',
+          depositTxHash: '0x' + '44'.repeat(32),
+          depositReference: '0x' + '55'.repeat(32),
+        },
+        verification: {
+          method: 'proof-bound-deposit-reference',
+          status: 'bound',
+        },
+      },
+      privacyProofs: {
+        quantityTotal: {
+          proofType: 'quantity-total-bulletproof-private-price',
+          quantity: '1',
+          value: '',
+        },
+        totalPaymentEquality: {
+          proofType: 'total-payment-equality-bulletproof',
+          quantity: '',
+          value: '',
+        },
+      },
+      attestation: {
+        attestationVersion: '6.1',
+        contextHash: '0x' + '11'.repeat(32),
+        proofSource: {
+          type: 'local-proof-generation',
+          orderId: '0x' + 'ce'.repeat(32),
+          version: '1.0',
+        },
+      },
+    },
+  };
+
+  const archiveResponse = await postJson('/vc-archive', {
+    cid,
+    vc,
+    source: 'test',
+  });
+
+  assert.equal(archiveResponse.status, 400);
+  const payload = await archiveResponse.json();
+  assert.match(payload.error, /privacyProofs\.quantityTotal\.quantity/i);
+});
+
+test('vc archive route rejects schemaVersion 6.1 bound paymentBridge without depositTxHash', async () => {
+  const cid = 'QmErc7984MissingDepositTxHash123456789012345678901234567890';
+  const vc = {
+    '@context': ['https://www.w3.org/ns/credentials/v2'],
+    type: ['VerifiableCredential', 'ERC7984ConfidentialOrderVRC'],
+    schemaVersion: '6.1',
+    credentialSubject: {
+      productContract: '0x1234567890ABCDEF1234567890ABCDEF12345678',
+      order: {
+        orderId: '0x' + 'cf'.repeat(32),
+      },
+      paymentBridge: {
+        version: '1.0',
+        bridgeType: 'erc7984-confidential-payment-bridge',
+        statement: 'buyerDepositEqualsHiddenTotal',
+        contextHash: '0x' + '11'.repeat(32),
+        bridgeHash: '0x' + '22'.repeat(32),
+        proofSide: {
+          totalCommitment: '0x' + '33'.repeat(32),
+          contextHash: '0x' + '11'.repeat(32),
+        },
+        depositSide: {
+          paymentToken: '0x9999999999999999999999999999999999999999',
+          escrowAddress: '0x1234567890ABCDEF1234567890ABCDEF12345678',
+          orderId: '0x' + 'cf'.repeat(32),
+          buyerAddress: '0x2222222222222222222222222222222222222222',
+          depositTxHash: '',
+          depositReference: '0x' + '55'.repeat(32),
+        },
+        verification: {
+          method: 'proof-bound-deposit-reference',
+          status: 'bound',
+        },
+      },
+      attestation: {
+        attestationVersion: '6.1',
+        contextHash: '0x' + '11'.repeat(32),
+        proofSource: {
+          type: 'local-proof-generation',
+          orderId: '0x' + 'cf'.repeat(32),
+          version: '1.0',
+        },
+      },
+    },
+  };
+
+  const archiveResponse = await postJson('/vc-archive', {
+    cid,
+    vc,
+    source: 'test',
+  });
+
+  assert.equal(archiveResponse.status, 400);
+  const payload = await archiveResponse.json();
+  assert.match(payload.error, /depositTxHash.*bound/i);
+});
+
 test('vc status route reports active status from archive and supports token-gated updates', async () => {
   const cid = 'QmStatusTestCid1234567890123456789012345678901234567';
   const vc = {

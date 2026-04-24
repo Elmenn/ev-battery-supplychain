@@ -11,9 +11,9 @@ import {ZamaEthereumConfig} from "@fhevm/solidity/config/ZamaConfig.sol";
 import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
 import {ERC7984} from "@openzeppelin/confidential-contracts/token/ERC7984/ERC7984.sol";
 
-/// @notice Minimal confidential token used only for the ERC-7984 spike.
-/// @dev This is intentionally small; wrapping and liquidity are separate spike steps.
-contract MockConfidentialOrderToken is ERC7984, Ownable, ZamaEthereumConfig {
+/// @notice Confidential settlement token used by the ERC-7984 marketplace flow.
+/// @dev This implementation remains intentionally small; wrapping and liquidity are separate concerns.
+contract ConfidentialOrderToken is ERC7984, Ownable, ZamaEthereumConfig {
     constructor(
         address owner_,
         string memory name_,
@@ -41,6 +41,13 @@ contract MockConfidentialOrderToken is ERC7984, Ownable, ZamaEthereumConfig {
         bytes calldata inputProof
     ) external onlyOwner returns (euint64 burned) {
         burned = FHE.fromExternal(encryptedAmount, inputProof);
+        _burn(from, burned);
+    }
+
+    /// @notice Burns a clear public amount from a confidential balance.
+    /// @dev Used by the funding wrapper for deterministic redeem (confidential -> public).
+    function burnFromPublicAmount(address from, uint64 amount) external onlyOwner returns (euint64 burned) {
+        burned = FHE.asEuint64(amount);
         _burn(from, burned);
     }
 }

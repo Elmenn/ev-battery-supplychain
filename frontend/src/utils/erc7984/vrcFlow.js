@@ -73,6 +73,14 @@ export function buildErc7984OrderVrcFromRecovery({
     productContract: normalizeMaybeString(productAddress || order.productAddress || order.escrowAddress),
     productId: normalizeMaybeString(order.productId || productMeta.productId),
     chainId: normalizeMaybeString(order.chainId || productMeta.chainId),
+    priceVisibility: normalizeMaybeString(
+      order.priceVisibility ||
+        productMeta.priceVisibility ||
+        attestation?.proofBundle?.priceVisibility ||
+        (order.quantityProof?.priceCommitment || attestation?.quantityTotalProof?.priceCommitment
+          ? "private"
+          : "public")
+    ),
     unitPriceWei: normalizeMaybeString(order.unitPriceWei || productMeta.unitPriceWei),
     unitPriceHash: normalizeMaybeString(order.unitPriceHash || productMeta.unitPriceHash),
     listingSnapshotCid: normalizeMaybeString(productMeta.listingSnapshotCid),
@@ -83,6 +91,13 @@ export function buildErc7984OrderVrcFromRecovery({
     orderId: normalizeMaybeString(order.orderId),
     escrowAddress: normalizeMaybeString(order.escrowAddress || productAddress),
     paymentToken: normalizeMaybeString(paymentToken || productMeta.paymentToken),
+    priceCommitment: normalizeMaybeString(
+      order.priceCommitment ||
+        productMeta.priceCommitment ||
+        order.quantityProof?.priceCommitment ||
+        attestation?.quantityTotalProof?.priceCommitment ||
+        attestation?.proofBundle?.priceCommitment
+    ),
     quantityCommitment: normalizeMaybeString(order.quantityCommitment),
     totalCommitment: normalizeMaybeString(order.totalCommitment),
     paymentCommitment: normalizeMaybeString(order.paymentCommitment),

@@ -1,0 +1,4 @@
+metric,min_ms,max_ms,midpoint_ms,range_width_ms
+issuer_signature_verification_median_ms,48.82,51.41,50.115,2.59
+holder_signature_verification_median_ms,48.318,48.794,48.556,0.476
+full_two_signature_verification_median_ms,93.43,106.649,100.04,13.219

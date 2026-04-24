@@ -2,12 +2,14 @@
   "scripts": {
     "compile:erc7984": "hardhat compile --config hardhat.config.js",
     "test:erc7984": "hardhat test --config hardhat.config.js",
-    "deploy:erc7984:sepolia": "hardhat run --config hardhat.config.js --network sepolia scripts/erc7984/deploy-sepolia.js",
+    "deploy:erc7984:sepolia": "hardhat run --config hardhat.config.js --network sepolia scripts/erc7984/prepare-browser-sepolia.js",
     "mint:erc7984:sepolia": "hardhat run --config hardhat.config.js --network sepolia scripts/erc7984/mint-confidential-sepolia.js",
     "prepare:erc7984:browser:sepolia": "hardhat run --config hardhat.config.js --network sepolia scripts/erc7984/prepare-browser-sepolia.js",
     "verify:erc7984:sepolia": "hardhat run --config hardhat.config.js --network sepolia scripts/erc7984/verify-sepolia.js",
-    "smoke:erc7984:sepolia": "hardhat run --config hardhat.config.js --network sepolia scripts/erc7984/smoke-sepolia.js",
-    "smoke:erc7984:factory:sepolia": "hardhat run --config hardhat.config.js --network sepolia scripts/erc7984/smoke-factory-sepolia.js"
+    "smoke:erc7984:sepolia": "hardhat run --config hardhat.config.js --network sepolia scripts/erc7984/smoke-factory-sepolia.js",
+    "smoke:erc7984:factory:sepolia": "hardhat run --config hardhat.config.js --network sepolia scripts/erc7984/smoke-factory-sepolia.js",
+    "eval:erc7984:order": "node scripts/erc7984/extract-dual-profile-evaluation.js",
+    "eval:erc7984:proof-vrc": "node scripts/erc7984/evaluate-dual-profile-proof-vrc.js"
   },
   "dependencies": {
     "@fhevm/solidity": "0.11.1",

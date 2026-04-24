@@ -2,7 +2,7 @@ const fs = require("fs");
 const path = require("path");
 const hre = require("hardhat");
 
-const DEFAULT_TOKEN_NAME = "Mock Confidential Order Token";
+const DEFAULT_TOKEN_NAME = "Confidential Order Token";
 const DEFAULT_TOKEN_SYMBOL = "MCOT";
 const DEFAULT_TOKEN_CONTRACT_URI = "ipfs://browser-confidential";
 
@@ -67,7 +67,7 @@ async function main() {
   await verifyContract({
     label: "confidential token",
     address: deployment.confidentialToken,
-    contract: "contracts/erc7984/MockConfidentialOrderToken.sol:MockConfidentialOrderToken",
+    contract: "contracts/erc7984/ConfidentialOrderToken.sol:ConfidentialOrderToken",
     constructorArguments: [
       deployment.deployer,
       DEFAULT_TOKEN_NAME,
@@ -93,6 +93,16 @@ async function main() {
     contract: "contracts/erc7984/ProductEscrowConfidential_Initializer.sol:ProductEscrowConfidential_Initializer",
     constructorArguments: [],
   });
+
+  if (deployment.privateImplementation) {
+    await verifyContract({
+      label: "private escrow implementation",
+      address: deployment.privateImplementation,
+      contract:
+        "contracts/erc7984/ProductEscrowConfidential_PrivatePrice.sol:ProductEscrowConfidential_PrivatePrice",
+      constructorArguments: [],
+    });
+  }
 
   await verifyContract({
     label: "factory",

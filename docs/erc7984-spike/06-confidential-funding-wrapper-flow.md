@@ -81,7 +81,7 @@ sequenceDiagram
     U->>P: approve(W, amount)
     U->>W: deposit(amount)
     W->>P: transferFrom(U, W, amount)
-    W->>C: mintConfidential(U, amount)
+    W->>C: mintFromPublicAmount(U, amount)
     C-->>U: confidential balance increases
 
     Note over U,C: Same wallet address now holds private ERC-7984 balance
@@ -105,7 +105,7 @@ After funding `100`:
 - wrapper public ERC-20 reserve: `100`
 - user confidential ERC-7984 balance: `100`
 
-If a redeem path is added later:
+Redeem path (implemented):
 
 1. user burns `100` confidential ERC-7984 units
 2. wrapper releases `100` public ERC-20 back to the user
@@ -136,7 +136,7 @@ The confidentiality lives in the ERC-7984 token ledger itself.
 
 Current spike browser flow:
 
-1. User gets public test ERC-20.
+1. User holds or obtains public funding ERC-20 (Sepolia WETH in current measured runs).
 2. User funds private balance through the wrapper.
 3. Buyer uses private balance for confidential purchase deposit.
 4. Seller uses private balance for confidential bond and delivery fee.
@@ -144,21 +144,21 @@ Current spike browser flow:
 
 This replaces the earlier spike-only bootstrap model where an owner wallet directly minted confidential balances to test accounts.
 
-## What is real today vs mocked
+## What is real today vs test-only
 
-Real in the spike:
+Real in the active Sepolia path:
 
 - real Sepolia deployment
 - real browser wallet interaction
 - real wrapper contract
 - real confidential ERC-7984 token
-- real confidential escrow flow
+- real dual-profile escrow flow
+- real WETH as the public funding asset
 
-Still mocked or test-only:
+Test-only usage:
 
-- the public funding token is currently a mock ERC-20
-- any previous mock-token faucet path is legacy/test-only
-- the Sepolia evaluation path now uses real WETH as the public funding asset
+- `MockPublicPaymentToken` is used in local/unit-test contexts
+- historical mock faucet paths are legacy and not part of the active Sepolia evaluation flow
 
 ## Desired end-state UX
 

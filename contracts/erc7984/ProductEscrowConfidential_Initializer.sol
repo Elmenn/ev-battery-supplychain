@@ -185,11 +185,34 @@ contract ProductEscrowConfidential_Initializer is ZamaEthereumConfig, IERC7984Re
         IERC7984 _paymentToken,
         address _factory
     ) external {
+        _initializeConfidentialCore(_id, _name, _unitPrice, _unitPriceHash, _owner, _paymentToken, _factory, true);
+    }
+
+    function priceVisibility() external pure virtual returns (uint8) {
+        return 0;
+    }
+
+    function priceCommitment() external view virtual returns (bytes32) {
+        return unitPriceHash;
+    }
+
+    function _initializeConfidentialCore(
+        uint256 _id,
+        string memory _name,
+        uint64 _unitPrice,
+        bytes32 _unitPriceHash,
+        address _owner,
+        IERC7984 _paymentToken,
+        address _factory,
+        bool requirePublicPrice
+    ) internal {
         if (_initialized) revert AlreadyInitialized();
         if (_owner == address(0)) revert InvalidOwnerAddress();
         if (bytes(_name).length == 0) revert EmptyName();
-        if (_unitPrice == 0) revert ZeroUnitPrice();
-        if (_unitPriceHash == bytes32(0)) revert ZeroUnitPriceHash();
+        if (requirePublicPrice) {
+            if (_unitPrice == 0) revert ZeroUnitPrice();
+            if (_unitPriceHash == bytes32(0)) revert ZeroUnitPriceHash();
+        }
         if (_id == 0) revert InvalidProductId();
         if (msg.sender != _factory) revert NotFactory();
 

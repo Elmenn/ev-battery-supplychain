@@ -1,13 +1,21 @@
 import React, { useEffect, useMemo, useState } from "react";
 import toast from "react-hot-toast";
 import { Contract, ethers } from "ethers";
-import { computeUnitPriceHash } from "../../utils/commitmentUtils";
+import {
+  computeUnitPriceHash,
+  generateRandomBlinding,
+  normalizeBytes32Hex,
+} from "../../utils/commitmentUtils";
 import { saveProductMeta } from "../../utils/productMetaApi";
 import { loadErc7984DeploymentConfig } from "../../utils/erc7984Deployment";
+import { generateScalarCommitmentWithBlindingPreferWasm } from "../../utils/zkp/zkpClient";
 
 const FACTORY_ABI = [
   "function createProductConfidentialV1(string name, uint64 unitPrice, bytes32 unitPriceHash, address paymentToken) returns (address product)",
+  "function createProductConfidentialPublicPrice(string name, uint64 unitPrice, bytes32 unitPriceHash, address paymentToken) returns (address product)",
+  "function createProductConfidentialPrivatePrice(string name, bytes32 priceCommitment, address paymentToken) returns (address product)",
   "event ProductCreatedConfidential(address indexed product, address indexed seller, uint256 indexed productId, address paymentToken, uint64 unitPrice, bytes32 unitPriceHash)",
+  "event ProductCreatedConfidentialPrivatePrice(address indexed product, address indexed seller, uint256 indexed productId, address paymentToken, bytes32 priceCommitment)",
 ];
 
 const MAX_UINT64 = (1n << 64n) - 1n;
@@ -68,15 +76,23 @@ const ProductFormStep3 = ({ onNext, productData }) => {
   const listingPreviewData = useMemo(() => {
     const unitPriceWei = String(productData.unitPriceWei || "").trim();
     const unitPriceHash = unitPriceWei ? computeUnitPriceHash(unitPriceWei) : "";
+    const priceVisibility = productData.priceVisibility || "public";
+    const proofFamily = productData.proofFamily || (priceVisibility === "private" ? "bulletproof" : "fiat-shamir");
 
     return {
       schemaVersion: "6.1",
       productName: productData.productName,
       batch: productData.batch || "",
       orderModel: "erc7984-confidential-v1",
-      displayUnitPrice: productData.displayUnitPrice || "",
-      unitPriceWei,
-      unitPriceHash,
+      priceVisibility,
+      proofFamily,
+      displayUnitPrice: priceVisibility === "public" ? productData.displayUnitPrice || "" : "Private",
+      unitPriceWei: priceVisibility === "public" ? unitPriceWei : "",
+      unitPriceHash: priceVisibility === "public" ? unitPriceHash : "",
+      priceCommitment:
+        priceVisibility === "private"
+          ? "Generated locally during listing creation"
+          : unitPriceHash,
       paymentToken: deploymentConfig?.confidentialToken || "",
       certificateCredential: {
         name: productData.certificateName || "",
@@ -107,6 +123,14 @@ const ProductFormStep3 = ({ onNext, productData }) => {
         throw new Error("ERC-7984 confidential payment token is not configured.");
       }
 
+      const priceVisibility = productData.priceVisibility || "public";
+
+      if (priceVisibility === "private" && !deploymentConfig?.supportsPrivatePrice) {
+        throw new Error(
+          "The loaded ERC-7984 deployment does not support private-price listings yet. Redeploy the upgraded dual-profile factory and private implementation, then refresh the frontend config."
+        );
+      }
+
       toast("Connecting wallet...");
       await window.ethereum.request({ method: "eth_requestAccounts" });
 
@@ -117,14 +141,22 @@ const ProductFormStep3 = ({ onNext, productData }) => {
 
       const productName = String(productData.productName || "").trim();
       const unitPriceWei = String(productData.unitPriceWei || "").trim();
-      const unitPriceHash = computeUnitPriceHash(unitPriceWei);
+      const proofFamily =
+        productData.proofFamily || (priceVisibility === "private" ? "bulletproof" : "fiat-shamir");
+      const unitPriceHash = priceVisibility === "public" ? computeUnitPriceHash(unitPriceWei) : "";
       let unitPriceValue;
+      let priceCommitment = "";
+      let privatePriceBlinding = "";
 
       if (!productName) {
         throw new Error("Product name is required.");
       }
       if (!unitPriceWei) {
-        throw new Error("A valid public unit price is required.");
+        throw new Error(
+          priceVisibility === "private"
+            ? "A valid confidential unit price is required."
+            : "A valid public unit price is required."
+        );
       }
       unitPriceValue = BigInt(unitPriceWei);
       if (unitPriceValue <= 0n || unitPriceValue > MAX_UINT64) {
@@ -133,12 +165,35 @@ const ProductFormStep3 = ({ onNext, productData }) => {
 
       toast("Creating ERC-7984 listing...");
       const factory = new Contract(resolvedFactory, FACTORY_ABI, signer);
-      const tx = await factory.createProductConfidentialV1(
-        productName,
-        unitPriceValue,
-        unitPriceHash,
-        resolvedPaymentToken
-      );
+      let tx;
+
+      if (priceVisibility === "private") {
+        privatePriceBlinding = generateRandomBlinding();
+        const commitmentResult = await generateScalarCommitmentWithBlindingPreferWasm({
+          value: unitPriceWei,
+          blindingHex: `0x${privatePriceBlinding}`,
+        });
+        priceCommitment = normalizeBytes32Hex(
+          String(commitmentResult.commitment || "").trim(),
+          "priceCommitment"
+        );
+        if (!priceCommitment) {
+          throw new Error("Failed to generate the confidential price commitment.");
+        }
+        tx = await factory.createProductConfidentialPrivatePrice(
+          productName,
+          priceCommitment,
+          resolvedPaymentToken
+        );
+      } else {
+        priceCommitment = unitPriceHash;
+        tx = await factory.createProductConfidentialPublicPrice(
+          productName,
+          unitPriceValue,
+          unitPriceHash,
+          resolvedPaymentToken
+        );
+      }
       const receipt = await tx.wait();
 
       const createdEvent = receipt.logs
@@ -149,10 +204,14 @@ const ProductFormStep3 = ({ onNext, productData }) => {
             return null;
           }
         })
-        .find((log) => log && log.name === "ProductCreatedConfidential");
+        .find((log) =>
+          log &&
+          (log.name === "ProductCreatedConfidential" ||
+            log.name === "ProductCreatedConfidentialPrivatePrice")
+        );
 
       if (!createdEvent) {
-        throw new Error("ProductCreatedConfidential event not found in receipt.");
+        throw new Error("Product creation event not found in receipt.");
       }
 
       const productAddress = ethers.getAddress(createdEvent.args.product);
@@ -169,9 +228,12 @@ const ProductFormStep3 = ({ onNext, productData }) => {
         chainId: String(network.chainId),
         sellerAddr,
         orderModel: "erc7984-confidential-v1",
-        displayUnitPrice: productData.displayUnitPrice || "",
-        unitPriceWei,
-        unitPriceHash,
+        priceVisibility,
+        proofFamily,
+        displayUnitPrice: priceVisibility === "public" ? productData.displayUnitPrice || "" : "Private",
+        unitPriceWei: priceVisibility === "public" ? unitPriceWei : "",
+        unitPriceHash: priceVisibility === "public" ? unitPriceHash : "",
+        priceCommitment,
         paymentToken,
         listingSnapshotCid: "",
         certificateCredential: {
@@ -183,19 +245,25 @@ const ProductFormStep3 = ({ onNext, productData }) => {
       };
 
       const normalizedProductAddress = productAddress.toLowerCase();
-      localStorage.setItem(`unitPriceWei_${normalizedProductAddress}`, unitPriceWei);
-      localStorage.setItem(`unitPriceHash_${normalizedProductAddress}`, unitPriceHash);
+      if (priceVisibility === "public") {
+        localStorage.setItem(`unitPriceWei_${normalizedProductAddress}`, unitPriceWei);
+        localStorage.setItem(`unitPriceHash_${normalizedProductAddress}`, unitPriceHash);
+      } else {
+        localStorage.setItem(`privatePriceWei_${normalizedProductAddress}`, unitPriceWei);
+        localStorage.setItem(`priceCommitment_${normalizedProductAddress}`, priceCommitment);
+        localStorage.setItem(`priceCommitmentBlinding_${normalizedProductAddress}`, privatePriceBlinding);
+      }
       localStorage.setItem(`productMeta_${normalizedProductAddress}`, JSON.stringify(listingMeta));
 
       try {
         await saveProductMeta({
           productAddress,
           productMeta: listingMeta,
-          priceWei: unitPriceWei,
-          priceCommitment: unitPriceHash,
+          priceWei: priceVisibility === "public" ? unitPriceWei : null,
+          priceCommitment,
           sellerRailgunAddress: "",
-          unitPriceWei,
-          unitPriceHash,
+          unitPriceWei: priceVisibility === "public" ? unitPriceWei : null,
+          unitPriceHash: priceVisibility === "public" ? unitPriceHash : null,
           schemaVersion: "6.1",
         });
       } catch (metadataError) {
@@ -208,8 +276,11 @@ const ProductFormStep3 = ({ onNext, productData }) => {
           ...productData,
           productContract: productAddress,
           productId,
-          unitPriceWei,
-          unitPriceHash,
+          priceVisibility,
+          proofFamily,
+          unitPriceWei: priceVisibility === "public" ? unitPriceWei : "",
+          unitPriceHash: priceVisibility === "public" ? unitPriceHash : "",
+          priceCommitment,
           paymentToken,
           vcPreview: listingMeta,
         },
@@ -235,11 +306,25 @@ const ProductFormStep3 = ({ onNext, productData }) => {
           </div>
 
           <div>
-            <strong>Public Unit Price:</strong> {productData.displayUnitPrice} WETH
-            <div className="text-xs text-gray-500 mt-1">
-              Stored canonically as raw WETH wei:{" "}
-              <span className="font-mono">{listingPreviewData.unitPriceWei}</span>
-            </div>
+            <strong>Price Visibility:</strong>{" "}
+            {productData.priceVisibility === "private" ? "Private Price" : "Public Price"}
+          </div>
+
+          <div>
+            <strong>
+              {productData.priceVisibility === "private" ? "Confidential Unit Price" : "Public Unit Price"}:
+            </strong>{" "}
+            {productData.displayUnitPrice} WETH
+            {productData.priceVisibility === "public" ? (
+              <div className="text-xs text-gray-500 mt-1">
+                Stored canonically as raw WETH wei:{" "}
+                <span className="font-mono">{listingPreviewData.unitPriceWei}</span>
+              </div>
+            ) : (
+              <div className="text-xs text-gray-500 mt-1">
+                The exact price stays local and will be committed on-chain during creation.
+              </div>
+            )}
           </div>
 
           {productData.batch && productData.batch.trim() !== "" && (

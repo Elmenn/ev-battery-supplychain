@@ -145,6 +145,7 @@ const V4_ERC7984_TYPED_EIP712_TYPES_V60 = {
     { name: "attestation", type: "AttestationV4" },
   ],
   Listing: [
+    { name: "priceVisibility", type: "string" },
     { name: "unitPriceWei", type: "string" },
     { name: "unitPriceHash", type: "string" },
     { name: "listingSnapshotCid", type: "string" },
@@ -165,6 +166,7 @@ const V4_ERC7984_TYPED_EIP712_TYPES_V60 = {
     { name: "transporterAddress", type: "string" },
   ],
   Commitments: [
+    { name: "priceCommitment", type: "string" },
     { name: "quantityCommitment", type: "string" },
     { name: "totalCommitment", type: "string" },
     { name: "paymentCommitment", type: "string" },
@@ -216,13 +218,25 @@ const V4_ERC7984_TYPED_EIP712_TYPES_V60 = {
     { name: "status", type: "string" },
   ],
   PrivacyProofs: [
-    { name: "quantityTotal", type: "PublicProofRecord" },
-    { name: "totalPaymentEquality", type: "PublicProofRecord" },
+    { name: "quantityTotal", type: "ProofRecordV4" },
+    { name: "totalPaymentEquality", type: "ProofRecordV4" },
   ],
-  PublicProofRecord: [
+  ProofRecordV4: [
     { name: "proofType", type: "string" },
+    { name: "proofFamily", type: "string" },
+    { name: "proofEngine", type: "string" },
+    { name: "commitmentEngine", type: "string" },
+    { name: "commitmentProofType", type: "string" },
+    { name: "commitmentProof", type: "string" },
     { name: "proofRHex", type: "string" },
     { name: "proofSHex", type: "string" },
+    { name: "proofHex", type: "string" },
+    { name: "proofSizeBytes", type: "string" },
+    { name: "verified", type: "bool" },
+    { name: "quantity", type: "string" },
+    { name: "value", type: "string" },
+    { name: "unitPriceWei", type: "string" },
+    { name: "priceCommitment", type: "string" },
   ],
   AttestationV4: [
     { name: "attestationVersion", type: "string" },
@@ -432,6 +446,24 @@ function buildTypedV4Payload(vc) {
   const paymentBridge = clone.credentialSubject?.paymentBridge || {};
   const privacyProofs = clone.credentialSubject?.privacyProofs || {};
   const attestation = clone.credentialSubject?.attestation || {};
+  const normalizeProofRecord = (proof = {}) => ({
+    proofType: String(proof?.proofType || ""),
+    proofFamily: String(proof?.proofFamily || ""),
+    proofEngine: String(proof?.proofEngine || ""),
+    commitmentEngine: String(proof?.commitmentEngine || ""),
+    commitmentProofType: String(proof?.commitmentProofType || ""),
+    commitmentProof:
+      proof?.commitmentProof == null ? "" : JSON.stringify(proof.commitmentProof),
+    proofRHex: normalizeMaybeString(proof?.proofRHex),
+    proofSHex: normalizeMaybeString(proof?.proofSHex),
+    proofHex: normalizeMaybeString(proof?.proofHex),
+    proofSizeBytes: normalizeMaybeString(proof?.proofSizeBytes),
+    verified: Boolean(proof?.verified),
+    quantity: normalizeMaybeString(proof?.quantity),
+    value: normalizeMaybeString(proof?.value),
+    unitPriceWei: normalizeMaybeString(proof?.unitPriceWei),
+    priceCommitment: normalizeMaybeString(proof?.priceCommitment),
+  });
 
   return {
     id: String(vc?.id || ""),
@@ -464,6 +496,7 @@ function buildTypedV4Payload(vc) {
       productId: normalizeMaybeString(clone.credentialSubject.productId),
       chainId: normalizeMaybeString(clone.credentialSubject.chainId),
       listing: {
+        priceVisibility: normalizeMaybeString(listing.priceVisibility),
         unitPriceWei: normalizeMaybeString(listing.unitPriceWei),
         unitPriceHash: normalizeMaybeString(listing.unitPriceHash),
         listingSnapshotCid: normalizeMaybeString(listing.listingSnapshotCid),
@@ -487,6 +520,7 @@ function buildTypedV4Payload(vc) {
           : {}),
       },
       commitments: {
+        priceCommitment: normalizeMaybeString(commitments.priceCommitment),
         quantityCommitment: normalizeMaybeString(commitments.quantityCommitment),
         totalCommitment: normalizeMaybeString(commitments.totalCommitment),
         paymentCommitment: normalizeMaybeString(commitments.paymentCommitment),
@@ -546,16 +580,8 @@ function buildTypedV4Payload(vc) {
         },
       },
       privacyProofs: {
-        quantityTotal: {
-          proofType: String(privacyProofs.quantityTotal?.proofType || ""),
-          proofRHex: normalizeMaybeString(privacyProofs.quantityTotal?.proofRHex),
-          proofSHex: normalizeMaybeString(privacyProofs.quantityTotal?.proofSHex),
-        },
-        totalPaymentEquality: {
-          proofType: String(privacyProofs.totalPaymentEquality?.proofType || ""),
-          proofRHex: normalizeMaybeString(privacyProofs.totalPaymentEquality?.proofRHex),
-          proofSHex: normalizeMaybeString(privacyProofs.totalPaymentEquality?.proofSHex),
-        },
+        quantityTotal: normalizeProofRecord(privacyProofs.quantityTotal),
+        totalPaymentEquality: normalizeProofRecord(privacyProofs.totalPaymentEquality),
       },
       attestation: {
         attestationVersion: String(attestation.attestationVersion || schemaVersion),

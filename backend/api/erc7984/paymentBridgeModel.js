@@ -17,8 +17,33 @@ function normalizeMaybeString(value) {
   return value == null ? null : String(value);
 }
 
+function normalizeBindingString(value, { lowercase = false } = {}) {
+  const normalized = value == null ? "" : String(value).trim();
+  return lowercase ? normalized.toLowerCase() : normalized;
+}
+
+function hasNonEmptyString(value) {
+  return typeof value === "string" && value.trim().length > 0;
+}
+
 function computeCanonicalBridgeHash(payload) {
   return keccak256(toUtf8Bytes(JSON.stringify(payload)));
+}
+
+function buildCpayBindingTag({
+  chainId,
+  escrowAddress,
+  orderId,
+  depositTxHash,
+}) {
+  const payload = {
+    version: "cpay-bind-v1",
+    chainId: normalizeBindingString(chainId),
+    escrowAddress: normalizeBindingString(escrowAddress, { lowercase: true }),
+    orderId: normalizeBindingString(orderId, { lowercase: true }),
+    depositTxHash: normalizeBindingString(depositTxHash, { lowercase: true }),
+  };
+  return computeCanonicalBridgeHash(payload);
 }
 
 function buildDepositReference({
@@ -128,6 +153,19 @@ function validatePaymentBridgeArtifact(artifact, fieldName = "paymentBridge") {
   if (!PAYMENT_BRIDGE_STATUS_VALUES.has(artifact.verification.status)) {
     throw new Error(`${fieldName}.verification.status is not supported`);
   }
+
+  if (!hasNonEmptyString(artifact.depositSide?.depositReference)) {
+    throw new Error(`${fieldName}.depositSide.depositReference is required`);
+  }
+
+  if (
+    artifact.verification.status === PaymentBridgeVerificationStatus.Bound &&
+    !hasNonEmptyString(artifact.depositSide?.depositTxHash)
+  ) {
+    throw new Error(
+      `${fieldName}.depositSide.depositTxHash is required when verification.status is bound`
+    );
+  }
 }
 
 module.exports = {
@@ -136,8 +174,8 @@ module.exports = {
   PAYMENT_BRIDGE_STATUS_VALUES,
   PAYMENT_BRIDGE_METHOD_VALUES,
   computeCanonicalBridgeHash,
+  buildCpayBindingTag,
   buildDepositReference,
   buildPaymentBridgeArtifact,
   validatePaymentBridgeArtifact,
 };
-

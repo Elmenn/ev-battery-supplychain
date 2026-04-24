@@ -1,8 +1,29 @@
 # EV Battery Supply Chain dApp - API Reference
 
 **Document Version:** 1.0  
-**Last Updated:** December 2024  
+**Last Updated:** April 24, 2026  
 **Author:** EV Battery Supply Chain Development Team  
+
+---
+
+## ERC-7984 Active Flow Notice (Current)
+
+For the current dual-profile ERC-7984 implementation, use these docs as the source of truth:
+
+- [11-smart-contract-function-map-and-transaction-note.md](c:\Users\yamen\ev-battery-supplychain-erc7984\docs\erc7984-spike\11-smart-contract-function-map-and-transaction-note.md)
+- [21-dual-profile-smart-contract-evaluation.md](c:\Users\yamen\ev-battery-supplychain-erc7984\docs\erc7984-spike\21-dual-profile-smart-contract-evaluation.md)
+- [22-dual-profile-proof-and-vrc-evaluation.md](c:\Users\yamen\ev-battery-supplychain-erc7984\docs\erc7984-spike\22-dual-profile-proof-and-vrc-evaluation.md)
+- [23-dual-profile-vc-signing-and-verification.md](c:\Users\yamen\ev-battery-supplychain-erc7984\docs\erc7984-spike\23-dual-profile-vc-signing-and-verification.md)
+
+Active Sepolia deployment + verification (frozen `2026-04-24`):
+
+- Factory: `0x3651a8D91cc797c5dFCb2fBc50CA50b6c9cfa572`
+- Confidential token: `0xe04F94DCfC2B6f64352AcAdAD64FF4cA8505BF04`
+- Funding wrapper: `0x8bdb7B543B9137A47348D9915D6557bC46E4F873`
+- Public implementation: `0x58a971f033D19c53893074287c31329d43fAc076`
+- Private implementation: `0x6C26F71Ec9C6b8c830A17291C3Bf7f90292d28E7`
+
+This file still contains older generic API sections below; treat ERC-7984 spike docs above as canonical for thesis/runtime evaluation.
 
 ---
 

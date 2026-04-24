@@ -74,6 +74,11 @@ So the contract now anchors both:
 - the canonical public numeric price
 - the integrity hash for that public price
 
+For the private-price profile, the architecture remains different by design:
+
+- [ProductEscrowConfidential_PrivatePrice.sol](c:\Users\yamen\ev-battery-supplychain-erc7984\contracts\erc7984\ProductEscrowConfidential_PrivatePrice.sol) stores `privatePriceCommitment`
+- private profile intentionally does not expose a public `unitPrice` on-chain
+
 ## Option A: Keep only `unitPriceHash`
 
 ### Advantages
@@ -184,9 +189,9 @@ The verifier trust story becomes:
 
 This is a cleaner separation.
 
-## Smart-contract impact if adopted
+## Smart-contract impact (implemented)
 
-If we adopt public `unitPrice`, the likely changes are:
+With public `unitPrice` adopted, these are the applied changes:
 
 ### Factory
 
@@ -198,9 +203,13 @@ update creation path from:
 
 - `createProductConfidentialV1(string name, bytes32 unitPriceHash, IERC7984 paymentToken)`
 
-to something like:
+to:
 
 - `createProductConfidentialV1(string name, uint64 unitPrice, bytes32 unitPriceHash, IERC7984 paymentToken)`
+
+Private-profile creation stays on a separate entrypoint:
+
+- `createProductConfidentialPrivatePrice(string name, bytes32 priceCommitment, IERC7984 paymentToken)`
 
 ### Escrow initialization
 
@@ -213,6 +222,10 @@ add:
 - `uint64 public unitPrice`
 
 and store it during `initializeConfidential(...)`.
+
+Private profile is initialized through:
+
+- `initializeConfidentialPrivatePrice(...)`
 
 ### Frontend create-listing flow
 
@@ -278,6 +291,12 @@ The factory and escrow initializer now take and persist:
 - `string name`
 - `uint64 unitPrice`
 - `bytes32 unitPriceHash`
+- `IERC7984 paymentToken`
+
+For private-price listings, the corresponding path takes:
+
+- `string name`
+- `bytes32 priceCommitment`
 - `IERC7984 paymentToken`
 
 The frontend listing path still computes `unitPriceHash` as before, but now also passes the numeric public price on-chain.

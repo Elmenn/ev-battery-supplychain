@@ -1,0 +1,665 @@
+﻿
+> eval:erc7984:proof-vrc
+> node scripts/erc7984/evaluate-dual-profile-proof-vrc.js --iterations 100 --public-cids QmUJ1j7YcbJa7yp1HhRF5DrhWoTPhDNwDbp1p2AKdbL96s,QmSaHwqVarfQSGt5X4B5ix57vGt1sNXo1HNauPjon6QLkd,QmSVRmdT1o3pYjdByaRCrJT585pKPe1Jkqp1dXUgw2moUc --private-cids QmPdofY3X6CyVfz4TT9CTLcmzDKok2cSf25QsKpVXoy6vh,QmdNcfrfrMvU2BGJq3g2hKyJ426BtHLbt7PfmtAt4KaHHK,QmZjsEo2aRoHGzWu5WJ4vSquTjj6fqA9ytCtdYyK42mG9M --json-only
+
+[dotenv@17.2.3] injecting env (4) from .env.truffle -- tip: ­ƒöæ add access controls to secrets: https://dotenvx.com/ops
+{
+  "meta": {
+    "apiBase": "http://localhost:5000",
+    "zkpBase": "http://127.0.0.1:5010",
+    "iterations": 100,
+    "publicCids": [
+      "QmUJ1j7YcbJa7yp1HhRF5DrhWoTPhDNwDbp1p2AKdbL96s",
+      "QmSaHwqVarfQSGt5X4B5ix57vGt1sNXo1HNauPjon6QLkd",
+      "QmSVRmdT1o3pYjdByaRCrJT585pKPe1Jkqp1dXUgw2moUc"
+    ],
+    "privateCids": [
+      "QmPdofY3X6CyVfz4TT9CTLcmzDKok2cSf25QsKpVXoy6vh",
+      "QmdNcfrfrMvU2BGJq3g2hKyJ426BtHLbt7PfmtAt4KaHHK",
+      "QmZjsEo2aRoHGzWu5WJ4vSquTjj6fqA9ytCtdYyK42mG9M"
+    ],
+    "generatedAt": "2026-04-24T16:56:54.096Z"
+  },
+  "samples": [
+    {
+      "cid": "QmUJ1j7YcbJa7yp1HhRF5DrhWoTPhDNwDbp1p2AKdbL96s",
+      "profile": "public",
+      "orderId": "0x9fa56379e5528fdaa3cacec8e32a5db84c278132ea7890893e5dde2c00c004e5",
+      "productContract": "0xec6d9065b38dd033ef84c968390e202002759b41",
+      "priceVisibility": "public",
+      "proofFamilyQuantityTotal": "fiat-shamir",
+      "proofFamilyTotalPayment": "fiat-shamir",
+      "proofTypeQuantityTotal": "quantity-total-sigma",
+      "proofTypeTotalPayment": "total-payment-equality-sigma",
+      "proofSize": {
+        "quantityTotalBytes": 64,
+        "totalPaymentBytes": 736,
+        "combinedBytes": 800
+      },
+      "verification": {
+        "verifyVc": {
+          "minMs": 79.569,
+          "meanMs": 127.334,
+          "medianMs": 110.935,
+          "p95Ms": 182.747,
+          "maxMs": 611.675,
+          "stdDevMs": 59.816,
+          "iterations": 100,
+          "lastPayload": {
+            "success": true,
+            "message": "VC verification complete.",
+            "issuer": {
+              "matching_vc": true,
+              "matching_signer": true,
+              "signature_verified": true,
+              "recovered_address": "0x88dcDCfB5e330049597003D41eF8E744Fa613E68",
+              "expected_address": "0x88dcdcfb5e330049597003d41ef8e744fa613e68",
+              "skipped": false,
+              "error": null
+            },
+            "holder": {
+              "matching_vc": true,
+              "matching_signer": true,
+              "signature_verified": true,
+              "recovered_address": null,
+              "expected_address": null,
+              "skipped": true,
+              "error": null
+            },
+            "privacyProofs": {
+              "quantityTotal": true,
+              "totalPayment": true,
+              "paymentCommitmentBinding": true,
+              "quantityTotalSource": "http://127.0.0.1:5010",
+              "totalPaymentSource": "http://127.0.0.1:5010",
+              "paymentCommitmentBindingSource": "http://127.0.0.1:5010",
+              "skipped": false,
+              "error": null
+            }
+          }
+        },
+        "quantityProof": {
+          "endpoint": "/zkp/verify-quantity-total-proof",
+          "minMs": 4.12,
+          "meanMs": 5.104,
+          "medianMs": 4.979,
+          "p95Ms": 6.168,
+          "maxMs": 7.076,
+          "stdDevMs": 0.577,
+          "iterations": 100,
+          "lastPayload": {
+            "verified": true
+          }
+        },
+        "totalPaymentProof": {
+          "endpoint": "/zkp/verify-total-payment-equality-proof",
+          "minMs": 3.825,
+          "meanMs": 5.438,
+          "medianMs": 5.36,
+          "p95Ms": 6.912,
+          "maxMs": 8.15,
+          "stdDevMs": 0.779,
+          "iterations": 100,
+          "lastPayload": {
+            "verified": true
+          }
+        },
+        "combinedProofVerifyMeanMs": 10.542,
+        "estimatedSignatureAndOverheadMeanMs": 116.792
+      },
+      "verifyResult": {
+        "success": true,
+        "issuerOk": true,
+        "holderOk": true,
+        "quantityTotalOk": true,
+        "totalPaymentOk": true
+      }
+    },
+    {
+      "cid": "QmSaHwqVarfQSGt5X4B5ix57vGt1sNXo1HNauPjon6QLkd",
+      "profile": "public",
+      "orderId": "0x3611527b9c0e52c06d34e62d27570d4ec9ba1ab839b900295515aab62d20435a",
+      "productContract": "0x55b061884f9a0f06b2aaa8c1608dbb4b0342ff75",
+      "priceVisibility": "public",
+      "proofFamilyQuantityTotal": "fiat-shamir",
+      "proofFamilyTotalPayment": "fiat-shamir",
+      "proofTypeQuantityTotal": "quantity-total-sigma",
+      "proofTypeTotalPayment": "total-payment-equality-sigma",
+      "proofSize": {
+        "quantityTotalBytes": 64,
+        "totalPaymentBytes": 736,
+        "combinedBytes": 800
+      },
+      "verification": {
+        "verifyVc": {
+          "minMs": 72.572,
+          "meanMs": 122.017,
+          "medianMs": 113.906,
+          "p95Ms": 178.628,
+          "maxMs": 322.133,
+          "stdDevMs": 41.409,
+          "iterations": 100,
+          "lastPayload": {
+            "success": true,
+            "message": "VC verification complete.",
+            "issuer": {
+              "matching_vc": true,
+              "matching_signer": true,
+              "signature_verified": true,
+              "recovered_address": "0x88dcDCfB5e330049597003D41eF8E744Fa613E68",
+              "expected_address": "0x88dcdcfb5e330049597003d41ef8e744fa613e68",
+              "skipped": false,
+              "error": null
+            },
+            "holder": {
+              "matching_vc": true,
+              "matching_signer": true,
+              "signature_verified": true,
+              "recovered_address": null,
+              "expected_address": null,
+              "skipped": true,
+              "error": null
+            },
+            "privacyProofs": {
+              "quantityTotal": true,
+              "totalPayment": true,
+              "paymentCommitmentBinding": true,
+              "quantityTotalSource": "http://127.0.0.1:5010",
+              "totalPaymentSource": "http://127.0.0.1:5010",
+              "paymentCommitmentBindingSource": "http://127.0.0.1:5010",
+              "skipped": false,
+              "error": null
+            }
+          }
+        },
+        "quantityProof": {
+          "endpoint": "/zkp/verify-quantity-total-proof",
+          "minMs": 7.847,
+          "meanMs": 20.018,
+          "medianMs": 12.681,
+          "p95Ms": 39.781,
+          "maxMs": 222.316,
+          "stdDevMs": 26.339,
+          "iterations": 100,
+          "lastPayload": {
+            "verified": true
+          }
+        },
+        "totalPaymentProof": {
+          "endpoint": "/zkp/verify-total-payment-equality-proof",
+          "minMs": 7.08,
+          "meanMs": 17.399,
+          "medianMs": 12.6,
+          "p95Ms": 32.129,
+          "maxMs": 210.818,
+          "stdDevMs": 22.878,
+          "iterations": 100,
+          "lastPayload": {
+            "verified": true
+          }
+        },
+        "combinedProofVerifyMeanMs": 37.417,
+        "estimatedSignatureAndOverheadMeanMs": 84.6
+      },
+      "verifyResult": {
+        "success": true,
+        "issuerOk": true,
+        "holderOk": true,
+        "quantityTotalOk": true,
+        "totalPaymentOk": true
+      }
+    },
+    {
+      "cid": "QmSVRmdT1o3pYjdByaRCrJT585pKPe1Jkqp1dXUgw2moUc",
+      "profile": "public",
+      "orderId": "0x4aa40c797a5cbf581eabed7724d8183ee501a9fb77a8eb0959de763c156de5ba",
+      "productContract": "0x6ecb8d0ff4c1efda874e8c20e574a1a075321999",
+      "priceVisibility": "public",
+      "proofFamilyQuantityTotal": "fiat-shamir",
+      "proofFamilyTotalPayment": "fiat-shamir",
+      "proofTypeQuantityTotal": "quantity-total-sigma",
+      "proofTypeTotalPayment": "total-payment-equality-sigma",
+      "proofSize": {
+        "quantityTotalBytes": 64,
+        "totalPaymentBytes": 736,
+        "combinedBytes": 800
+      },
+      "verification": {
+        "verifyVc": {
+          "minMs": 100.133,
+          "meanMs": 158.624,
+          "medianMs": 150.132,
+          "p95Ms": 243.589,
+          "maxMs": 312.751,
+          "stdDevMs": 44.522,
+          "iterations": 100,
+          "lastPayload": {
+            "success": true,
+            "message": "VC verification complete.",
+            "issuer": {
+              "matching_vc": true,
+              "matching_signer": true,
+              "signature_verified": true,
+              "recovered_address": "0x88dcDCfB5e330049597003D41eF8E744Fa613E68",
+              "expected_address": "0x88dcdcfb5e330049597003d41ef8e744fa613e68",
+              "skipped": false,
+              "error": null
+            },
+            "holder": {
+              "matching_vc": true,
+              "matching_signer": true,
+              "signature_verified": true,
+              "recovered_address": null,
+              "expected_address": null,
+              "skipped": true,
+              "error": null
+            },
+            "privacyProofs": {
+              "quantityTotal": true,
+              "totalPayment": true,
+              "paymentCommitmentBinding": true,
+              "quantityTotalSource": "http://127.0.0.1:5010",
+              "totalPaymentSource": "http://127.0.0.1:5010",
+              "paymentCommitmentBindingSource": "http://127.0.0.1:5010",
+              "skipped": false,
+              "error": null
+            }
+          }
+        },
+        "quantityProof": {
+          "endpoint": "/zkp/verify-quantity-total-proof",
+          "minMs": 5.567,
+          "meanMs": 8.122,
+          "medianMs": 7.673,
+          "p95Ms": 11.842,
+          "maxMs": 15.576,
+          "stdDevMs": 1.895,
+          "iterations": 100,
+          "lastPayload": {
+            "verified": true
+          }
+        },
+        "totalPaymentProof": {
+          "endpoint": "/zkp/verify-total-payment-equality-proof",
+          "minMs": 4.372,
+          "meanMs": 6.517,
+          "medianMs": 5.961,
+          "p95Ms": 10.1,
+          "maxMs": 22.644,
+          "stdDevMs": 2.495,
+          "iterations": 100,
+          "lastPayload": {
+            "verified": true
+          }
+        },
+        "combinedProofVerifyMeanMs": 14.639,
+        "estimatedSignatureAndOverheadMeanMs": 143.985
+      },
+      "verifyResult": {
+        "success": true,
+        "issuerOk": true,
+        "holderOk": true,
+        "quantityTotalOk": true,
+        "totalPaymentOk": true
+      }
+    },
+    {
+      "cid": "QmPdofY3X6CyVfz4TT9CTLcmzDKok2cSf25QsKpVXoy6vh",
+      "profile": "private",
+      "orderId": "0xde728cc9605475f9ac9881fbaa64b8b57b07f1cc379895f64d1b23441af5d3d5",
+      "productContract": "0x6b5e87d58d0c9337b51dc88007ae6a123f355c44",
+      "priceVisibility": "private",
+      "proofFamilyQuantityTotal": "bulletproof",
+      "proofFamilyTotalPayment": "bulletproof",
+      "proofTypeQuantityTotal": "quantity-total-bulletproof-private-price",
+      "proofTypeTotalPayment": "total-payment-equality-bulletproof",
+      "proofSize": {
+        "quantityTotalBytes": 417,
+        "totalPaymentBytes": 417,
+        "combinedBytes": 834
+      },
+      "verification": {
+        "verifyVc": {
+          "minMs": 164.618,
+          "meanMs": 246.316,
+          "medianMs": 233,
+          "p95Ms": 344.91,
+          "maxMs": 491.947,
+          "stdDevMs": 59.869,
+          "iterations": 100,
+          "lastPayload": {
+            "success": true,
+            "message": "VC verification complete.",
+            "issuer": {
+              "matching_vc": true,
+              "matching_signer": true,
+              "signature_verified": true,
+              "recovered_address": "0x90DD9aBf619f63494B3711120A309a6573d4ACeA",
+              "expected_address": "0x90dd9abf619f63494b3711120a309a6573d4acea",
+              "skipped": false,
+              "error": null
+            },
+            "holder": {
+              "matching_vc": true,
+              "matching_signer": true,
+              "signature_verified": true,
+              "recovered_address": null,
+              "expected_address": null,
+              "skipped": true,
+              "error": null
+            },
+            "privacyProofs": {
+              "quantityTotal": true,
+              "totalPayment": true,
+              "paymentCommitmentBinding": true,
+              "quantityTotalSource": "http://127.0.0.1:5010",
+              "totalPaymentSource": "http://127.0.0.1:5010",
+              "paymentCommitmentBindingSource": "http://127.0.0.1:5010",
+              "skipped": false,
+              "error": null
+            }
+          }
+        },
+        "quantityProof": {
+          "endpoint": "/zkp/verify-private-price-quantity-total-bulletproof",
+          "minMs": 64.978,
+          "meanMs": 93.691,
+          "medianMs": 85.231,
+          "p95Ms": 143.017,
+          "maxMs": 220.267,
+          "stdDevMs": 26.667,
+          "iterations": 100,
+          "lastPayload": {
+            "verified": true
+          }
+        },
+        "totalPaymentProof": {
+          "endpoint": "/zkp/verify-total-payment-equality-bulletproof",
+          "minMs": 33.704,
+          "meanMs": 45.969,
+          "medianMs": 43.539,
+          "p95Ms": 68.899,
+          "maxMs": 91.092,
+          "stdDevMs": 10.79,
+          "iterations": 100,
+          "lastPayload": {
+            "verified": true
+          }
+        },
+        "combinedProofVerifyMeanMs": 139.66,
+        "estimatedSignatureAndOverheadMeanMs": 106.656
+      },
+      "verifyResult": {
+        "success": true,
+        "issuerOk": true,
+        "holderOk": true,
+        "quantityTotalOk": true,
+        "totalPaymentOk": true
+      }
+    },
+    {
+      "cid": "QmdNcfrfrMvU2BGJq3g2hKyJ426BtHLbt7PfmtAt4KaHHK",
+      "profile": "private",
+      "orderId": "0xc3172f8dc14e79183312c42bf3d3e07999e9bc26229f9883dfa24bcd91c34601",
+      "productContract": "0x2bc0b8618629d9b4a1d68731f256d6b552ac4f86",
+      "priceVisibility": "private",
+      "proofFamilyQuantityTotal": "bulletproof",
+      "proofFamilyTotalPayment": "bulletproof",
+      "proofTypeQuantityTotal": "quantity-total-bulletproof-private-price",
+      "proofTypeTotalPayment": "total-payment-equality-bulletproof",
+      "proofSize": {
+        "quantityTotalBytes": 417,
+        "totalPaymentBytes": 417,
+        "combinedBytes": 834
+      },
+      "verification": {
+        "verifyVc": {
+          "minMs": 164.085,
+          "meanMs": 252.855,
+          "medianMs": 230.931,
+          "p95Ms": 379.425,
+          "maxMs": 904.319,
+          "stdDevMs": 97.202,
+          "iterations": 100,
+          "lastPayload": {
+            "success": true,
+            "message": "VC verification complete.",
+            "issuer": {
+              "matching_vc": true,
+              "matching_signer": true,
+              "signature_verified": true,
+              "recovered_address": "0x88dcDCfB5e330049597003D41eF8E744Fa613E68",
+              "expected_address": "0x88dcdcfb5e330049597003d41ef8e744fa613e68",
+              "skipped": false,
+              "error": null
+            },
+            "holder": {
+              "matching_vc": true,
+              "matching_signer": true,
+              "signature_verified": true,
+              "recovered_address": null,
+              "expected_address": null,
+              "skipped": true,
+              "error": null
+            },
+            "privacyProofs": {
+              "quantityTotal": true,
+              "totalPayment": true,
+              "paymentCommitmentBinding": true,
+              "quantityTotalSource": "http://127.0.0.1:5010",
+              "totalPaymentSource": "http://127.0.0.1:5010",
+              "paymentCommitmentBindingSource": "http://127.0.0.1:5010",
+              "skipped": false,
+              "error": null
+            }
+          }
+        },
+        "quantityProof": {
+          "endpoint": "/zkp/verify-private-price-quantity-total-bulletproof",
+          "minMs": 53.783,
+          "meanMs": 77.271,
+          "medianMs": 69.232,
+          "p95Ms": 103.162,
+          "maxMs": 216.241,
+          "stdDevMs": 20.673,
+          "iterations": 100,
+          "lastPayload": {
+            "verified": true
+          }
+        },
+        "totalPaymentProof": {
+          "endpoint": "/zkp/verify-total-payment-equality-bulletproof",
+          "minMs": 35.287,
+          "meanMs": 58.173,
+          "medianMs": 53.262,
+          "p95Ms": 96.475,
+          "maxMs": 126.245,
+          "stdDevMs": 17.155,
+          "iterations": 100,
+          "lastPayload": {
+            "verified": true
+          }
+        },
+        "combinedProofVerifyMeanMs": 135.444,
+        "estimatedSignatureAndOverheadMeanMs": 117.411
+      },
+      "verifyResult": {
+        "success": true,
+        "issuerOk": true,
+        "holderOk": true,
+        "quantityTotalOk": true,
+        "totalPaymentOk": true
+      }
+    },
+    {
+      "cid": "QmZjsEo2aRoHGzWu5WJ4vSquTjj6fqA9ytCtdYyK42mG9M",
+      "profile": "private",
+      "orderId": "0x4cc952e72520c7b4a4372b9d755b30604b6c1bbea494cdbf6b06b34d173ab37e",
+      "productContract": "0x7fff1e6b090c3ccdaf6b0cf4b5bbc827851dd938",
+      "priceVisibility": "private",
+      "proofFamilyQuantityTotal": "bulletproof",
+      "proofFamilyTotalPayment": "bulletproof",
+      "proofTypeQuantityTotal": "quantity-total-bulletproof-private-price",
+      "proofTypeTotalPayment": "total-payment-equality-bulletproof",
+      "proofSize": {
+        "quantityTotalBytes": 417,
+        "totalPaymentBytes": 417,
+        "combinedBytes": 834
+      },
+      "verification": {
+        "verifyVc": {
+          "minMs": 168.006,
+          "meanMs": 297.5,
+          "medianMs": 276.151,
+          "p95Ms": 549.292,
+          "maxMs": 1055.502,
+          "stdDevMs": 136.596,
+          "iterations": 100,
+          "lastPayload": {
+            "success": true,
+            "message": "VC verification complete.",
+            "issuer": {
+              "matching_vc": true,
+              "matching_signer": true,
+              "signature_verified": true,
+              "recovered_address": "0x88dcDCfB5e330049597003D41eF8E744Fa613E68",
+              "expected_address": "0x88dcdcfb5e330049597003d41ef8e744fa613e68",
+              "skipped": false,
+              "error": null
+            },
+            "holder": {
+              "matching_vc": true,
+              "matching_signer": true,
+              "signature_verified": true,
+              "recovered_address": null,
+              "expected_address": null,
+              "skipped": true,
+              "error": null
+            },
+            "privacyProofs": {
+              "quantityTotal": true,
+              "totalPayment": true,
+              "paymentCommitmentBinding": true,
+              "quantityTotalSource": "http://127.0.0.1:5010",
+              "totalPaymentSource": "http://127.0.0.1:5010",
+              "paymentCommitmentBindingSource": "http://127.0.0.1:5010",
+              "skipped": false,
+              "error": null
+            }
+          }
+        },
+        "quantityProof": {
+          "endpoint": "/zkp/verify-private-price-quantity-total-bulletproof",
+          "minMs": 68.326,
+          "meanMs": 127.318,
+          "medianMs": 112.213,
+          "p95Ms": 264.043,
+          "maxMs": 427.798,
+          "stdDevMs": 58.531,
+          "iterations": 100,
+          "lastPayload": {
+            "verified": true
+          }
+        },
+        "totalPaymentProof": {
+          "endpoint": "/zkp/verify-total-payment-equality-bulletproof",
+          "minMs": 32.522,
+          "meanMs": 56.758,
+          "medianMs": 44.827,
+          "p95Ms": 110.351,
+          "maxMs": 152.539,
+          "stdDevMs": 25.554,
+          "iterations": 100,
+          "lastPayload": {
+            "verified": true
+          }
+        },
+        "combinedProofVerifyMeanMs": 184.076,
+        "estimatedSignatureAndOverheadMeanMs": 113.424
+      },
+      "verifyResult": {
+        "success": true,
+        "issuerOk": true,
+        "holderOk": true,
+        "quantityTotalOk": true,
+        "totalPaymentOk": true
+      }
+    }
+  ],
+  "aggregates": {
+    "public": {
+      "profile": "public",
+      "sampleCount": 3,
+      "proofSizeCombinedBytes": {
+        "min": 800,
+        "mean": 800,
+        "median": 800,
+        "p95": 800,
+        "max": 800,
+        "stddev": 0
+      },
+      "verifyVcMeanMs": {
+        "min": 122.017,
+        "mean": 135.992,
+        "median": 127.334,
+        "p95": 155.495,
+        "max": 158.624,
+        "stddev": 16.15
+      },
+      "combinedProofVerifyMeanMs": {
+        "min": 10.542,
+        "mean": 20.866,
+        "median": 14.639,
+        "p95": 35.139,
+        "max": 37.417,
+        "stddev": 11.822
+      },
+      "estimatedSignatureAndOverheadMeanMs": {
+        "min": 84.6,
+        "mean": 115.126,
+        "median": 116.792,
+        "p95": 141.266,
+        "max": 143.985,
+        "stddev": 24.272
+      },
+      "allVerifyPass": true
+    },
+    "private": {
+      "profile": "private",
+      "sampleCount": 3,
+      "proofSizeCombinedBytes": {
+        "min": 834,
+        "mean": 834,
+        "median": 834,
+        "p95": 834,
+        "max": 834,
+        "stddev": 0
+      },
+      "verifyVcMeanMs": {
+        "min": 246.316,
+        "mean": 265.557,
+        "median": 252.855,
+        "p95": 293.036,
+        "max": 297.5,
+        "stddev": 22.744
+      },
+      "combinedProofVerifyMeanMs": {
+        "min": 135.444,
+        "mean": 153.06,
+        "median": 139.66,
+        "p95": 179.634,
+        "max": 184.076,
+        "stddev": 21.999
+      },
+      "estimatedSignatureAndOverheadMeanMs": {
+        "min": 106.656,
+        "mean": 112.497,
+        "median": 113.424,
+        "p95": 117.012,
+        "max": 117.411,
+        "stddev": 4.439
+      },
+      "allVerifyPass": true
+    }
+  }
+}

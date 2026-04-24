@@ -47,7 +47,10 @@ function getSecondaryBadge(product, myAddress) {
   return null;
 }
 
-function formatUnitPrice(unitPriceWei) {
+function formatUnitPrice(unitPriceWei, priceVisibility) {
+  if (priceVisibility === "private") {
+    return "Private";
+  }
   return formatTokenAmount(unitPriceWei, { symbol: "WETH", fallback: "Not set" });
 }
 
@@ -76,7 +79,8 @@ const ProductCard = ({ product, myAddress }) => {
 
       <div className="space-y-1 text-sm">
         <div>
-          <span className="font-medium">Unit Price:</span> {formatUnitPrice(product.unitPriceWei)}
+          <span className="font-medium">Unit Price:</span>{" "}
+          {formatUnitPrice(product.unitPriceWei, product.priceVisibility)}
         </div>
         <div>
           <span className="font-medium">Owner:</span> {truncate(product.owner)}

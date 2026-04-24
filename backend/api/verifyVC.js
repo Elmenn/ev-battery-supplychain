@@ -1,4 +1,5 @@
 const { verifyTypedData, TypedDataEncoder, isAddress, getAddress } = require('ethers');
+const { buildCpayBindingTag } = require('./erc7984/paymentBridgeModel');
 
 const DEFAULT_CHAIN_ID = (() => {
   const env = process.env.VC_CHAIN_ID || process.env.CHAIN_ID;
@@ -31,6 +32,39 @@ const DEFAULT_ETHR_REGISTRY_BY_CHAIN = Object.freeze({
   // Sepolia does not use the legacy mainnet/goerli 0xdca7... address.
   11155111: '0x03d5003bf0e79c5f5223588f347eba39afbc3818',
 });
+
+const DEFAULT_ZKP_BACKEND_URLS = (() => {
+  const candidates = [
+    process.env.ZKP_BACKEND_URL,
+    'http://127.0.0.1:5010',
+    process.env.REACT_APP_ZKP_BACKEND_URL,
+    'http://localhost:5010',
+  ];
+
+  const seen = new Set();
+  return candidates
+    .filter((value) => typeof value === 'string' && value.trim().length > 0)
+    .map((value) => value.trim().replace(/\/+$/, ''))
+    .filter((value) => {
+      if (seen.has(value)) return false;
+      seen.add(value);
+      return true;
+    });
+})();
+
+const ZKP_REQUEST_TIMEOUT_MS = (() => {
+  const parsed = Number(process.env.ZKP_REQUEST_TIMEOUT_MS || 8000);
+  return Number.isFinite(parsed) && parsed >= 1000 ? Math.floor(parsed) : 8000;
+})();
+
+const ZKP_REQUEST_RETRIES = (() => {
+  const parsed = Number(process.env.ZKP_REQUEST_RETRIES || 2);
+  return Number.isFinite(parsed) && parsed >= 1 ? Math.floor(parsed) : 2;
+})();
+
+function wait(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
 
 const CHAIN_ID_TO_ALIASES = Object.freeze({
   1: ['mainnet'],
@@ -178,6 +212,7 @@ const V4_ERC7984_TYPED_EIP712_TYPES_V60 = {
     { name: 'attestation', type: 'AttestationV4' },
   ],
   Listing: [
+    { name: 'priceVisibility', type: 'string' },
     { name: 'unitPriceWei', type: 'string' },
     { name: 'unitPriceHash', type: 'string' },
     { name: 'listingSnapshotCid', type: 'string' },
@@ -198,6 +233,7 @@ const V4_ERC7984_TYPED_EIP712_TYPES_V60 = {
     { name: 'transporterAddress', type: 'string' },
   ],
   Commitments: [
+    { name: 'priceCommitment', type: 'string' },
     { name: 'quantityCommitment', type: 'string' },
     { name: 'totalCommitment', type: 'string' },
     { name: 'paymentCommitment', type: 'string' },
@@ -249,13 +285,25 @@ const V4_ERC7984_TYPED_EIP712_TYPES_V60 = {
     { name: 'status', type: 'string' },
   ],
   PrivacyProofs: [
-    { name: 'quantityTotal', type: 'PublicProofRecord' },
-    { name: 'totalPaymentEquality', type: 'PublicProofRecord' },
+    { name: 'quantityTotal', type: 'ProofRecordV4' },
+    { name: 'totalPaymentEquality', type: 'ProofRecordV4' },
   ],
-  PublicProofRecord: [
+  ProofRecordV4: [
     { name: 'proofType', type: 'string' },
+    { name: 'proofFamily', type: 'string' },
+    { name: 'proofEngine', type: 'string' },
+    { name: 'commitmentEngine', type: 'string' },
+    { name: 'commitmentProofType', type: 'string' },
+    { name: 'commitmentProof', type: 'string' },
     { name: 'proofRHex', type: 'string' },
     { name: 'proofSHex', type: 'string' },
+    { name: 'proofHex', type: 'string' },
+    { name: 'proofSizeBytes', type: 'string' },
+    { name: 'verified', type: 'bool' },
+    { name: 'quantity', type: 'string' },
+    { name: 'value', type: 'string' },
+    { name: 'unitPriceWei', type: 'string' },
+    { name: 'priceCommitment', type: 'string' },
   ],
   AttestationV4: [
     { name: 'attestationVersion', type: 'string' },
@@ -311,6 +359,27 @@ function normalizeMaybeString(value) {
 
 function normalizeHexMaybe(value) {
   return typeof value === 'string' && value.trim().length > 0 ? value.trim() : null;
+}
+
+function normalizeCommitmentProofHex(value) {
+  if (typeof value === 'string') {
+    return value.trim();
+  }
+  if (value && typeof value === 'object') {
+    const candidate =
+      value.proofHex ||
+      value.proof_hex ||
+      value.proof ||
+      value.commitmentProof ||
+      value.commitment_proof ||
+      '';
+    return typeof candidate === 'string' ? candidate.trim() : '';
+  }
+  return '';
+}
+
+function stripHexPrefix(value) {
+  return String(value || '').trim().replace(/^0x/i, '');
 }
 
 function buildVcSigningAnchorPayload(credentialSubject = {}) {
@@ -524,6 +593,24 @@ function buildTypedV4Payload(vc) {
   const paymentBridge = clone.credentialSubject?.paymentBridge || {};
   const privacyProofs = clone.credentialSubject?.privacyProofs || {};
   const attestation = clone.credentialSubject?.attestation || {};
+  const normalizeProofRecord = (proof = {}) => ({
+    proofType: String(proof?.proofType || ''),
+    proofFamily: String(proof?.proofFamily || ''),
+    proofEngine: String(proof?.proofEngine || ''),
+    commitmentEngine: String(proof?.commitmentEngine || ''),
+    commitmentProofType: String(proof?.commitmentProofType || ''),
+    commitmentProof:
+      proof?.commitmentProof == null ? '' : JSON.stringify(proof.commitmentProof),
+    proofRHex: normalizeMaybeString(proof?.proofRHex),
+    proofSHex: normalizeMaybeString(proof?.proofSHex),
+    proofHex: normalizeMaybeString(proof?.proofHex),
+    proofSizeBytes: normalizeMaybeString(proof?.proofSizeBytes),
+    verified: Boolean(proof?.verified),
+    quantity: normalizeMaybeString(proof?.quantity),
+    value: normalizeMaybeString(proof?.value),
+    unitPriceWei: normalizeMaybeString(proof?.unitPriceWei),
+    priceCommitment: normalizeMaybeString(proof?.priceCommitment),
+  });
 
   return {
     id: String(vc?.id || ''),
@@ -556,6 +643,7 @@ function buildTypedV4Payload(vc) {
       productId: normalizeMaybeString(clone.credentialSubject.productId),
       chainId: normalizeMaybeString(clone.credentialSubject.chainId),
       listing: {
+        priceVisibility: normalizeMaybeString(listing.priceVisibility),
         unitPriceWei: normalizeMaybeString(listing.unitPriceWei),
         unitPriceHash: normalizeMaybeString(listing.unitPriceHash),
         listingSnapshotCid: normalizeMaybeString(listing.listingSnapshotCid),
@@ -579,6 +667,7 @@ function buildTypedV4Payload(vc) {
           : {}),
       },
       commitments: {
+        priceCommitment: normalizeMaybeString(commitments.priceCommitment),
         quantityCommitment: normalizeMaybeString(commitments.quantityCommitment),
         totalCommitment: normalizeMaybeString(commitments.totalCommitment),
         paymentCommitment: normalizeMaybeString(commitments.paymentCommitment),
@@ -638,16 +727,8 @@ function buildTypedV4Payload(vc) {
         },
       },
       privacyProofs: {
-        quantityTotal: {
-          proofType: String(privacyProofs.quantityTotal?.proofType || ''),
-          proofRHex: normalizeMaybeString(privacyProofs.quantityTotal?.proofRHex),
-          proofSHex: normalizeMaybeString(privacyProofs.quantityTotal?.proofSHex),
-        },
-        totalPaymentEquality: {
-          proofType: String(privacyProofs.totalPaymentEquality?.proofType || ''),
-          proofRHex: normalizeMaybeString(privacyProofs.totalPaymentEquality?.proofRHex),
-          proofSHex: normalizeMaybeString(privacyProofs.totalPaymentEquality?.proofSHex),
-        },
+        quantityTotal: normalizeProofRecord(privacyProofs.quantityTotal),
+        totalPaymentEquality: normalizeProofRecord(privacyProofs.totalPaymentEquality),
       },
       attestation: {
         attestationVersion: String(attestation.attestationVersion || schemaVersion),
@@ -926,6 +1007,196 @@ function buildProofArray(vc) {
   return [];
 }
 
+async function postZkpJson(path, body) {
+  const attemptErrors = [];
+
+  for (const baseUrl of DEFAULT_ZKP_BACKEND_URLS) {
+    for (let attempt = 1; attempt <= ZKP_REQUEST_RETRIES; attempt += 1) {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), ZKP_REQUEST_TIMEOUT_MS);
+
+      try {
+        const response = await fetch(`${baseUrl}${path}`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body),
+          signal: controller.signal,
+        });
+
+        if (!response.ok) {
+          const text = await response.text();
+          throw new Error(`status ${response.status}: ${text}`);
+        }
+
+        const json = await response.json();
+        return {
+          ...json,
+          source: json?.source || baseUrl,
+        };
+      } catch (error) {
+        const message =
+          error?.name === 'AbortError'
+            ? `timeout after ${ZKP_REQUEST_TIMEOUT_MS}ms`
+            : (error?.message || String(error));
+        attemptErrors.push(`[${baseUrl}] attempt ${attempt}/${ZKP_REQUEST_RETRIES}: ${message}`);
+
+        if (attempt < ZKP_REQUEST_RETRIES) {
+          await wait(150 * attempt);
+        }
+      } finally {
+        clearTimeout(timeoutId);
+      }
+    }
+  }
+
+  throw new Error(
+    attemptErrors.length > 0
+      ? `Failed to reach any configured ZKP backend. ${attemptErrors.join(' | ')}`
+      : 'Failed to reach any configured ZKP backend'
+  );
+}
+
+async function verifyEmbeddedPrivacyProofs(vcJsonData) {
+  const subject = vcJsonData?.credentialSubject || {};
+  const listing = subject?.listing || {};
+  const commitments = subject?.commitments || {};
+  const privacyProofs = subject?.privacyProofs || {};
+  const paymentBridge = subject?.paymentBridge || {};
+  const attestation = subject?.attestation || {};
+  const schemaVersion = String(vcJsonData?.schemaVersion || '').trim();
+
+  const priceVisibility =
+    String(listing?.priceVisibility || '').trim() ||
+    (commitments?.priceCommitment ? 'private' : 'public');
+  const contextHash = String(paymentBridge?.contextHash || attestation?.contextHash || '').trim();
+  const bridgeStatus = String(paymentBridge?.verification?.status || '').trim().toLowerCase();
+  const requireBoundPaymentCommitment =
+    schemaVersion === '6.1' && bridgeStatus === 'bound';
+
+  const hasOrderProofMaterial = Boolean(
+    commitments?.quantityCommitment &&
+      commitments?.totalCommitment &&
+      commitments?.paymentCommitment &&
+      contextHash
+  );
+
+  const emptyResult = {
+    quantityTotal: null,
+    totalPayment: null,
+    paymentCommitmentBinding: null,
+    quantityTotalSource: null,
+    totalPaymentSource: null,
+    paymentCommitmentBindingSource: null,
+    skipped: true,
+    error: null,
+  };
+
+  if (!hasOrderProofMaterial) {
+    return emptyResult;
+  }
+
+  try {
+    const quantityProofType = String(privacyProofs?.quantityTotal?.proofType || '').toLowerCase();
+    const totalPaymentProofType = String(privacyProofs?.totalPaymentEquality?.proofType || '').toLowerCase();
+
+    const quantityTotalVerified =
+      priceVisibility === 'private' || quantityProofType.includes('bulletproof')
+        ? await postZkpJson('/zkp/verify-private-price-quantity-total-bulletproof', {
+            c_price_hex: commitments.priceCommitment,
+            c_quantity_hex: commitments.quantityCommitment,
+            c_total_hex: commitments.totalCommitment,
+            proof_hex: privacyProofs?.quantityTotal?.proofHex,
+            context_hash_hex: contextHash,
+          })
+        : await postZkpJson('/zkp/verify-quantity-total-proof', {
+            c_quantity_hex: commitments.quantityCommitment,
+            c_total_hex: commitments.totalCommitment,
+            unit_price_wei: listing.unitPriceWei,
+            proof_r_hex: privacyProofs?.quantityTotal?.proofRHex,
+            proof_s_hex: privacyProofs?.quantityTotal?.proofSHex,
+            context_hash_hex: contextHash,
+          });
+
+    const totalPaymentVerified =
+      totalPaymentProofType.includes('bulletproof')
+        ? await postZkpJson('/zkp/verify-total-payment-equality-bulletproof', {
+            c_total_hex: commitments.totalCommitment,
+            c_pay_hex: commitments.paymentCommitment,
+            proof_hex: privacyProofs?.totalPaymentEquality?.proofHex,
+            context_hash_hex: contextHash,
+          })
+        : await postZkpJson('/zkp/verify-total-payment-equality-proof', {
+            c_total_hex: commitments.totalCommitment,
+            c_pay_hex: commitments.paymentCommitment,
+            proof_r_hex: privacyProofs?.totalPaymentEquality?.proofRHex,
+            proof_s_hex: privacyProofs?.totalPaymentEquality?.proofSHex,
+            context_hash_hex: contextHash,
+          });
+
+    let paymentCommitmentBindingVerified = { verified: true, source: null };
+    if (requireBoundPaymentCommitment) {
+      const chainIdForBinding = String(subject?.chainId || subject?.order?.chainId || '').trim();
+      const escrowAddressForBinding = String(
+        paymentBridge?.depositSide?.escrowAddress || subject?.order?.escrowAddr || subject?.productContract || ''
+      ).trim();
+      const orderIdForBinding = String(
+        paymentBridge?.depositSide?.orderId || subject?.order?.orderId || ''
+      ).trim();
+      const depositTxHashForBinding = String(paymentBridge?.depositSide?.depositTxHash || '').trim();
+      const commitmentProofHex = normalizeCommitmentProofHex(
+        privacyProofs?.totalPaymentEquality?.commitmentProof
+      );
+
+      if (!chainIdForBinding || !escrowAddressForBinding || !orderIdForBinding || !depositTxHashForBinding) {
+        throw new Error('Missing payment binding context for Cpay verification');
+      }
+      if (!commitmentProofHex) {
+        throw new Error('privacyProofs.totalPaymentEquality.commitmentProof is required for bound Cpay verification');
+      }
+
+      const cpayBindingTagHex = buildCpayBindingTag({
+        chainId: chainIdForBinding,
+        escrowAddress: escrowAddressForBinding,
+        orderId: orderIdForBinding,
+        depositTxHash: depositTxHashForBinding,
+      });
+
+      paymentCommitmentBindingVerified = await postZkpJson('/zkp/verify-value-commitment', {
+        commitment: stripHexPrefix(commitments.paymentCommitment),
+        proof: stripHexPrefix(commitmentProofHex),
+        binding_tag_hex: cpayBindingTagHex,
+      });
+    }
+
+    const totalPaymentPass =
+      Boolean(totalPaymentVerified?.verified) &&
+      Boolean(paymentCommitmentBindingVerified?.verified);
+
+    return {
+      quantityTotal: Boolean(quantityTotalVerified?.verified),
+      totalPayment: totalPaymentPass,
+      paymentCommitmentBinding: Boolean(paymentCommitmentBindingVerified?.verified),
+      quantityTotalSource: quantityTotalVerified?.source || 'zkp-backend',
+      totalPaymentSource: totalPaymentVerified?.source || 'zkp-backend',
+      paymentCommitmentBindingSource:
+        paymentCommitmentBindingVerified?.source || (requireBoundPaymentCommitment ? 'zkp-backend' : null),
+      skipped: false,
+      error: null,
+    };
+  } catch (error) {
+    return {
+      quantityTotal: false,
+      totalPayment: false,
+      paymentCommitmentBinding: false,
+      quantityTotalSource: null,
+      totalPaymentSource: null,
+      paymentCommitmentBindingSource: null,
+      skipped: false,
+      error: error?.message || 'Privacy proof verification failed',
+    };
+  }
+}
+
 async function verifyProof({ proof, dataToVerify, payloadTypes, role, expectedDid, chainId, contractAddress }) {
   const result = {
     matching_vc: false,
@@ -1037,6 +1308,12 @@ async function verifyProof({ proof, dataToVerify, payloadTypes, role, expectedDi
 }
 
 async function verifyVC(vcJsonData, contractAddress = null) {
+  const inferredContractAddress =
+    contractAddress ||
+    vcJsonData?.credentialSubject?.productContract ||
+    vcJsonData?.credentialSubject?.order?.escrowAddr ||
+    null;
+
   const proofArr = buildProofArray(vcJsonData);
   if (!proofArr.length) throw new Error('No proofs found in VC');
 
@@ -1080,7 +1357,7 @@ async function verifyVC(vcJsonData, contractAddress = null) {
     role: 'issuer',
     expectedDid: dataToVerify.issuer?.id,
     chainId: issuerChainId,
-    contractAddress,
+    contractAddress: inferredContractAddress,
   });
 
   let holderResult;
@@ -1102,11 +1379,13 @@ async function verifyVC(vcJsonData, contractAddress = null) {
       role: 'holder',
       expectedDid: dataToVerify.holder?.id,
       chainId: holderChainId,
-      contractAddress,
+      contractAddress: inferredContractAddress,
     });
   }
 
-  return { issuer: issuerResult, holder: holderResult };
+  const privacyProofs = await verifyEmbeddedPrivacyProofs(vcJsonData);
+
+  return { issuer: issuerResult, holder: holderResult, privacyProofs };
 }
 
 module.exports = {

@@ -160,6 +160,20 @@ export async function generateValueCommitmentWithBinding(params, options = {}) {
   });
 }
 
+export async function generateValueCommitmentWithBindingPreferWasm(params) {
+  try {
+    const result = await generateValueCommitmentWithBindingWasm(params);
+    return { ...result, source: "WASM" };
+  } catch (error) {
+    const fallback = await generateValueCommitmentWithBindingBackend(params);
+    return {
+      ...fallback,
+      source: "Backend Fallback",
+      fallbackReason: error?.message || "WASM value commitment with binding generation failed",
+    };
+  }
+}
+
 export async function verifyValueCommitment(params, options = {}) {
   return dispatchWithMode({
     operation: "verify-value-commitment",

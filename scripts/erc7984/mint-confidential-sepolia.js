@@ -70,7 +70,7 @@ async function main() {
   });
 
   const [owner] = await hre.ethers.getSigners();
-  const token = await hre.ethers.getContractAt("MockConfidentialOrderToken", tokenAddress, owner);
+  const token = await hre.ethers.getContractAt("ConfidentialOrderToken", tokenAddress, owner);
 
   console.log(`Network  : ${(await hre.ethers.provider.getNetwork()).name}`);
   console.log(`Owner    : ${owner.address}`);

@@ -1,0 +1,5 @@
+statement,proof_family,generation_median_ms,generation_mean_ms,proof_size_bytes,verification_median_ms,verification_mean_ms
+payment=total,fiat-shamir,0.129,0.137,64,0.48,0.583
+payment=total,bulletproof,7.319,7.881,417,6.343,7.789
+total=unitPrice*quantity,fiat-shamir,0.146,0.145,64,0.608,0.613
+total=unitPrice*quantity,bulletproof,7.366,7.717,417,6.371,6.572

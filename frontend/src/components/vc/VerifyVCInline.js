@@ -7,7 +7,9 @@ import {
   verifyVCPreferLocal,
 } from "../../utils/verifyVc";
 import {
+  verifyPrivatePriceQuantityTotalBulletproof,
   verifyQuantityTotalProofPreferWasm,
+  verifyTotalPaymentEqualityBulletproof,
   verifyTotalPaymentEqualityProofPreferWasm,
 } from "../../utils/equalityProofClient";
 import { PHASE_LABELS } from "../../utils/escrowHelpers";
@@ -217,6 +219,10 @@ const VerifyVCInline = ({ vc, cid, provider, contractAddress, artifactSource = n
   const privacyProofs = vc?.credentialSubject?.privacyProofs || {};
   const attestation = vc?.credentialSubject?.attestation || {};
   const listing = vc?.credentialSubject?.listing || {};
+  const paymentBridge = vc?.credentialSubject?.paymentBridge || {};
+  const priceVisibility =
+    String(listing?.priceVisibility || "").trim() ||
+    (commitments?.priceCommitment ? "private" : "public");
   const isV2Order = Boolean(order.orderId && commitments.quantityCommitment && commitments.totalCommitment && commitments.paymentCommitment);
 
   const handleVerify = async () => {
@@ -323,22 +329,45 @@ const VerifyVCInline = ({ vc, cid, provider, contractAddress, artifactSource = n
     if (!isV2Order) return;
     setLoading((prev) => ({ ...prev, proofs: true }));
     try {
-      const contextHash = attestation.contextHash;
-      const quantityTotalVerified = await verifyQuantityTotalProofPreferWasm({
-        cQuantityHex: commitments.quantityCommitment,
-        cTotalHex: commitments.totalCommitment,
-        unitPriceWei: listing.unitPriceWei,
-        proofRHex: privacyProofs.quantityTotal?.proofRHex,
-        proofSHex: privacyProofs.quantityTotal?.proofSHex,
-        contextHashHex: contextHash,
-      });
-      const totalPaymentVerified = await verifyTotalPaymentEqualityProofPreferWasm({
-        cTotalHex: commitments.totalCommitment,
-        cPayHex: commitments.paymentCommitment,
-        proofRHex: privacyProofs.totalPaymentEquality?.proofRHex,
-        proofSHex: privacyProofs.totalPaymentEquality?.proofSHex,
-        contextHashHex: contextHash,
-      });
+      const contextHash = paymentBridge?.contextHash || attestation.contextHash;
+      const quantityProofType = String(privacyProofs.quantityTotal?.proofType || "").toLowerCase();
+      const totalPaymentProofType = String(
+        privacyProofs.totalPaymentEquality?.proofType || ""
+      ).toLowerCase();
+
+      const quantityTotalVerified =
+        priceVisibility === "private" || quantityProofType.includes("bulletproof")
+          ? await verifyPrivatePriceQuantityTotalBulletproof({
+              cPriceHex: commitments.priceCommitment,
+              cQuantityHex: commitments.quantityCommitment,
+              cTotalHex: commitments.totalCommitment,
+              proofHex: privacyProofs.quantityTotal?.proofHex,
+              contextHashHex: contextHash,
+            })
+          : await verifyQuantityTotalProofPreferWasm({
+              cQuantityHex: commitments.quantityCommitment,
+              cTotalHex: commitments.totalCommitment,
+              unitPriceWei: listing.unitPriceWei,
+              proofRHex: privacyProofs.quantityTotal?.proofRHex,
+              proofSHex: privacyProofs.quantityTotal?.proofSHex,
+              contextHashHex: contextHash,
+            });
+
+      const totalPaymentVerified =
+        totalPaymentProofType.includes("bulletproof")
+          ? await verifyTotalPaymentEqualityBulletproof({
+              cTotalHex: commitments.totalCommitment,
+              cPayHex: commitments.paymentCommitment,
+              proofHex: privacyProofs.totalPaymentEquality?.proofHex,
+              contextHashHex: contextHash,
+            })
+          : await verifyTotalPaymentEqualityProofPreferWasm({
+              cTotalHex: commitments.totalCommitment,
+              cPayHex: commitments.paymentCommitment,
+              proofRHex: privacyProofs.totalPaymentEquality?.proofRHex,
+              proofSHex: privacyProofs.totalPaymentEquality?.proofSHex,
+              contextHashHex: contextHash,
+            });
       setProofResults({
         quantityTotal: Boolean(quantityTotalVerified?.verified),
         totalPayment: Boolean(totalPaymentVerified?.verified),
@@ -405,22 +434,28 @@ const VerifyVCInline = ({ vc, cid, provider, contractAddress, artifactSource = n
     if (
       isV2Order &&
       (
-        !privacyProofs.quantityTotal?.proofRHex ||
-        !privacyProofs.quantityTotal?.proofSHex ||
-        !privacyProofs.totalPaymentEquality?.proofRHex ||
-        !privacyProofs.totalPaymentEquality?.proofSHex
+        (!privacyProofs.quantityTotal?.proofHex &&
+          (!privacyProofs.quantityTotal?.proofRHex || !privacyProofs.quantityTotal?.proofSHex)) ||
+        (!privacyProofs.totalPaymentEquality?.proofHex &&
+          (!privacyProofs.totalPaymentEquality?.proofRHex || !privacyProofs.totalPaymentEquality?.proofSHex))
       )
     ) {
       items.push("VC is missing embedded privacy proofs, so order proof checks cannot run from the VRC alone.");
     }
-    if (isV2Order && !attestation.contextHash) items.push("VC is missing the V2 contextHash, so order-bound proof checks will fail.");
+    if (isV2Order && !(paymentBridge?.contextHash || attestation.contextHash)) items.push("VC is missing the order contextHash, so order-bound proof checks will fail.");
+    if (priceVisibility === "private" && !commitments.priceCommitment) items.push("Private-price VRC is missing priceCommitment, so Bulletproof quantity-total verification cannot run.");
     return items;
   }, [
     attestation.contextHash,
     cid,
+    commitments.priceCommitment,
     isV2Order,
+    paymentBridge?.contextHash,
+    priceVisibility,
+    privacyProofs.quantityTotal?.proofHex,
     privacyProofs.quantityTotal?.proofRHex,
     privacyProofs.quantityTotal?.proofSHex,
+    privacyProofs.totalPaymentEquality?.proofHex,
     privacyProofs.totalPaymentEquality?.proofRHex,
     privacyProofs.totalPaymentEquality?.proofSHex,
     provider,
@@ -624,12 +659,13 @@ const VerifyVCInline = ({ vc, cid, provider, contractAddress, artifactSource = n
           </div>
           <div className="flex items-center justify-between gap-2">
             <span>Context Hash</span>
-            <div><span className="font-mono break-all">{attestation.contextHash}</span><CopyValueButton value={attestation.contextHash} /></div>
+            <div><span className="font-mono break-all">{paymentBridge?.contextHash || attestation.contextHash}</span><CopyValueButton value={paymentBridge?.contextHash || attestation.contextHash} /></div>
           </div>
           <div className="flex items-center justify-between gap-2">
             <span>Proof Source</span>
             <span className="font-medium">
-              {privacyProofs.quantityTotal?.proofRHex && privacyProofs.totalPaymentEquality?.proofRHex
+              {(privacyProofs.quantityTotal?.proofHex || privacyProofs.quantityTotal?.proofRHex) &&
+              (privacyProofs.totalPaymentEquality?.proofHex || privacyProofs.totalPaymentEquality?.proofRHex)
                 ? "Proofs embedded in VRC"
                 : "Proofs missing from VRC"}
             </span>
@@ -798,10 +834,13 @@ const VerifyVCInline = ({ vc, cid, provider, contractAddress, artifactSource = n
             ]}
             evidence={[
               { label: "Order ID", value: order.orderId, mono: true, source: "vc" },
-              { label: "Unit Price Wei", value: listing.unitPriceWei, source: "vc" },
+              { label: "Price Visibility", value: priceVisibility, source: "vc" },
+              ...(priceVisibility === "private"
+                ? [{ label: "Price Commitment", value: commitments.priceCommitment, mono: true, source: "vc" }]
+                : [{ label: "Unit Price Wei", value: listing.unitPriceWei, source: "vc" }]),
               { label: "Quantity Commitment", value: commitments.quantityCommitment, mono: true, source: "vc" },
               { label: "Total Commitment", value: commitments.totalCommitment, mono: true, source: "vc" },
-              { label: "Context Hash", value: attestation.contextHash, mono: true, source: "vc" },
+              { label: "Context Hash", value: paymentBridge?.contextHash || attestation.contextHash, mono: true, source: "vc" },
               { label: "Verification Source", value: proofResults.quantityTotalSource, source: "verifier" },
             ]}
             error={proofResults.error}
@@ -826,7 +865,7 @@ const VerifyVCInline = ({ vc, cid, provider, contractAddress, artifactSource = n
               { label: "Order ID", value: order.orderId, mono: true, source: "vc" },
               { label: "Total Commitment", value: commitments.totalCommitment, mono: true, source: "vc" },
               { label: "Payment Commitment", value: commitments.paymentCommitment, mono: true, source: "vc" },
-              { label: "Context Hash", value: attestation.contextHash, mono: true, source: "vc" },
+              { label: "Context Hash", value: paymentBridge?.contextHash || attestation.contextHash, mono: true, source: "vc" },
               { label: "Verification Source", value: proofResults.totalPaymentSource, source: "verifier" },
             ]}
             error={proofResults.error}

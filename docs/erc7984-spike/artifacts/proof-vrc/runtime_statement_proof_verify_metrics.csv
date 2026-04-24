@@ -1,0 +1,5 @@
+profile,statement,mean_ms,median_ms,p95_ms,stddev_ms,sample_count
+private,quantity-total,99.427,93.691,123.955,20.83,3
+private,total-payment,53.633,56.758,58.032,5.45,3
+public,quantity-total,11.081,8.122,18.828,6.438,3
+public,total-payment,9.785,6.517,16.311,5.402,3

@@ -217,10 +217,10 @@ async function main() {
   await logNativeBalance("Buyer", buyer);
   await logNativeBalance("Transporter", transporter);
 
-  const tokenFactory = await hre.ethers.getContractFactory("MockConfidentialOrderToken");
+  const tokenFactory = await hre.ethers.getContractFactory("ConfidentialOrderToken");
   const token = await tokenFactory
     .connect(seller)
-    .deploy(seller.address, "Mock Confidential Order Token", "MCOT", "ipfs://factory-confidential");
+    .deploy(seller.address, "Confidential Order Token", "COT", "ipfs://factory-confidential");
   await token.waitForDeployment();
 
   const implementationFactory = await hre.ethers.getContractFactory("ProductEscrowConfidential_Initializer");

@@ -1,10 +1,12 @@
 import React from "react";
 import { ethers } from "ethers";
 import { useNavigate } from "react-router-dom";
+import toast from "react-hot-toast";
 import { Button } from "../ui/button";
 import Erc7984BuyerPurchaseCard from "./Erc7984BuyerPurchaseCard";
 import Erc7984TransporterBidCard from "./Erc7984TransporterBidCard";
 import { formatTokenAmount } from "../../utils/tokenDisplay";
+import { getLocalPrivatePricePackage, serializePrivatePricePackage } from "../../utils/erc7984/privatePricePackage";
 
 const ZERO_ADDRESS = "0x0000000000000000000000000000000000000000";
 
@@ -22,7 +24,10 @@ function truncateAddress(value) {
   return `${value.slice(0, 6)}...${value.slice(-4)}`;
 }
 
-function formatUnitPrice(unitPriceWei) {
+function formatUnitPrice(unitPriceWei, priceVisibility) {
+  if (priceVisibility === "private") {
+    return "Private";
+  }
   return formatTokenAmount(unitPriceWei, { symbol: "WETH", fallback: "Not set" });
 }
 
@@ -55,6 +60,8 @@ export default function Erc7984ProductDetail({
   const listingMeta = productMeta?.productMeta || {};
   const role = deriveRole(product, currentUser);
   const unitPriceWei = productMeta?.unitPriceWei || listingMeta.unitPriceWei || "";
+  const priceVisibility = listingMeta.priceVisibility || "public";
+  const privatePricePackage = priceVisibility === "private" ? getLocalPrivatePricePackage(address) : null;
   const phaseLabel = PHASE_LABELS[Number(product?.phase)] || "Unknown";
   const boundHash = product?.vcHash || ethers.ZeroHash;
   const hasBoundCommitment = boundHash !== ethers.ZeroHash;
@@ -64,6 +71,21 @@ export default function Erc7984ProductDetail({
       : "";
   const sellerActionHref = `/seller/orders/${encodeURIComponent(address)}`;
   const verifierHref = `/product/${encodeURIComponent(address)}/verify`;
+
+  async function handleCopyPrivatePricePackage() {
+    const payload = serializePrivatePricePackage(address);
+    if (!payload) {
+      toast.error("Private-price package is not available in this browser for this listing.");
+      return;
+    }
+
+    try {
+      await navigator.clipboard.writeText(payload);
+      toast.success("Private-price package copied.");
+    } catch (error) {
+      toast.error(error?.message || "Failed to copy the private-price package.");
+    }
+  }
 
   return (
     <div className="max-w-5xl mx-auto px-4 py-8 space-y-6">
@@ -77,9 +99,10 @@ export default function Erc7984ProductDetail({
               {listingMeta.productName || product?.name || "Unnamed Product"}
             </h1>
             <p className="max-w-2xl text-sm leading-6 text-slate-600">
-              This listing uses the ERC-7984 confidential order model. Public unit price is shown
-              here in WETH, while buyer quantity and confidential payment are handled privately
-              during the order flow.
+              This listing uses the ERC-7984 confidential order model.{" "}
+              {priceVisibility === "private"
+                ? "Price is hidden at listing level and anchored by a confidential commitment."
+                : "Public unit price is shown here in WETH, while buyer quantity and confidential payment are handled privately during the order flow."}
             </p>
           </div>
 
@@ -102,7 +125,10 @@ export default function Erc7984ProductDetail({
 
           <div className="grid gap-3 text-sm text-slate-700">
             <div>
-              <strong>Unit Price:</strong> {formatUnitPrice(unitPriceWei)}
+              <strong>Unit Price:</strong> {formatUnitPrice(unitPriceWei, priceVisibility)}
+            </div>
+            <div>
+              <strong>Price Visibility:</strong> {priceVisibility === "private" ? "Private" : "Public"}
             </div>
             <div>
               <strong>Seller:</strong> {truncateAddress(product?.sellerAddress)}
@@ -127,6 +153,31 @@ export default function Erc7984ProductDetail({
               confidential escrows.
             </p>
           </div>
+
+          {role === "seller" && priceVisibility === "private" && (
+            <div className="rounded-xl border border-amber-200 bg-amber-50 p-4">
+              <div className="text-sm font-medium text-amber-950">Seller Private-Price Package</div>
+              <p className="mt-2 text-sm text-amber-900">
+                Buyers need the off-chain price opening for this listing before they can generate
+                the private-price Bulletproof purchase sidecar.
+              </p>
+              <div className="mt-3 space-y-2 text-sm text-amber-900">
+                <div className="break-all">
+                  <strong>On-chain commitment:</strong>{" "}
+                  {privatePricePackage?.priceCommitment || listingMeta.priceCommitment || "missing"}
+                </div>
+                <div>
+                  <strong>Local package status:</strong>{" "}
+                  {privatePricePackage ? "available in this browser" : "not available in this browser"}
+                </div>
+              </div>
+              <div className="mt-4">
+                <Button onClick={handleCopyPrivatePricePackage} disabled={!privatePricePackage}>
+                  Copy Private Price Package
+                </Button>
+              </div>
+            </div>
+          )}
         </section>
 
         <aside className="space-y-6">

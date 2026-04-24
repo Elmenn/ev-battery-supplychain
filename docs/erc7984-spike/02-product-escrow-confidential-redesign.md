@@ -1,5 +1,17 @@
 # ProductEscrow to ERC-7984 Redesign
 
+## Archive status
+
+This note is a historical redesign record.
+
+Active implementation references are in:
+
+- `contracts/erc7984/ProductFactoryConfidential.sol`
+- `contracts/erc7984/ProductEscrowConfidential_Initializer.sol`
+- `contracts/erc7984/ProductEscrowConfidential_PrivatePrice.sol`
+
+Legacy contracts mentioned in older parts of this note are no longer in the active flow.
+
 ## Implementation update: March 13, 2026
 
 The original note below described the redesign direction. The active spike implementation has now moved further and proved the following:
